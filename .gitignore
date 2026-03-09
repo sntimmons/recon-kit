@@ -51,6 +51,16 @@ duplicate_worker_id_new/
 phase3_scorecard.csv
 tmp_*.py
 
+# ── Site downloads (generated from real data) ────────────────────────────────
+site/downloads/
+
+# ── Local Claude agent settings ───────────────────────────────────────────────
+.claude/
+
+# ── Generated summary JSONs ───────────────────────────────────────────────────
+audit/summary/sanity_gate.json
+audit/summary/sanity_results.json
+
 # ── Environment / secrets ─────────────────────────────────────────────────────
 .env
 .env.*
