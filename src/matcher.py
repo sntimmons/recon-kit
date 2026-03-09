@@ -249,7 +249,24 @@ def main() -> None:
         ]
         matched_raw = base
     else:
-        matched_raw = pd.DataFrame(columns=["match_source", "confidence"])
+        # Zero-match case: emit all standard columns so that downstream steps
+        # (load_sqlite.py indexes, run_audit.py queries) see a consistent schema.
+        matched_raw = pd.DataFrame(columns=[
+            "old_worker_id", "new_worker_id",
+            "old_recon_id",  "new_recon_id",
+            "old_full_name_norm", "new_full_name_norm",
+            "old_dob",       "new_dob",
+            "old_hire_date", "new_hire_date",
+            "old_last4_ssn", "new_last4_ssn",
+            "old_salary",    "new_salary",
+            "old_payrate",   "new_payrate",
+            "old_position",  "new_position",
+            "old_district",  "new_district",
+            "old_location_state", "new_location_state",
+            "old_worker_status",  "new_worker_status",
+            "old_worker_type",    "new_worker_type",
+            "match_source",  "confidence",
+        ])
 
     matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
     old.to_csv(OUT / "unmatched_old.csv", index=False)

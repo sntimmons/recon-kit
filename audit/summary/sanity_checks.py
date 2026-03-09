@@ -74,6 +74,11 @@ _SUSPICIOUS_SALARY_VALUES = frozenset({40_000.0, 40_003.0, 40_013.0, 40_073.0})
 # Hire-date prefixes that indicate extraction-time defaults
 _SUSPICIOUS_HIRE_DATE_PREFIXES = ("2026-02-", "2026-03-")
 
+# Minimum share of total matched pairs for a single new_hire_date value to be
+# flagged as a "wave" (data import where everyone received the same date).
+# Set lower than the gate threshold so borderline cases appear in the CSV.
+_HIRE_DATE_WAVE_MIN_RATE: float = 0.01
+
 _SUSP_COLS = [
     "issue_type", "pair_id", "match_source",
     "old_worker_id", "new_worker_id", "old_full_name_norm",
@@ -250,6 +255,46 @@ def _analyse(rows: list[dict]) -> tuple[dict, dict, list[dict], dict]:
         n_st = str(r.get("new_worker_status", "") or "").strip().lower()
         if o_st and n_st and o_st != n_st:
             counts["status"] += 1
+
+    # ------------------------------------------------------------------
+    # Hire-date wave detection: flag any single new_hire_date that appears
+    # in more than _HIRE_DATE_WAVE_MIN_RATE of all matched pairs.
+    # A wave indicates a bulk import where everyone received the same date.
+    # ------------------------------------------------------------------
+    total = len(rows)
+    if total > 0:
+        new_hd_counter: Counter = Counter(
+            str(r.get("new_hire_date", "") or "").strip()
+            for r in rows
+            if str(r.get("new_hire_date", "") or "").strip()
+        )
+        wave_dates: set[str] = {
+            nd for nd, cnt in new_hd_counter.items()
+            if cnt / total >= _HIRE_DATE_WAVE_MIN_RATE
+        }
+        if wave_dates:
+            for r in rows:
+                n_hd_str = str(r.get("new_hire_date", "") or "").strip()
+                if n_hd_str in wave_dates:
+                    wave_cnt  = new_hd_counter[n_hd_str]
+                    wave_rate = wave_cnt / total
+                    suspicious.append({
+                        "issue_type":         "hire_date_wave",
+                        "pair_id":            str(r.get("pair_id", "")),
+                        "match_source":       str(r.get("match_source", "")),
+                        "old_worker_id":      str(r.get("old_worker_id", "") or ""),
+                        "new_worker_id":      str(r.get("new_worker_id", "") or ""),
+                        "old_full_name_norm": str(r.get("old_full_name_norm", "") or ""),
+                        "old_hire_date":      str(r.get("old_hire_date", "") or ""),
+                        "new_hire_date":      n_hd_str,
+                        "old_salary":         str(r.get("old_salary", "") or ""),
+                        "new_salary":         str(r.get("new_salary", "") or ""),
+                        "notes": (
+                            f"new_hire_date={n_hd_str} shared by "
+                            f"{wave_cnt:,}/{total:,} pairs "
+                            f"({wave_rate:.2%}) — possible import wave"
+                        ),
+                    })
 
     return salary_data, hire_data, suspicious, counts
 

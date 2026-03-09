@@ -93,6 +93,23 @@ def salary_delta(row: dict) -> float | None:
     return new - old
 
 
+def _salary_ratio(row: dict) -> float | None:
+    """Return new_salary / old_salary if both are positive numbers; else None."""
+    old = _parse_num(row.get("old_salary"))
+    new = _parse_num(row.get("new_salary"))
+    if old is None or new is None or old == 0.0:
+        return None
+    return new / old
+
+
+# Status values that represent a worker leaving the organisation.
+_TERMINATED_STATUSES: frozenset[str] = frozenset({
+    "terminated", "term", "inactive", "inactivated",
+    "separated", "offboarded", "resigned", "released",
+    "terminated (involuntary)", "terminated (voluntary)",
+})
+
+
 def payrate_delta(row: dict) -> float | None:
     """Return new_payrate - old_payrate if both are numeric; else None."""
     old = _parse_num(row.get("old_payrate"))
@@ -219,6 +236,31 @@ def classify_all(row: dict) -> dict:
     per_fix: dict[str, dict] = {}
     for ft in fix_types:
         per_fix[ft] = classify_row(row, ft)
+
+    # -------------------------------------------------------------------
+    # Override 1: extreme salary ratio — fires even for auto-approve
+    # sources (e.g. worker_id).  Any ratio outside [0.85, 1.15] → REVIEW.
+    # -------------------------------------------------------------------
+    if "salary" in per_fix:
+        ratio = _salary_ratio(row)
+        if ratio is not None and (ratio < 0.85 or ratio > 1.15):
+            per_fix["salary"]["action"] = "REVIEW"
+            per_fix["salary"]["reason"] = (
+                f"salary_ratio_extreme ({ratio:.4f} outside [0.85, 1.15])"
+            )
+
+    # -------------------------------------------------------------------
+    # Override 2: active → terminated / inactive — always routes to REVIEW
+    # regardless of confidence score or match_source auto-approve flag.
+    # -------------------------------------------------------------------
+    if "status" in per_fix:
+        old_status = _norm(row.get("old_worker_status"))
+        new_status = _norm(row.get("new_worker_status"))
+        if old_status == "active" and new_status in _TERMINATED_STATUSES:
+            per_fix["status"]["action"] = "REVIEW"
+            per_fix["status"]["reason"] = (
+                f"active_to_terminated ({old_status}->{new_status})"
+            )
 
     # Overall: REVIEW if ANY fix_type is REVIEW
     overall_action = (

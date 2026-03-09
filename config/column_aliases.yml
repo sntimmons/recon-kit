@@ -1,28 +1,247 @@
+# column_aliases.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Map source-system column names to the standard pipeline field names.
+# Add any custom column headers your HR/payroll files use.
+#
+# Format:
+#   standard_field_name:
+#     - Source Column Header 1
+#     - source_column_header_2
+#
+# Matching is case-insensitive and treats spaces, hyphens, and underscores
+# as equivalent ("First Name", "first_name", and "First-Name" all match).
+# Built-in aliases (defined in src/mapping.py) are always applied first;
+# entries here take precedence and can override them.
+# ─────────────────────────────────────────────────────────────────────────────
+
 worker_id:
   - worker_id
   - Worker ID
   - workerId
   - workerID
-  - employee_id
+  - Associate ID
+  - Associate_ID
   - Employee ID
+  - Employee_ID
   - employeeId
   - employeeID
+  - Emp ID
+  - Emp_ID
+  - emp_no
+  - Employee Number
+  - Employee_Number
+  - Staff ID
+  - Staff_ID
+  - Person ID
+  - Person_ID
+  - Personnel Number
+  - Personnel_Number
+  - Payroll ID
+  - Payroll_ID
+  - Badge Number
+  - Badge_Number
+  - Workday_System_ID
+
+first_name:
+  - first_name
+  - First Name
+  - First_Name
+  - Preferred First Name
+  - Preferred_First_Name
+  - Legal First Name
+  - Legal_First_Name
+  - fname
+  - Given Name
+  - Given_Name
+  - Forename
+
+last_name:
+  - last_name
+  - Last Name
+  - Last_Name
+  - Legal Last Name
+  - Legal_Last_Name
+  - lname
+  - Surname
+  - Family Name
+  - Family_Name
 
 dob:
   - dob
   - DOB
   - Date of Birth
-  - birth_date
-  - birthdate
+  - Date_of_Birth
+  - Birth Date
+  - Birth_Date
+  - Birthdate
+  - Birthday
+  - Date_of_Birth_MMDDYYYY
+  - DOB Date
 
-location_state:
-  - location_state
-  - Location State
-  - state
-  - State
+hire_date:
+  - hire_date
+  - Hire Date
+  - Hire_Date
+  - Original Hire Date
+  - Original_Hire_Date
+  - Start Date
+  - Start_Date
+  - Employment Start Date
+  - Employment_Start_Date
+  - Date of Hire
+  - Date_of_Hire
+  - Service Date
+  - Service_Date
+  - Seniority Date
+  - Seniority_Date
+
+position:
+  - position
+  - Position
+  - Job Title
+  - Job_Title
+  - Job Profile
+  - Job_Profile
+  - Title
+  - Job Code
+  - Job_Code
+  - Job Name
+  - Job_Name
+  - Role
+  - Job Classification
+  - Job_Classification
+  - Occupation
+
+salary:
+  - salary
+  - Salary
+  - Annual Salary
+  - Annual_Salary
+  - Annual Base Pay
+  - Annual_Base_Pay
+  - Base Salary
+  - Base_Salary
+  - Base Pay
+  - Base_Pay
+  - Gross Salary
+  - Gross_Salary
+  - Annual Compensation
+  - Annual_Compensation
+  - Annual Pay
+  - Annual_Pay
+
+payrate:
+  - payrate
+  - Payrate
+  - Hourly Rate
+  - Hourly_Rate
+  - Hourly Pay Rate
+  - Hourly_Pay_Rate
+  - Pay Rate
+  - Pay_Rate
+  - Rate of Pay
+  - Rate_of_Pay
+  - Hourly Wage
+  - Hourly_Wage
+
+worker_status:
+  - worker_status
+  - Worker Status
+  - Worker_Status
+  - Employment Status
+  - Employment_Status
+  - Emp Status
+  - Emp_Status
+  - Employee Status
+  - Employee_Status
+  - Active Status
+  - Active_Status
 
 worker_type:
   - worker_type
   - Worker Type
-  - type
-  - Type
+  - Worker_Type
+  - Employment Type
+  - Employment_Type
+  - Time Type
+  - Time_Type
+  - Employment Classification
+  - Employment_Classification
+  - FLSA Status
+  - FLSA_Status
+  - Pay Type
+  - Pay_Type
+
+last4_ssn:
+  - last4_ssn
+  - SSN
+  - Social Security Number
+  - Social_Security_Number
+  - Social Security
+  - Social_Security
+  - SS Number
+  - SS_Number
+  - Tax ID
+  - Tax_ID
+  - National ID
+  - National_ID
+
+location:
+  - location
+  - Location
+  - Work Location
+  - Work_Location
+  - Work Location Name
+  - Work_Location_Name
+  - Location Name
+  - Location_Name
+  - Office Location
+  - Office_Location
+  - City State
+  - City_State
+  - Work Site
+  - Work_Site
+  - Site
+  - Primary Work Location
+  - Primary_Work_Location
+
+district:
+  - district
+  - District
+  - Department Name
+  - Department_Name
+  - Department
+  - Dept
+  - Dept Name
+  - Dept_Name
+  - Division
+  - Business Unit
+  - Business_Unit
+  - Org Unit
+  - Org_Unit
+  - Organizational Unit
+  - Organizational_Unit
+  - Supervisory Org
+  - Supervisory_Org
+  - Cost Center Name
+  - Cost_Center_Name
+
+recon_id:
+  - recon_id
+  - Recon ID
+  - Recon_ID
+  - Reconciliation ID
+  - Reconciliation_ID
+  - Recon Number
+  - Recon_Number
+
+cost_center:
+  - cost_center
+  - Cost Center
+  - Cost_Center
+  - Cost Center Code
+  - Cost_Center_Code
+  - Cost Center ID
+  - Cost_Center_ID
+  - CC Code
+  - CC_Code

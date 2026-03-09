@@ -175,3 +175,12 @@ def resolve(input_path: Path, output_path: Path) -> None:
     print(f"[resolve] conflicts_new_worker_id_resolution.csv: {len(conflicts_new):,} rows written")
     print(f"[resolve] conflicts_old_worker_id_resolution.csv: {len(conflicts_old):,} rows written")
     print(f"[resolve] skipped_missing_entity_keys.csv: {len(skipped_missing):,} rows written")
+
+
+if __name__ == "__main__":
+    # Called as a script by api_server.py:
+    #   python resolve_matched_raw.py
+    # Resolves outputs/matched_raw.csv in-place (adds pair_id, enforces 1-to-1).
+    _root = Path(__file__).resolve().parent
+    _path = _root / "outputs" / "matched_raw.csv"
+    resolve(input_path=_path, output_path=_path)

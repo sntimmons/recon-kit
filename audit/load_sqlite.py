@@ -163,19 +163,27 @@ def _create_indexes(con: sqlite3.Connection) -> None:
     _load_csv_to_table drops and recreates matched_pairs_raw, which also
     drops any indexes that schema.sql created. We rebuild them here, after
     the table is populated, so they actually exist at query time.
+
+    Indexes are only created when the target column is actually present in the
+    table.  When the matcher finds zero matches it writes a minimal CSV
+    (match_source + confidence only), so the worker-id columns are absent and
+    attempting to index them would raise OperationalError.
     """
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_matched_old_worker "
-        "ON matched_pairs_raw(old_worker_id);"
-    )
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_matched_new_worker "
-        "ON matched_pairs_raw(new_worker_id);"
-    )
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_matched_match_source "
-        "ON matched_pairs_raw(match_source);"
-    )
+    existing_cols: set[str] = {
+        row[1]
+        for row in con.execute("PRAGMA table_info(matched_pairs_raw)").fetchall()
+    }
+    candidates = [
+        ("idx_matched_old_worker",    "old_worker_id"),
+        ("idx_matched_new_worker",    "new_worker_id"),
+        ("idx_matched_match_source",  "match_source"),
+    ]
+    for idx_name, col_name in candidates:
+        if col_name in existing_cols:
+            con.execute(
+                f"CREATE INDEX IF NOT EXISTS {idx_name} "
+                f"ON matched_pairs_raw({col_name});"
+            )
 
 
 def _create_views(con: sqlite3.Connection) -> None:

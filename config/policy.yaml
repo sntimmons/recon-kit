@@ -64,11 +64,13 @@ sanity_gate:
   block_if_rate_greater_than:
     hire_date_default_2026_02: 0.02
     salary_suspicious_default: 0.02
+    hire_date_wave: 0.01           # block if any single new_hire_date > 1% of pairs
 
   # Block downstream outputs if suspicious default count exceeds these absolute numbers.
   block_if_count_greater_than:
     hire_date_default_2026_02: 500
     salary_suspicious_default: 500
+    hire_date_wave: 200            # block if wave date appears in > 200 pairs
 
   # Controls which downstream outputs are blocked when the gate fails.
   block_corrections: true

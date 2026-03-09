@@ -348,12 +348,32 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Load auxiliary sheets
     # ------------------------------------------------------------------
+    def _review_from_alldf(df: pd.DataFrame) -> pd.DataFrame:
+        """Return rows flagged for review from the live all_df data."""
+        if "needs_review" in df.columns:
+            mask = df["needs_review"].astype(str).str.lower().isin(["true", "1"])
+        elif "action" in df.columns:
+            mask = df["action"] == "REVIEW"
+        else:
+            return pd.DataFrame()
+        return df[mask].copy()
+
     if REVIEW_CSV.exists():
-        review_df  = pd.read_csv(str(REVIEW_CSV))
-        review_src = REVIEW_CSV.name
-    elif "action" in all_df.columns:
-        review_df  = all_df[all_df["action"] == "REVIEW"].copy()
-        review_src = "filtered from All_Matches (action==REVIEW)"
+        review_df = pd.read_csv(str(REVIEW_CSV))
+        if not review_df.empty:
+            review_src = REVIEW_CSV.name
+        else:
+            # review_queue.csv exists but has 0 data rows — it is stale (e.g.
+            # written during a previous 0-match run).  Fall back to filtering
+            # the live dataset so the sheet is never incorrectly blank.
+            review_df  = _review_from_alldf(all_df)
+            review_src = (
+                f"{REVIEW_CSV.name} was empty — "
+                "filtered from All_Matches (needs_review==True)"
+            )
+    elif "needs_review" in all_df.columns or "action" in all_df.columns:
+        review_df  = _review_from_alldf(all_df)
+        review_src = "filtered from All_Matches (needs_review==True)"
     else:
         review_df  = pd.DataFrame()
         review_src = "unavailable"

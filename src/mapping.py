@@ -8,6 +8,210 @@ from typing import Dict, Any
 
 import pandas as pd
 
+# ---------------------------------------------------------------------------
+# Column alias resolution
+# ---------------------------------------------------------------------------
+
+def _canonical_col(name: str) -> str:
+    """Normalise a raw column header for alias lookup.
+
+    Strips whitespace, lowercases, and collapses spaces/hyphens to underscores
+    so that "First Name", "first-name", and "First_Name" all map to
+    "first_name".
+    """
+    s = name.strip().lower()
+    s = re.sub(r"[\s\-]+", "_", s)
+    return s
+
+
+# Built-in alias table: canonical → standard field name used throughout the
+# pipeline.  This table handles the most common HR/payroll column naming
+# conventions (SAP, Workday, ADP, legacy flat files, etc.).
+_BUILTIN_ALIASES: Dict[str, str] = {
+    # ── worker_id ───────────────────────────────────────────────────────────
+    "associate_id":           "worker_id",
+    "employee_id":            "worker_id",
+    "emp_id":                 "worker_id",
+    "emp_no":                 "worker_id",
+    "employee_no":            "worker_id",
+    "employee_number":        "worker_id",
+    "staff_id":               "worker_id",
+    "person_id":              "worker_id",
+    "personnel_number":       "worker_id",
+    "payroll_id":             "worker_id",
+    "badge_number":           "worker_id",
+    "badge_no":               "worker_id",
+    "workday_system_id":      "worker_id",
+    # ── first_name ──────────────────────────────────────────────────────────
+    "preferred_first_name":   "first_name",
+    "legal_first_name":       "first_name",
+    "fname":                  "first_name",
+    "given_name":             "first_name",
+    "forename":               "first_name",
+    # ── last_name ───────────────────────────────────────────────────────────
+    "legal_last_name":        "last_name",
+    "lname":                  "last_name",
+    "surname":                "last_name",
+    "family_name":            "last_name",
+    # ── dob ─────────────────────────────────────────────────────────────────
+    "date_of_birth":          "dob",
+    "birth_date":             "dob",
+    "birthdate":              "dob",
+    "birthday":               "dob",
+    "date_of_birth_mmddyyyy": "dob",
+    "dob_date":               "dob",
+    # ── hire_date ───────────────────────────────────────────────────────────
+    "original_hire_date":     "hire_date",
+    "start_date":             "hire_date",
+    "employment_start_date":  "hire_date",
+    "date_of_hire":           "hire_date",
+    "hire_dt":                "hire_date",
+    "service_date":           "hire_date",
+    "seniority_date":         "hire_date",
+    # ── position ────────────────────────────────────────────────────────────
+    "job_title":              "position",
+    "job_profile":            "position",
+    "title":                  "position",
+    "job_code":               "position",
+    "job_name":               "position",
+    "role":                   "position",
+    "job_classification":     "position",
+    "occupation":             "position",
+    # ── salary ──────────────────────────────────────────────────────────────
+    "annual_salary":          "salary",
+    "annual_base_pay":        "salary",
+    "base_salary":            "salary",
+    "base_pay":               "salary",
+    "gross_salary":           "salary",
+    "total_salary":           "salary",
+    "annual_compensation":    "salary",
+    "annual_pay":             "salary",
+    # ── payrate ─────────────────────────────────────────────────────────────
+    "hourly_rate":            "payrate",
+    "hourly_pay_rate":        "payrate",
+    "pay_rate":               "payrate",
+    "rate_of_pay":            "payrate",
+    "hourly_wage":            "payrate",
+    # ── worker_status ───────────────────────────────────────────────────────
+    "employment_status":      "worker_status",
+    "emp_status":             "worker_status",
+    "active_status":          "worker_status",
+    "employee_status":        "worker_status",
+    # ── worker_type ─────────────────────────────────────────────────────────
+    "employment_type":        "worker_type",
+    "time_type":              "worker_type",
+    "employment_classification": "worker_type",
+    "flsa_status":            "worker_type",
+    "pay_type":               "worker_type",
+    # ── last4_ssn (full SSN accepted; _extract_last4 pulls last 4 digits) ──
+    "ssn":                    "last4_ssn",
+    "social_security_number": "last4_ssn",
+    "social_security":        "last4_ssn",
+    "ss_number":              "last4_ssn",
+    "ss_no":                  "last4_ssn",
+    "tax_id":                 "last4_ssn",
+    "national_id":            "last4_ssn",
+    # ── location ────────────────────────────────────────────────────────────
+    "work_location":          "location",
+    "work_location_name":     "location",
+    "location_name":          "location",
+    "office_location":        "location",
+    "city_state":             "location",
+    "work_site":              "location",
+    "site":                   "location",
+    "primary_work_location":  "location",
+    # ── district ────────────────────────────────────────────────────────────
+    "department_name":        "district",
+    "department":             "district",
+    "dept":                   "district",
+    "dept_name":              "district",
+    "cost_center_name":       "district",
+    "division":               "district",
+    "business_unit":          "district",
+    "org_unit":               "district",
+    "organizational_unit":    "district",
+    "supervisory_org":        "district",
+    # ── recon_id ────────────────────────────────────────────────────────────
+    "reconciliation_id":      "recon_id",
+    "recon_number":           "recon_id",
+    # ── cost_center (pass-through extra field) ───────────────────────────────
+    "cost_center_code":       "cost_center",
+    "cost_center_id":         "cost_center",
+    "cc_code":                "cost_center",
+}
+
+
+def _load_yaml_aliases() -> Dict[str, str]:
+    """Load column_aliases.yml and return a canonical→standard dict.
+
+    Returns an empty dict on any error so the pipeline degrades gracefully.
+    """
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "column_aliases.yml"
+    if not cfg_path.exists():
+        return {}
+    try:
+        import yaml  # PyYAML is in requirements.txt
+        with cfg_path.open("r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        result: Dict[str, str] = {}
+        for standard_name, synonyms in raw.items():
+            if isinstance(synonyms, list):
+                for syn in synonyms:
+                    result[_canonical_col(str(syn))] = standard_name
+        return result
+    except Exception:
+        return {}
+
+
+def _apply_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename input columns to the standard pipeline names.
+
+    Resolution order (highest wins):
+      1. Column is already correctly named → no change.
+      2. Built-in alias table (_BUILTIN_ALIASES).
+      3. User overrides in config/column_aliases.yml.
+
+    Rules:
+    - Column names are canonicalised (lowered + underscores) for lookup only;
+      the actual rename uses the original column names in the DataFrame.
+    - If a target name is already present in the DataFrame, the ambiguous
+      duplicate is left as-is (the existing column wins).
+    - If two source columns map to the same target, only the first encountered
+      is renamed; the rest are left unchanged.
+    """
+    aliases: Dict[str, str] = {**_BUILTIN_ALIASES, **_load_yaml_aliases()}
+
+    claimed: set[str] = set(df.columns)   # track which standard names are taken
+    rename_map: Dict[str, str] = {}
+
+    for col in df.columns:
+        can = _canonical_col(col)
+        target = aliases.get(can)
+        if target is None or target == col:
+            continue
+        if target in claimed:
+            # Target already occupied (either native or previously renamed)
+            continue
+        rename_map[col] = target
+        claimed.add(target)
+
+    return df.rename(columns=rename_map)
+
+
+def _extract_last4(x) -> str:
+    """Return the last 4 digits of a SSN string (or any digit string).
+
+    Accepts full SSN formats like "123-45-6789" → "6789" as well as values
+    that already contain only the last 4 digits ("6789" → "6789").
+    Returns "" for null/blank input.
+    """
+    s = _norm_str(x)
+    if not s:
+        return ""
+    digits = re.sub(r"[^0-9]", "", s)
+    return digits[-4:] if len(digits) >= 4 else digits
+
+
 # Load extra_fields config from policy.yaml (non-fatal if unavailable).
 def _load_extra_fields() -> list[str]:
     try:
@@ -177,6 +381,12 @@ def map_file(input_path: str | Path, output_path: str | Path, label: str) -> Non
     df = pd.read_csv(input_path)
     df.columns = [c.strip() for c in df.columns]
 
+    # Resolve non-standard column names (e.g. "Associate_ID" → "worker_id",
+    # "Date_of_Birth" → "dob", "Annual_Salary" → "salary", etc.) before any
+    # downstream normalization so that the rest of the function always sees
+    # the expected standard names.
+    df = _apply_aliases(df)
+
     expected = [
         "first_name", "last_name", "position", "dob", "hire_date", "location",
         "salary", "payrate", "worker_status", "worker_type", "district",
@@ -194,7 +404,7 @@ def map_file(input_path: str | Path, output_path: str | Path, label: str) -> Non
     df["dob"] = _to_date_series(df["dob"]).astype("string")
     df["hire_date"] = _to_date_series(df["hire_date"]).astype("string")
 
-    df["last4_ssn"] = df["last4_ssn"].apply(_norm_str).astype("string")
+    df["last4_ssn"] = df["last4_ssn"].apply(_extract_last4).replace("", pd.NA).astype("string")
     df["position"] = df["position"].apply(_norm_str).astype("string")
     df["district"] = df["district"].apply(_norm_str).astype("string")
     df["location"] = df["location"].apply(_norm_str).astype("string")
