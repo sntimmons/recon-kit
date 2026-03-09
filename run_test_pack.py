@@ -42,7 +42,7 @@ OUTPUTS    = REPO / "outputs"
 AUDIT_DIR  = REPO / "audit"
 RUNS_DIR   = AUDIT_DIR / "audit_runs"
 ALIASES    = str(REPO / "config" / "column_aliases.yml")
-VENV_PY    = REPO / "venv" / "Scripts" / "python.exe"
+VENV_PY    = sys.executable
 
 # Backup path for the real matched_raw.csv (restored at the end of the run).
 _BACKUP = OUTPUTS / "_matched_raw_backup.csv"

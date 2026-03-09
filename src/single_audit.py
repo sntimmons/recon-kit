@@ -276,11 +276,7 @@ def main(argv: list[str] | None = None) -> None:
     # Optional DB rebuild
     # ------------------------------------------------------------------
     if args.rebuild_db:
-        import os  # noqa: PLC0415
-        py = str(ROOT / "venv" / "Scripts" / "python.exe")
-        if not Path(py).exists():
-            py = os.environ.get("PYTHON", "python")
-        _rebuild_db(py, ROOT)
+        _rebuild_db(sys.executable, ROOT)
 
     # ------------------------------------------------------------------
     # Validate DB

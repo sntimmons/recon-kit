@@ -39,7 +39,7 @@ import sys
 from pathlib import Path
 
 ROOT   = Path(__file__).resolve().parents[1]
-PYTHON = ROOT / "venv" / "Scripts" / "python.exe"
+PYTHON = sys.executable
 OUT    = ROOT / "outputs"
 TESTS  = Path(__file__).resolve().parent
 

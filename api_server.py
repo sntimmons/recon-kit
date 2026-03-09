@@ -33,7 +33,7 @@ HERE        = Path(__file__).resolve().parent
 SITE_DIR    = HERE / "site"
 RUNS_DIR    = HERE / "dashboard_runs"
 INPUTS_DIR  = HERE / "inputs"
-PYTHON      = HERE / "venv" / "Scripts" / "python.exe"
+PYTHON      = sys.executable
 
 RUNS_DIR.mkdir(exist_ok=True)
 INPUTS_DIR.mkdir(exist_ok=True)

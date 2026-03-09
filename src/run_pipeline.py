@@ -141,9 +141,7 @@ def main() -> None:
     log_path  = run_paths["logs"] / "pipeline.log"
 
     root = ROOT
-    py = str((root / "venv" / "Scripts" / "python.exe"))
-    if not Path(py).exists():
-        py = os.environ.get("PYTHON", "python")
+    py = sys.executable
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(root)
