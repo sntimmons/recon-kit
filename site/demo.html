@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo | Data Whisperer</title>
+  <meta name="description" content="Run a simulated HRIS reconciliation on preloaded sample data. No upload required.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* ---- Option cards ---- */
+    .option-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .option-card {
+      background: var(--bg-2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .option-card:hover { border-color: var(--border-hi); }
+    .option-card--active { border-color: var(--accent); background: var(--accent-ghost); }
+    .option-card--disabled { opacity: 0.5; cursor: default; }
+    .option-card--disabled:hover { border-color: var(--border); }
+
+    .option-card__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 100px;
+      width: fit-content;
+    }
+
+    .option-card__badge--green {
+      color: var(--green);
+      background: rgba(62,207,142,0.1);
+      border: 1px solid rgba(62,207,142,0.25);
+    }
+
+    .option-card__badge--yellow {
+      color: var(--yellow);
+      background: rgba(232,184,75,0.08);
+      border: 1px solid rgba(232,184,75,0.22);
+    }
+
+    .option-card__title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .option-card__desc {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      margin: 0;
+    }
+
+    .option-card__arrow {
+      position: absolute;
+      top: 28px;
+      right: 24px;
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      transition: color 0.15s;
+    }
+
+    .option-card--active .option-card__arrow,
+    .option-card:hover .option-card__arrow { color: var(--accent); }
+
+    @media (max-width: 600px) {
+      .option-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Demo-specific ---- */
+    .demo-layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .panel__header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel__title {
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .panel__dot--yellow { background: var(--yellow); }
+
+    .panel__body { padding: 20px; }
+
+    /* data table preview */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 6px 8px;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      padding: 5px 8px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(42,48,60,0.5);
+      white-space: nowrap;
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { color: var(--text-primary); background: var(--bg-3); }
+
+    /* Run button row */
+    .run-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin-bottom: 24px;
+    }
+
+    .run-row__label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      margin-top: 16px;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 100px;
+      transition: width 0.15s linear;
+    }
+
+    .progress-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-top: 8px;
+    }
+
+    /* Results */
+    #results-section {
+      display: none;
+    }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .results-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .results-meta {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Match table */
+    .match-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.825rem;
+    }
+
+    .match-table th {
+      text-align: left;
+      padding: 10px 14px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .match-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      vertical-align: middle;
+    }
+
+    .match-table tbody tr:last-child td { border-bottom: none; }
+
+    .match-table tbody tr:hover td {
+      background: var(--bg-3);
+      color: var(--text-primary);
+    }
+
+    .match-table td:first-child { font-family: var(--font-mono); color: var(--text-muted); font-size: 0.75rem; }
+
+    .match-tier {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 100px;
+      background: var(--bg-3);
+      color: var(--text-muted);
+      border: 1px solid var(--border-hi);
+      font-family: var(--font-mono);
+      white-space: nowrap;
+    }
+
+    .match-tier--t1 { color: var(--green); border-color: rgba(62,207,142,0.3); background: rgba(62,207,142,0.06); }
+    .match-tier--t2 { color: var(--accent); border-color: rgba(79,142,247,0.3); background: rgba(79,142,247,0.06); }
+    .match-tier--t3 { color: var(--yellow); border-color: rgba(232,184,75,0.3); background: rgba(232,184,75,0.06); }
+
+    .mismatch-list {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .mismatch-chip {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 100px;
+      background: rgba(232,184,75,0.08);
+      color: var(--yellow);
+      border: 1px solid rgba(232,184,75,0.2);
+      white-space: nowrap;
+    }
+
+    .mismatch-chip--ok {
+      background: rgba(62,207,142,0.07);
+      color: var(--green);
+      border-color: rgba(62,207,142,0.2);
+    }
+
+    /* Log terminal */
+    .terminal {
+      background: var(--bg-0);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 24px;
+      display: none;
+    }
+
+    .terminal .t-line { display: block; line-height: 1.7; }
+    .terminal .t-ok    { color: var(--green); }
+    .terminal .t-warn  { color: var(--yellow); }
+    .terminal .t-info  { color: var(--accent); }
+    .terminal .t-dim   { color: var(--text-muted); }
+    .terminal .t-white { color: var(--text-primary); }
+
+    /* Upload preview for option 2 */
+    .upload-coming-soon {
+      background: var(--bg-2);
+      border: 2px dashed var(--border-hi);
+      border-radius: var(--radius-lg);
+      padding: 48px 32px;
+      text-align: center;
+    }
+
+    .upload-coming-soon h3 {
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+    }
+
+    .upload-coming-soon p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      max-width: 400px;
+      margin: 0 auto 24px;
+    }
+
+    /* Download buttons */
+    .dl-btn {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .dl-btn:hover { border-color: var(--accent); background: var(--accent-ghost); }
+
+    .dl-btn__icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+
+    .dl-btn__text { flex: 1; min-width: 0; }
+
+    .dl-btn__name {
+      font-size: 0.825rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      margin-bottom: 2px;
+    }
+
+    .dl-btn__desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .dl-btn__arrow {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .dl-btn:hover .dl-btn__arrow { color: var(--accent); }
+
+    @media (max-width: 900px) {
+      .demo-layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="container">
+    <span class="label">Interactive Demo</span>
+    <h1>See reconciliation in action</h1>
+    <p>Run the engine against preloaded sample data or preview what your own files would look like. No account, no upload required.</p>
+  </div>
+</div>
+
+<section>
+  <div class="container">
+
+    <!-- Option cards -->
+    <div class="option-grid" id="option-grid">
+      <button class="option-card" id="option-1" onclick="selectOption(1)">
+        <span class="option-card__badge option-card__badge--green">&#9679; Instant, no upload</span>
+        <p class="option-card__title">Use Sample Data</p>
+        <p class="option-card__desc">See the full engine output with 250 preloaded employees. Real mismatch patterns, real audit output, real correction logic. Ready in seconds.</p>
+        <span class="option-card__arrow">&rarr;</span>
+      </button>
+      <button class="option-card option-card--disabled" id="option-2" disabled>
+        <span class="option-card__badge option-card__badge--yellow">Coming soon</span>
+        <p class="option-card__title">Preview With Your Own File</p>
+        <p class="option-card__desc">Upload your own HRIS exports and run the reconciliation engine against real data. Browser-only. Your data never leaves your machine.</p>
+        <span class="option-card__arrow">&rarr;</span>
+      </button>
+    </div>
+
+    <!-- Demo content (hidden until option 1 selected) -->
+    <div id="demo-content" style="display: none;">
+
+      <!-- Run row -->
+      <div class="run-row">
+        <div class="run-row__label">
+          <strong style="color: var(--text-primary);">Sample datasets loaded.</strong>
+          Legacy HRIS export (250 employees) + New system import (247 employees)
+        </div>
+        <button class="btn btn--primary" id="run-btn" onclick="runDemo()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
+            <path d="M3 2L11 7L3 12V2Z" fill="currentColor"/>
+          </svg>
+          Run Reconciliation
+        </button>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-wrap" id="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label">Initializing&hellip;</div>
+      </div>
+
+      <!-- Data preview -->
+      <div class="demo-layout" id="preview-section">
+        <div class="panel">
+          <div class="panel__header">
+            <span class="panel__title"><span class="panel__dot"></span> legacy_export.csv</span>
+            <span class="badge badge--blue">250 rows</span>
+          </div>
+          <div class="panel__body" style="padding: 16px; overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>worker_id</th>
+                  <th>full_name</th>
+                  <th>hire_date</th>
+                  <th>salary</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>EMP-00101</td><td>A. Marchetti</td><td>2019-03-14</td><td>82,400</td><td>Active</td></tr>
+                <tr><td>EMP-00102</td><td>D. Okafor</td><td>2021-07-01</td><td>61,200</td><td>Active</td></tr>
+                <tr><td>EMP-00103</td><td>L. Fontaine</td><td>2017-11-22</td><td>97,500</td><td>Active</td></tr>
+                <tr><td>EMP-00104</td><td>T. Nakamura</td><td>2020-02-10</td><td>74,800</td><td>Leave</td></tr>
+                <tr><td>EMP-00105</td><td>R. Vasquez</td><td>2022-05-03</td><td>58,600</td><td>Active</td></tr>
+                <tr><td colspan="5" style="text-align:center; color: var(--text-muted); padding: 10px;">&middot; &middot; &middot; 245 more rows &middot; &middot; &middot;</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__header">
+            <span class="panel__title"><span class="panel__dot panel__dot--yellow"></span> new_system_import.csv</span>
+            <span class="badge badge--blue">247 rows</span>
+          </div>
+          <div class="panel__body" style="padding: 16px; overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>worker_id</th>
+                  <th>full_name</th>
+                  <th>hire_date</th>
+                  <th>salary</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>EMP-00101</td><td>A. Marchetti</td><td>2019-03-14</td><td>82,400</td><td>Active</td></tr>
+                <tr><td>EMP-00102</td><td>D. Okafor</td><td>2021-07-01</td><td>68,500</td><td>Active</td></tr>
+                <tr><td>EMP-00103</td><td>L. Fontaine</td><td>2026-02-01</td><td>97,500</td><td>Active</td></tr>
+                <tr><td>EMP-00104</td><td>T. Nakamura</td><td>2020-02-10</td><td>74,800</td><td>Active</td></tr>
+                <tr><td>EMP-00106</td><td>R. Vasquez</td><td>2022-05-03</td><td>58,600</td><td>Active</td></tr>
+                <tr><td colspan="5" style="text-align:center; color: var(--text-muted); padding: 10px;">&middot; &middot; &middot; 242 more rows &middot; &middot; &middot;</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal log -->
+      <div class="terminal" id="terminal"></div>
+
+      <!-- Results -->
+      <div id="results-section">
+
+        <!-- Match summary panel -->
+        <div class="panel" style="margin-bottom: 24px;">
+          <div class="panel__header">
+            <span class="panel__title">Match Summary</span>
+            <span class="results-meta" id="run-timestamp"></span>
+          </div>
+          <div class="panel__body">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em;">Total records processed</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-primary); line-height: 1;">250</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em;">Auto matched</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: var(--green); line-height: 1;">244</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em;">Sent to review queue</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: var(--yellow); line-height: 1;">6</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em;">Match rate</div>
+                <div style="font-size: 1.6rem; font-weight: 800; color: var(--text-primary); line-height: 1;">97.6%</div>
+              </div>
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em;">Sanity gate</div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: var(--green); line-height: 1;">PASS</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Downloads -->
+        <div class="panel" style="margin-bottom: 24px;">
+          <div class="panel__header">
+            <span class="panel__title">Your run is ready. Here is what you would get.</span>
+          </div>
+          <div class="panel__body" style="display: flex; flex-direction: column; gap: 12px;">
+
+            <a href="downloads/recon_summary.xlsx" download class="dl-btn">
+              <div class="dl-btn__icon">&#128196;</div>
+              <div class="dl-btn__text">
+                <div class="dl-btn__name">recon_summary.xlsx</div>
+                <div class="dl-btn__desc">Match summary, audit results, and mismatch breakdown across 8 sheets</div>
+              </div>
+              <div class="dl-btn__arrow">&#8595;</div>
+            </a>
+
+            <a href="downloads/review_queue.csv" download class="dl-btn">
+              <div class="dl-btn__icon">&#128196;</div>
+              <div class="dl-btn__text">
+                <div class="dl-btn__name">review_queue.csv</div>
+                <div class="dl-btn__desc">6 flagged records requiring human review, sorted by priority score</div>
+              </div>
+              <div class="dl-btn__arrow">&#8595;</div>
+            </a>
+
+            <a href="downloads/corrections_salary.csv" download class="dl-btn">
+              <div class="dl-btn__icon">&#128196;</div>
+              <div class="dl-btn__text">
+                <div class="dl-btn__name">corrections_salary.csv</div>
+                <div class="dl-btn__desc">3 auto-approved salary corrections ready to load into Workday</div>
+              </div>
+              <div class="dl-btn__arrow">&#8595;</div>
+            </a>
+
+            <a href="downloads/wide_compare.csv" download class="dl-btn">
+              <div class="dl-btn__icon">&#128196;</div>
+              <div class="dl-btn__text">
+                <div class="dl-btn__name">wide_compare.csv</div>
+                <div class="dl-btn__desc">Full side by side comparison of all 244 matched pairs with mismatch flags</div>
+              </div>
+              <div class="dl-btn__arrow">&#8595;</div>
+            </a>
+
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0; line-height: 1.5;">
+              These are sample outputs generated from preloaded demo data. Your real run will produce the same file types based on your actual workforce data.
+            </p>
+          </div>
+        </div>
+
+        <div style="padding: 20px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Ready to run on your own data?</div>
+            <div style="font-size: 0.825rem; color: var(--text-muted);">Join the waitlist and be first to know when the upload tool goes live.</div>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="contact.html" class="btn btn--primary btn--sm">Join the Waitlist</a>
+            <a href="tool.html" class="btn btn--ghost btn--sm">See the Tool</a>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /demo-content -->
+
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">&copy; 2026 Data Whisperer. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- Option card selection ----
+  window.selectOption = function (n) {
+    if (n === 1) {
+      document.getElementById('option-1').classList.add('option-card--active');
+      document.getElementById('option-grid').style.display = 'none';
+      document.getElementById('demo-content').style.display = 'block';
+    }
+  };
+
+  // ---- Demo run ----
+  var steps = [
+    { pct: 8,  label: 'Loading legacy_export.csv\u2026 (250 rows)' },
+    { pct: 16, label: 'Loading new_system_import.csv\u2026 (247 rows)' },
+    { pct: 24, label: 'Running column mapping\u2026' },
+    { pct: 34, label: 'Tier 1 match: exact worker_id\u2026 218 pairs resolved' },
+    { pct: 46, label: 'Tier 2 match: last4 + date of birth\u2026 12 pairs resolved' },
+    { pct: 56, label: 'Tier 3 match: name + hire date\u2026 7 pairs resolved' },
+    { pct: 64, label: 'Tier 4 match: name similarity fallback\u2026 4 pairs resolved' },
+    { pct: 72, label: 'Conflict resolution: staged 1-to-1 deduplication\u2026' },
+    { pct: 80, label: 'Loading matched pairs into audit database\u2026' },
+    { pct: 87, label: 'Running Q0 duplicate checks\u2026 PASS' },
+    { pct: 92, label: 'Running Q1\u2013Q15 audit queries\u2026' },
+    { pct: 96, label: 'Evaluating sanity gate thresholds\u2026' },
+    { pct: 100, label: 'Run complete. 241 matched \u00b7 9 review \u00b7 96.4% match rate' },
+  ];
+
+  var logLines = [
+    { cls: 'dim',   text: '[2025-11-14 09:31:02] Data Whisperer v1.0 \u2014 reconciliation engine' },
+    { cls: 'dim',   text: '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' },
+    { cls: 'info',  text: '[STEP 1] mapping          \u2026 OK (250 \u2192 250 mapped)' },
+    { cls: 'info',  text: '[STEP 2] matcher           \u2026 OK' },
+    { cls: 'white', text: '  tier1 worker_id        218 matches' },
+    { cls: 'white', text: '  tier2 last4+dob         12 matches' },
+    { cls: 'white', text: '  tier3 name+hire_date     7 matches' },
+    { cls: 'white', text: '  tier4 name_similarity    4 matches' },
+    { cls: 'info',  text: '[STEP 3] resolve           \u2026 OK  (241 unique pairs)' },
+    { cls: 'info',  text: '[STEP 4] load_sqlite       \u2026 OK' },
+    { cls: 'info',  text: '[STEP 5] run_audit         \u2026 OK  (Q0\u2013Q15 all pass)' },
+    { cls: 'info',  text: '[STEP 6] sanity_gate       \u2026 ' },
+    { cls: 'ok',    text: '  GATE PASSED  (all thresholds within policy)' },
+    { cls: 'warn',  text: '  \u26a0  9 records require manual review' },
+    { cls: 'dim',   text: '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500' },
+    { cls: 'ok',    text: '[DONE] run complete  \u00b7  elapsed: 1.24s' },
+  ];
+
+  window.runDemo = function () {
+    var btn = document.getElementById('run-btn');
+    var progressWrap = document.getElementById('progress-wrap');
+    var progressFill = document.getElementById('progress-fill');
+    var progressLabel = document.getElementById('progress-label');
+    var terminal = document.getElementById('terminal');
+    var resultsSection = document.getElementById('results-section');
+
+    btn.disabled = true;
+    btn.textContent = 'Running\u2026';
+
+    progressWrap.style.display = 'block';
+    terminal.style.display = 'block';
+    terminal.innerHTML = '';
+    resultsSection.style.display = 'none';
+
+    var stepIdx = 0;
+    var logIdx  = 0;
+
+    function tick() {
+      if (stepIdx < steps.length) {
+        var s = steps[stepIdx++];
+        progressFill.style.width = s.pct + '%';
+        progressLabel.textContent = s.label;
+      }
+
+      if (logIdx < logLines.length) {
+        var l = logLines[logIdx++];
+        var span = document.createElement('span');
+        span.className = 'whitespace t-line t-' + l.cls;
+        span.textContent = l.text;
+        terminal.appendChild(span);
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+
+      if (stepIdx < steps.length || logIdx < logLines.length) {
+        setTimeout(tick, 90);
+      } else {
+        setTimeout(function () {
+          progressWrap.style.display = 'none';
+          var ts = new Date();
+          document.getElementById('run-timestamp').textContent =
+            'Run completed \u00b7 ' + ts.toLocaleTimeString();
+          resultsSection.style.display = 'block';
+          btn.textContent = 'Re-run';
+          btn.disabled = false;
+          resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+      }
+    }
+
+    setTimeout(tick, 0);
+  };
+})();
+</script>
+</body>
+</html>

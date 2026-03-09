@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join the Waitlist | Data Whisperer</title>
+  <meta name="description" content="Data Whisperer is in active development. Drop your info and be first to know when early access opens.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .contact-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 48px;
+      align-items: start;
+    }
+
+    .form-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+    }
+
+    .confirm-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 48px 32px;
+    }
+
+    .confirm-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(62, 207, 142, 0.12);
+      border: 1px solid rgba(62, 207, 142, 0.3);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+
+    .confirm-state h2 { font-size: 1.35rem; margin-bottom: 10px; }
+    .confirm-state p  { font-size: 0.9rem; max-width: 360px; }
+
+    .info-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+    }
+
+    .info-card + .info-card { margin-top: 12px; }
+
+    .info-card__heading {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .info-card p {
+      font-size: 0.825rem;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin-bottom: 0;
+    }
+
+    .info-card p + .btn { margin-top: 14px; }
+
+    .response-time {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 20px;
+    }
+
+    .response-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 860px) {
+      .contact-layout { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 520px) {
+      .form-grid-2 { grid-template-columns: 1fr; }
+      .form-card   { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="container">
+    <span class="label">Stay in the loop</span>
+    <h1>We are still building. Be first to know when it is ready.</h1>
+    <p>Data Whisperer is in active development. Drop your info below and we will reach out when early access opens. No spam. Just updates when something worth sharing happens.</p>
+  </div>
+</div>
+
+<section>
+  <div class="container">
+    <div class="contact-layout">
+
+      <!-- Form -->
+      <div>
+        <div class="form-card" id="form-card">
+          <form id="contact-form" novalidate>
+            <div class="form-stack">
+              <div class="form-grid-2">
+                <div class="form-group">
+                  <label class="form-label" for="first-name">First name <span style="color: var(--accent);">*</span></label>
+                  <input class="form-input" type="text" id="first-name" name="first_name" placeholder="Jane" required autocomplete="given-name">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="last-name">Last name <span style="color: var(--accent);">*</span></label>
+                  <input class="form-input" type="text" id="last-name" name="last_name" placeholder="Doe" required autocomplete="family-name">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="email">Work email <span style="color: var(--accent);">*</span></label>
+                <input class="form-input" type="email" id="email" name="email" placeholder="jane@company.com" required autocomplete="email">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="company">Company <span style="color: var(--text-muted);">(optional)</span></label>
+                <input class="form-input" type="text" id="company" name="company" placeholder="Acme Corp" autocomplete="organization">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="interest">I am interested in...</label>
+                <select class="form-input form-select" id="interest" name="interest">
+                  <option value="">Select one</option>
+                  <option value="early_access">Getting early access to the tool</option>
+                  <option value="demo">Seeing a live walkthrough</option>
+                  <option value="consulting">Discussing a specific migration project</option>
+                  <option value="pricing">Licensing or pricing information</option>
+                  <option value="other">Something else</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="message">Message <span style="color: var(--text-muted);">(optional)</span></label>
+                <textarea class="form-textarea" id="message" name="message" placeholder="Tell us about your migration project, team size, or any questions you have..."></textarea>
+              </div>
+
+              <div id="form-error" style="display:none; font-size: 0.825rem; color: var(--red); padding: 10px 14px; background: rgba(224,92,92,0.08); border: 1px solid rgba(224,92,92,0.2); border-radius: var(--radius-md);"></div>
+
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <span style="font-size: 0.78rem; color: var(--text-muted);">* Required fields</span>
+                <button type="submit" class="btn btn--primary" id="submit-btn">Join the Waitlist</button>
+              </div>
+            </div>
+          </form>
+
+          <div class="confirm-state" id="confirm-state">
+            <div class="confirm-icon">&#10003;</div>
+            <h2>You are on the list.</h2>
+            <p style="color: var(--text-secondary);">
+              Thanks. We will be in touch when early access opens. In the meantime, the demo runs right now with no upload required.
+            </p>
+            <a href="demo.html" class="btn btn--outline" style="margin-top: 24px;">Try the demo while you wait</a>
+          </div>
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 16px;">Typically respond within 1 to 2 business days.</p>
+      </div>
+
+      <!-- Sidebar -->
+      <div>
+        <div class="info-card">
+          <div class="info-card__heading">Where we are right now.</div>
+          <p>The reconciliation engine is built and validated on datasets over 25,000 records. We are currently finalizing the browser based interface that connects file uploads to the matching pipeline. Real world testing is the next milestone.</p>
+        </div>
+
+        <div class="info-card">
+          <div class="info-card__heading">Want to see it in action?</div>
+          <p>We have preloaded sample data you can run right now. No upload required. See the full engine workflow from match to audit to correction output.</p>
+          <a href="demo.html" class="btn btn--outline btn--sm" style="margin-top: 14px; display: inline-flex;">Try the Demo</a>
+        </div>
+
+        <div class="info-card">
+          <div class="info-card__heading">Questions?</div>
+          <p>We read every message. If you are curious about how the tool works, what systems it supports, or where it is headed just ask.</p>
+        </div>
+
+        <div class="response-time">
+          <span class="response-dot"></span>
+          Typically respond within 1 to 2 business days
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">&copy; 2026 Data Whisperer. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+<script>
+(function () {
+  'use strict';
+  var form      = document.getElementById('contact-form');
+  var formCard  = document.getElementById('form-card');
+  var confirm   = document.getElementById('confirm-state');
+  var errBox    = document.getElementById('form-error');
+  var submitBtn = document.getElementById('submit-btn');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errBox.style.display = 'none';
+    var firstName = document.getElementById('first-name').value.trim();
+    var lastName  = document.getElementById('last-name').value.trim();
+    var email     = document.getElementById('email').value.trim();
+
+    if (!firstName || !lastName) { showErr('Please enter your first and last name.'); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr('Please enter a valid email address.'); return; }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    setTimeout(function () {
+      form.style.display = 'none';
+      confirm.style.display = 'flex';
+    }, 700);
+  });
+
+  function showErr(msg) {
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+    errBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+})();
+</script>
+</body>
+</html>

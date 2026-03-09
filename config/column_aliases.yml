@@ -1,0 +1,28 @@
+worker_id:
+  - worker_id
+  - Worker ID
+  - workerId
+  - workerID
+  - employee_id
+  - Employee ID
+  - employeeId
+  - employeeID
+
+dob:
+  - dob
+  - DOB
+  - Date of Birth
+  - birth_date
+  - birthdate
+
+location_state:
+  - location_state
+  - Location State
+  - state
+  - State
+
+worker_type:
+  - worker_type
+  - Worker Type
+  - type
+  - Type

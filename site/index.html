@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Whisperer | HRIS Migration Reconciliation</title>
+  <meta name="description" content="Deterministic HRIS migration reconciliation engine. Validate every employee record between two HR systems before payroll go-live.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* ---- Hero ---- */
+    .hero {
+      padding: 100px 0 80px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-30%);
+      width: 700px;
+      height: 700px;
+      background: radial-gradient(ellipse at center, rgba(79,142,247,0.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+
+    .hero__eyebrow-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    .hero h1 {
+      max-width: 780px;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+
+    .hero__sub {
+      font-size: 1.1rem;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin-bottom: 36px;
+    }
+
+    .hero__ctas {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* ---- Stats bar ---- */
+    .stats-bar {
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 0;
+    }
+
+    .stats-bar__inner {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      divide: var(--border);
+    }
+
+    .stat-item {
+      padding: 28px 32px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-item:last-child { border-right: none; }
+
+    .stat-item__val {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .stat-item__val--accent { color: var(--accent); }
+    .stat-item__val--green  { color: var(--green);  }
+
+    .stat-item__label {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    @media (max-width: 700px) {
+      .stats-bar__inner { grid-template-columns: 1fr 1fr; }
+      .stat-item:nth-child(2) { border-right: none; }
+      .stat-item:nth-child(3) { border-top: 1px solid var(--border); }
+      .stat-item:nth-child(4) { border-top: 1px solid var(--border); border-right: none; }
+    }
+
+    /* ---- Problem section ---- */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .problem-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+    }
+
+    .problem-card__icon {
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .problem-card h3 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .problem-card p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+    }
+
+    /* ---- How it works ---- */
+    .steps {
+      counter-reset: step;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 20px;
+      padding: 28px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .step:last-child { border-bottom: none; }
+
+    .step__num {
+      counter-increment: step;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-family: var(--font-mono);
+    }
+
+    .step h3 { margin-bottom: 6px; }
+    .step p  { font-size: 0.9rem; }
+
+    /* ---- Feature grid ---- */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .feature-cell {
+      background: var(--bg-2);
+      padding: 28px 24px;
+    }
+
+    .feature-cell__icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent-dim);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      font-size: 1rem;
+    }
+
+    .feature-cell h3 { font-size: 1rem; margin-bottom: 6px; }
+    .feature-cell p  { font-size: 0.875rem; }
+
+    /* ---- Who It's For ---- */
+    .audience-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .audience-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      transition: border-color 0.15s;
+    }
+
+    .audience-card:hover { border-color: var(--border-hi); }
+
+    .audience-card__role {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .audience-card h3 {
+      font-size: 0.975rem;
+      margin-bottom: 10px;
+    }
+
+    .audience-card p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ---- Use Cases ---- */
+    .usecase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .usecase-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .usecase-card__tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 100px;
+      width: fit-content;
+    }
+
+    .usecase-card h3 {
+      font-size: 1rem;
+      margin: 0;
+    }
+
+    .usecase-card p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.65;
+      margin: 0;
+    }
+
+    /* ---- CTA band ---- */
+    .cta-band {
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 64px 0;
+      text-align: center;
+    }
+
+    .cta-band h2 { margin-bottom: 12px; }
+    .cta-band p  { margin-bottom: 28px; font-size: 1.05rem; }
+
+    .cta-band__btns {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ======== NAV ======== -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- ======== HERO ======== -->
+<section class="hero">
+  <div class="container">
+    <div class="hero__eyebrow">
+      <span class="hero__eyebrow-dot"></span>
+      HRIS Migration Reconciliation
+    </div>
+    <h1>Stop guessing.<br><em>Know your migration is clean</em> before payroll runs.</h1>
+    <p style="font-size: 1rem; font-weight: 500; color: var(--accent); margin-bottom: 20px; margin-top: -8px;">Before AI tells you the story, make sure the data is correct.</p>
+    <p class="hero__sub">
+      Data Whisperer is a deterministic reconciliation engine that matches every employee across
+      two HR systems, audits every field-level discrepancy, and produces Workday-ready correction
+      files, before a single bad record reaches payroll.
+    </p>
+    <div class="hero__ctas">
+      <a href="demo.html" class="btn btn--primary btn--lg">See It In Action</a>
+      <a href="contact.html" class="btn btn--ghost btn--lg">Join the Waitlist</a>
+    </div>
+  </div>
+</section>
+
+<!-- ======== STATS BAR ======== -->
+<div class="stats-bar">
+  <div class="container" style="padding: 0;">
+    <div class="stats-bar__inner">
+      <div class="stat-item">
+        <span class="stat-item__val stat-item__val--green">96%+</span>
+        <span class="stat-item__label">average match rate on first run</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item__val">6</span>
+        <span class="stat-item__label">match strategies, deterministic</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item__val">15+</span>
+        <span class="stat-item__label">automated audit checks</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item__val stat-item__val--accent">100%</span>
+        <span class="stat-item__label">local. Your data never leaves.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== PROBLEM ======== -->
+<section>
+  <div class="container">
+    <span class="label mb-16" style="display:block;">The problem</span>
+    <h2 style="margin-bottom: 12px; max-width: 560px;">Every HRIS migration has the same breaking point.</h2>
+    <p style="margin-bottom: 40px; max-width: 560px; font-size: 0.975rem;">Between export and import, something always breaks. By the time anyone notices, payroll has already run.</p>
+
+    <div class="problem-grid">
+      <div class="problem-card">
+        <span class="problem-card__icon">&#128197;</span>
+        <h3>Hire dates reset to system defaults</h3>
+        <p>Batches of employees show 2026-02-01 as their hire date. The new system accepted it. Nobody noticed until HR started getting anniversary-day questions for 400 people on the same date.</p>
+      </div>
+      <div class="problem-card">
+        <span class="problem-card__icon">&#128200;</span>
+        <h3>Salary data gets lost in translation</h3>
+        <p>Currency fields truncate. Payrate columns don't map cleanly. A zero appears where $97,500 should be. The system accepted it, and so did the first payroll run.</p>
+      </div>
+      <div class="problem-card">
+        <span class="problem-card__icon">&#9888;</span>
+        <h3>Nobody catches it until it's too late</h3>
+        <p>The standard VLOOKUP spot-check on 200 rows misses the 14,000-row discrepancy hiding in plain sight. By the time payroll flags it, you're already in correction territory.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== HOW IT WORKS ======== -->
+<section>
+  <div class="container">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: start;">
+      <div>
+        <span class="label mb-16" style="display:block;">How it works</span>
+        <h2 style="margin-bottom: 16px;">Three steps. Full picture.</h2>
+        <p style="margin-bottom: 32px;">
+          A tiered identity-resolution engine matches every employee across your legacy and target
+          systems, then audits every matched pair for field-level discrepancies. The whole run
+          takes seconds. The audit trail lasts forever.
+        </p>
+        <a href="how-to.html" class="btn btn--outline">Read the full walkthrough &rarr;</a>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step__num">01</div>
+          <div>
+            <h3>Bring Your Data</h3>
+            <p>Export a CSV from your legacy system, your new system, or both. No reformatting required. No schema changes. The mapping layer handles column variations automatically. Works with Workday, ADP, SuccessFactors, Oracle, and most standard HRIS exports.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step__num">02</div>
+          <div>
+            <h3>Run the Engine</h3>
+            <p>Data Whisperer runs tiered identity resolution across your files, matches every employee with a confidence score, enforces strict 1-to-1 pairing, and flags anything it is not certain about for human review. No guessing. No black box. Every match has a reason you can trace.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step__num">03</div>
+          <div>
+            <h3>Review and Act</h3>
+            <p>Your results come back as a structured audit report, a mismatch review queue sorted by priority, and exportable correction files for fields that are safe to fix. If the sanity gate detects systemic corruption it blocks corrections automatically until a human signs off.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== FEATURES ======== -->
+<section style="padding-top: 0;">
+  <div class="container">
+    <span class="label mb-16" style="display:block;">What's included</span>
+    <h2 style="margin-bottom: 32px; max-width: 480px;">Everything you need to migrate with confidence</h2>
+    <div class="feature-grid">
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#128279;</div>
+        <h3>Tiered matching engine</h3>
+        <p>Six strategies from exact worker ID match down to name + hire date similarity. Staged 1-to-1 conflict resolution with no probabilistic guessing.</p>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#128269;</div>
+        <h3>Full audit suite</h3>
+        <p>Q0&ndash;Q15 audit queries run automatically. Duplicate checks, mismatch quantification, and sanity gate thresholds evaluated on every run.</p>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#128202;</div>
+        <h3>Mismatch reports</h3>
+        <p>Five normalized CSV packs covering salary, pay rate, status, hire date, and job/org. Ready for non-technical stakeholder review.</p>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#9989;</div>
+        <h3>Correction file generator</h3>
+        <p>Confidence-gated approval logic. Workday-ready correction CSVs for each field type. Auto-approve where safe, flag for review where not.</p>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#128193;</div>
+        <h3>Versioned run folders</h3>
+        <p>Every run is timestamped and packaged: inputs, outputs, audit files, manifests, step receipts. Full traceability for go-live sign-off.</p>
+      </div>
+      <div class="feature-cell">
+        <div class="feature-cell__icon">&#128274;</div>
+        <h3>Runs 100% local</h3>
+        <p>No cloud upload. No third-party processing. Employee data stays on your machine. Full data sovereignty, no vendor risk.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== WHO IT'S FOR ======== -->
+<section>
+  <div class="container">
+    <span class="label mb-16" style="display:block;">Who it's for</span>
+    <h2 style="margin-bottom: 12px;">Built for the people who actually do migrations.</h2>
+    <p style="margin-bottom: 36px; max-width: 540px; font-size: 0.975rem;">Not the people who oversee them. If you've ever spent a week building a reconciliation spreadsheet from scratch, this tool was built for you.</p>
+
+    <div class="audience-grid">
+      <div class="audience-card">
+        <div class="audience-card__role">HRIS Consultant</div>
+        <h3>Stop rebuilding the same workbook every project.</h3>
+        <p>Running a Workday, Oracle, SAP, or SuccessFactors implementation? The reconciliation step you've been building from scratch, now automated and repeatable.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-card__role">HR Operations</div>
+        <h3>Stop spot-checking. Start auditing every record.</h3>
+        <p>Tasked with data quality validation before go-live? Replace the 200-row sample with a full-population audit that finds what sampling misses.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-card__role">HR Data Analyst</div>
+        <h3>The tool you wished existed when they handed you the CSV.</h3>
+        <p>Given a 40,000-row file and told to "make sure it's right"? This is the engine that does it systematically and gives you an audit trail to prove it.</p>
+      </div>
+      <div class="audience-card">
+        <div class="audience-card__role">Implementation PM</div>
+        <h3>Evidence-based go-live sign-off.</h3>
+        <p>Need to demonstrate data accuracy before go-live? Every run produces a full audit package: matched pairs, mismatches, gate status, correction manifest.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== USE CASES ======== -->
+<section>
+  <div class="container">
+    <span class="label mb-16" style="display:block;">Use cases</span>
+    <h2 style="margin-bottom: 36px;">One platform. Three problems it solves.</h2>
+
+    <div class="usecase-grid">
+      <div class="usecase-card">
+        <span class="usecase-card__tag">Platform migration</span>
+        <h3>HRIS go-live validation</h3>
+        <p>Workday, Oracle HCM, SAP SuccessFactors, UKG. Validate data quality before go-live on any HRIS migration. Catch discrepancies before they become payroll corrections.</p>
+      </div>
+      <div class="usecase-card">
+        <span class="usecase-card__tag">Data consolidation</span>
+        <h3>Merging HR data across entities</h3>
+        <p>Bringing two acquired companies into one HRIS? Map, match, and reconcile employee populations without losing a record or creating duplicates.</p>
+      </div>
+      <div class="usecase-card">
+        <span class="usecase-card__tag">Post-go-live</span>
+        <h3>Retrospective audit</h3>
+        <p>Already live but seeing discrepancies? Run a targeted reconciliation against your legacy backup to find and quantify exactly what slipped through during migration.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== CTA BAND ======== -->
+<section class="cta-band">
+  <div class="container">
+    <span class="label mb-16" style="display:block; text-align: center;">Ready to try it?</span>
+    <h2>Ready to see what is hiding in your data?</h2>
+    <p>Try the demo with preloaded sample data. No upload required. No account needed.</p>
+    <div class="cta-band__btns">
+      <a href="demo.html" class="btn btn--primary btn--lg">Try the Demo</a>
+      <a href="contact.html" class="btn btn--ghost btn--lg">Join the Waitlist</a>
+    </div>
+  </div>
+</section>
+
+<!-- ======== FOOTER ======== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">&copy; 2026 Data Whisperer. The HRIS reconciliation tool for everyone who's done this the hard way.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

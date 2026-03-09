@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tool | Data Whisperer</title>
+  <meta name="description" content="Upload your HRIS exports and run the reconciliation engine on your own data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* ---- Mode selector ---- */
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .mode-card {
+      background: var(--bg-2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mode-card:hover        { border-color: var(--border-hi); }
+    .mode-card--active      { border-color: var(--accent); background: var(--accent-ghost); }
+    .mode-card--coming-soon { opacity: 0.55; cursor: default; }
+    .mode-card--coming-soon:hover { border-color: var(--border); }
+
+    .mode-card__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 100px;
+      width: fit-content;
+    }
+
+    .mode-card__badge--blue {
+      color: var(--accent);
+      background: rgba(79,142,247,0.1);
+      border: 1px solid rgba(79,142,247,0.25);
+    }
+
+    .mode-card__badge--yellow {
+      color: var(--yellow);
+      background: rgba(232,184,75,0.08);
+      border: 1px solid rgba(232,184,75,0.22);
+    }
+
+    .mode-card__icon {
+      font-size: 1.5rem;
+    }
+
+    .mode-card__title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .mode-card__desc {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    @media (max-width: 640px) {
+      .mode-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ---- Upload zones ---- */
+    .upload-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .upload-zone {
+      background: var(--bg-2);
+      border: 2px dashed var(--border-hi);
+      border-radius: var(--radius-lg);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-ghost);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 14px;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+    }
+
+    .upload-zone__label {
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .upload-zone__sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .upload-zone__filename {
+      margin-top: 12px;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 4px 10px;
+      border-radius: 100px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    /* ---- Run options ---- */
+    .run-options {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    .run-options__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .toggle-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .toggle-row__label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .toggle-row__label strong {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle__track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-4);
+      border: 1px solid var(--border-hi);
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .toggle__thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    .toggle input:checked + .toggle__track { background: var(--accent); border-color: var(--accent); }
+    .toggle input:checked + .toggle__track .toggle__thumb { transform: translateX(18px); background: #fff; }
+
+    /* ---- Run bar ---- */
+    .run-bar {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    .run-bar__status {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    /* ---- Engine status board ---- */
+    .engine-status {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    .engine-status__header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .engine-status__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .engine-status__body {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .check-row:last-child { border-bottom: none; }
+
+    .check-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.68rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .check-icon--ok   { background: rgba(62,207,142,0.12); color: var(--green); }
+    .check-icon--warn { background: rgba(232,184,75,0.12);  color: var(--yellow); }
+    .check-icon--soon { background: rgba(79,142,247,0.1);   color: var(--accent); }
+
+    .check-row__label {
+      font-size: 0.825rem;
+      color: var(--text-secondary);
+      flex: 1;
+    }
+
+    .check-row__status {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* ---- Spec table ---- */
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .spec-table th {
+      text-align: left;
+      padding: 10px 16px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .spec-table td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      vertical-align: top;
+    }
+
+    .spec-table tbody tr:last-child td { border-bottom: none; }
+
+    .spec-table td:first-child {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 640px) {
+      .upload-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="container">
+    <span class="label">Upload Tool</span>
+    <h1>Run reconciliation on your data</h1>
+    <p>Upload your legacy system export and new system import. The engine runs locally. Your data never leaves your machine.</p>
+  </div>
+</div>
+
+<section>
+  <div class="container">
+
+    <!-- Mode selector -->
+    <div class="mode-grid">
+      <div class="mode-card">
+        <span class="mode-card__badge mode-card__badge--blue">&#9679; Available</span>
+        <span class="mode-card__icon">&#128260;</span>
+        <div class="mode-card__title">Cross-System Reconciliation</div>
+        <div class="mode-card__desc">Match employees between a legacy HRIS and a new system. Detect field-level discrepancies and generate Workday-ready correction files.</div>
+      </div>
+      <div class="mode-card mode-card--coming-soon">
+        <span class="mode-card__badge mode-card__badge--yellow">Coming soon</span>
+        <span class="mode-card__icon">&#128202;</span>
+        <div class="mode-card__title">Internal Data Audit</div>
+        <div class="mode-card__desc">Audit a single HRIS export against itself for data quality issues: duplicate IDs, missing fields, suspicious defaults, and outlier detection.</div>
+      </div>
+    </div>
+
+    <!-- Upload zones -->
+    <div class="upload-grid">
+      <div class="upload-zone" id="zone-legacy">
+        <input type="file" accept=".csv" onchange="fileSelected(this, 'legacy')">
+        <div class="upload-icon">&#128194;</div>
+        <div class="upload-zone__label">Legacy System Export</div>
+        <div class="upload-zone__sub">Drop your CSV here or click to browse</div>
+        <div class="upload-zone__filename" id="filename-legacy"></div>
+      </div>
+
+      <div class="upload-zone" id="zone-new">
+        <input type="file" accept=".csv" onchange="fileSelected(this, 'new')">
+        <div class="upload-icon">&#128194;</div>
+        <div class="upload-zone__label">New System Export</div>
+        <div class="upload-zone__sub">Drop your CSV here or click to browse</div>
+        <div class="upload-zone__filename" id="filename-new"></div>
+      </div>
+    </div>
+
+    <!-- Run options -->
+    <div class="run-options">
+      <div class="run-options__title">Run options</div>
+      <div class="toggle-list">
+        <div class="toggle-row">
+          <div class="toggle-row__label">
+            <strong>Generate correction files</strong>
+            Workday-ready CSVs for each mismatch category (requires gate pass)
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <div class="toggle__track"><div class="toggle__thumb"></div></div>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-row__label">
+            <strong>Run sanity gate</strong>
+            Block corrections automatically if suspicious default rates are too high
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <div class="toggle__track"><div class="toggle__thumb"></div></div>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-row__label">
+            <strong>Export Excel workbook</strong>
+            Generate recon_workbook.xlsx with 8 summary sheets
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <div class="toggle__track"><div class="toggle__thumb"></div></div>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-row__label">
+            <strong>Suppress PII in outputs</strong>
+            Exclude DOB from all exported reports and correction files
+          </div>
+          <label class="toggle">
+            <input type="checkbox" checked>
+            <div class="toggle__track"><div class="toggle__thumb"></div></div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run bar -->
+    <div class="run-bar">
+      <div class="run-bar__status" id="run-status">
+        Select both files to enable the reconciliation engine.
+      </div>
+      <button class="btn btn--primary" id="run-btn" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0">
+          <path d="M3 2L11 7L3 12V2Z" fill="currentColor"/>
+        </svg>
+        Run Reconciliation
+      </button>
+    </div>
+
+    <!-- Engine status board -->
+    <div class="engine-status">
+      <div class="engine-status__header">
+        <span class="engine-status__title">Engine Status</span>
+        <span class="badge badge--yellow">Integration in progress</span>
+      </div>
+      <div class="engine-status__body">
+        <div class="check-row">
+          <div class="check-icon check-icon--ok">&#10003;</div>
+          <span class="check-row__label">Matching engine (6-tier, deterministic)</span>
+          <span class="check-row__status" style="color: var(--green);">READY</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--ok">&#10003;</div>
+          <span class="check-row__label">Audit query suite (Q0&ndash;Q15)</span>
+          <span class="check-row__status" style="color: var(--green);">READY</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--ok">&#10003;</div>
+          <span class="check-row__label">Sanity gate &amp; confidence policy</span>
+          <span class="check-row__status" style="color: var(--green);">READY</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--ok">&#10003;</div>
+          <span class="check-row__label">Correction file generator (Workday format)</span>
+          <span class="check-row__status" style="color: var(--green);">READY</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--ok">&#10003;</div>
+          <span class="check-row__label">Excel workbook export (8 sheets)</span>
+          <span class="check-row__status" style="color: var(--green);">READY</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--warn">&#9881;</div>
+          <span class="check-row__label">Browser upload &rarr; engine bridge</span>
+          <span class="check-row__status" style="color: var(--yellow);">IN PROGRESS</span>
+        </div>
+        <div class="check-row">
+          <div class="check-icon check-icon--soon">&#9711;</div>
+          <span class="check-row__label">In-browser results display &amp; download</span>
+          <span class="check-row__status">PLANNED</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 48px; padding: 20px 24px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Want to see it working now?</div>
+        <div style="font-size: 0.825rem; color: var(--text-muted);">The demo runs a full reconciliation on 250 preloaded employees. No upload required.</div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="demo.html" class="btn btn--primary btn--sm">Try the Demo</a>
+        <a href="contact.html" class="btn btn--ghost btn--sm">Join the Waitlist</a>
+      </div>
+    </div>
+
+    <!-- Expected file spec -->
+    <div>
+      <h3 style="margin-bottom: 6px;">What files does the tool expect?</h3>
+      <p style="font-size: 0.875rem; margin-bottom: 20px;">Standard CSV exports from most HRIS platforms work without modification. The engine handles column mapping automatically.</p>
+
+      <div class="panel">
+        <div class="panel__body" style="padding: 0; overflow-x: auto;">
+          <table class="spec-table">
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>Required</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>worker_id</td>
+                <td><span class="badge badge--blue">Required</span></td>
+                <td>Employee ID. Used for Tier 1 exact matching.</td>
+              </tr>
+              <tr>
+                <td>full_name</td>
+                <td><span class="badge badge--blue">Required</span></td>
+                <td>Used in name similarity matching. Normalized internally.</td>
+              </tr>
+              <tr>
+                <td>date_of_birth</td>
+                <td><span class="badge badge--yellow">Recommended</span></td>
+                <td>Last-4 + DOB matching (Tier 2). YYYY-MM-DD preferred.</td>
+              </tr>
+              <tr>
+                <td>hire_date</td>
+                <td><span class="badge badge--yellow">Recommended</span></td>
+                <td>Mismatch detection and root cause analysis. YYYY-MM-DD.</td>
+              </tr>
+              <tr>
+                <td>salary</td>
+                <td>Optional</td>
+                <td>Annual base salary. Used in mismatch categorization and correction output.</td>
+              </tr>
+              <tr>
+                <td>worker_status</td>
+                <td>Optional</td>
+                <td>Active / Inactive / Leave. Used in status mismatch detection.</td>
+              </tr>
+              <tr>
+                <td>position / job_title</td>
+                <td>Optional</td>
+                <td>Job/org mismatch pack and correction output.</td>
+              </tr>
+              <tr>
+                <td>last4_ssn / last4_ni</td>
+                <td>Optional</td>
+                <td>Last-4 identifier for Tier 2 matching. Never stored or exported after matching.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p style="font-size: 0.8rem; margin-top: 12px; color: var(--text-muted);">
+        Column names don't have to match exactly. The mapping layer handles common variations.
+        See the <a href="how-to.html">How To guide</a> for details.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">&copy; 2026 Data Whisperer. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+<script>
+(function () {
+  'use strict';
+  var files = { legacy: null, 'new': null };
+
+  window.fileSelected = function (input, side) {
+    var file = input.files[0];
+    if (!file) return;
+    files[side] = file;
+
+    var fnEl = document.getElementById('filename-' + side);
+    fnEl.textContent = '\uD83D\uDCC4 ' + file.name;
+    fnEl.style.display = 'inline-flex';
+
+    var zone = document.getElementById('zone-' + side);
+    zone.style.borderColor = 'var(--green)';
+
+    updateRunBar();
+  };
+
+  function updateRunBar() {
+    var btn    = document.getElementById('run-btn');
+    var status = document.getElementById('run-status');
+    if (files.legacy && files['new']) {
+      btn.disabled = false;
+      status.innerHTML =
+        '<strong style="color:var(--text-primary)">' + files.legacy.name + '</strong>' +
+        ' &amp; <strong style="color:var(--text-primary)">' + files['new'].name + '</strong>' +
+        ' \u2014 engine integration coming soon.';
+    } else if (files.legacy) {
+      status.textContent = 'Legacy file loaded. Add your new system export to continue.';
+    } else {
+      status.textContent = 'Select both files to enable the reconciliation engine.';
+    }
+  }
+
+  ['zone-legacy', 'zone-new'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener('dragover', function (e) { e.preventDefault(); el.classList.add('dragover'); });
+    el.addEventListener('dragleave', function () { el.classList.remove('dragover'); });
+    el.addEventListener('drop', function () { el.classList.remove('dragover'); });
+  });
+})();
+</script>
+</body>
+</html>

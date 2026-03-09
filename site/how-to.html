@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How To | Data Whisperer</title>
+  <meta name="description" content="Complete walkthrough: what files to prepare, how to run the tool, and how to read every output.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* ---- Layout ---- */
+    .howto-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 48px;
+      align-items: start;
+    }
+
+    /* ---- TOC ---- */
+    .toc {
+      position: sticky;
+      top: 80px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+    }
+
+    .toc__title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .toc__list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .toc__list a {
+      display: block;
+      font-size: 0.825rem;
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      line-height: 1.4;
+    }
+
+    .toc__list a:hover {
+      color: var(--text-primary);
+      background: var(--bg-3);
+    }
+
+    .toc__list a.active {
+      color: var(--accent);
+      background: var(--accent-ghost);
+    }
+
+    /* ---- Prose sections ---- */
+    .doc-section {
+      padding-top: 48px;
+      margin-top: 48px;
+      border-top: 1px solid var(--border);
+      scroll-margin-top: 80px;
+    }
+
+    .doc-section:first-child {
+      padding-top: 0;
+      margin-top: 0;
+      border-top: none;
+    }
+
+    .doc-section__eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .doc-section h2 {
+      font-size: 1.5rem;
+      margin-bottom: 14px;
+    }
+
+    .doc-section > p,
+    .doc-section .lead {
+      font-size: 0.95rem;
+      line-height: 1.75;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    /* Subsections */
+    .doc-subsection { margin-top: 32px; }
+
+    .doc-subsection h3 {
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .doc-subsection p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 12px;
+    }
+
+    .doc-subsection p:last-child { margin-bottom: 0; }
+
+    /* Callout boxes */
+    .callout {
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      margin: 16px 0;
+    }
+
+    .callout--tip {
+      background: rgba(79, 142, 247, 0.06);
+      border: 1px solid rgba(79, 142, 247, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .callout--warn {
+      background: rgba(232, 184, 75, 0.06);
+      border: 1px solid rgba(232, 184, 75, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .callout--ok {
+      background: rgba(62, 207, 142, 0.06);
+      border: 1px solid rgba(62, 207, 142, 0.2);
+      color: var(--text-secondary);
+    }
+
+    .callout strong { color: var(--text-primary); }
+
+    /* Ordered step list */
+    .step-list {
+      counter-reset: step;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .step-list li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .step-list li::before {
+      content: counter(step);
+      min-width: 24px;
+      height: 24px;
+      background: var(--bg-4);
+      border: 1px solid var(--border-hi);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-list li p {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin: 0;
+    }
+
+    .step-list li strong { color: var(--text-primary); }
+
+    /* Bullet list */
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .bullet-list li {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      padding-left: 18px;
+      position: relative;
+      line-height: 1.6;
+    }
+
+    .bullet-list li::before {
+      content: '–';
+      position: absolute;
+      left: 0;
+      color: var(--text-muted);
+    }
+
+    /* Output file table */
+    .output-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      margin: 16px 0;
+    }
+
+    .output-table th {
+      text-align: left;
+      padding: 9px 12px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .output-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: var(--text-secondary);
+    }
+
+    .output-table tbody tr:last-child td { border-bottom: none; }
+
+    .output-table td:first-child {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    /* Match tier table */
+    .tier-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      margin: 16px 0;
+    }
+
+    .tier-table th {
+      text-align: left;
+      padding: 9px 12px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tier-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      vertical-align: top;
+    }
+
+    .tier-table tbody tr:last-child td { border-bottom: none; }
+    .tier-table td:first-child { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); }
+    .tier-table td:nth-child(2) { font-weight: 500; color: var(--text-primary); }
+
+    /* Inline code */
+    .ic {
+      font-family: var(--font-mono);
+      font-size: 0.82em;
+      background: var(--bg-3);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+
+    @media (max-width: 900px) {
+      .howto-layout { grid-template-columns: 1fr; }
+      .toc { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="container">
+    <span class="label">Documentation</span>
+    <h1>How to use Data Whisperer</h1>
+    <p>Everything you need, from preparing your files to understanding every output the engine produces.</p>
+  </div>
+</div>
+
+<section>
+  <div class="container">
+    <div class="howto-layout">
+
+      <!-- Table of contents -->
+      <nav class="toc" aria-label="Page navigation">
+        <div class="toc__title">On this page</div>
+        <ul class="toc__list">
+          <li><a href="#prepare">1. Preparing your files</a></li>
+          <li><a href="#run">2. Running the tool</a></li>
+          <li><a href="#match-summary">3. Reading the match summary</a></li>
+          <li><a href="#strategies">4. Match strategies explained</a></li>
+          <li><a href="#review-queue">5. The review queue</a></li>
+          <li><a href="#audit">6. Audit files</a></li>
+          <li><a href="#sanity-gate">7. The sanity gate</a></li>
+          <li><a href="#corrections">8. Correction files</a></li>
+          <li><a href="#outputs">9. All output files</a></li>
+          <li><a href="#faq">10. Common questions</a></li>
+        </ul>
+      </nav>
+
+      <!-- Content -->
+      <div>
+
+        <!-- 1. Prepare -->
+        <div class="doc-section" id="prepare">
+          <div class="doc-section__eyebrow">Step 1</div>
+          <h2>Preparing your files</h2>
+          <p>Data Whisperer takes two CSV exports: one from your legacy HRIS and one from your new system. You don't need to reformat or transform anything before uploading. The engine handles column mapping internally.</p>
+
+          <div class="doc-subsection">
+            <h3>What columns are required</h3>
+            <p>At minimum, each file needs a worker identifier and a name. The engine matches better the more fields you provide.</p>
+            <table class="output-table">
+              <thead>
+                <tr><th>Column</th><th>Required?</th><th>Used for</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>worker_id</td><td><span class="badge badge--blue">Required</span></td><td>Tier 1 exact identity match</td></tr>
+                <tr><td>full_name</td><td><span class="badge badge--blue">Required</span></td><td>Name-based matching, Tier 3 / 4</td></tr>
+                <tr><td>date_of_birth</td><td><span class="badge badge--blue">Recommended</span></td><td>Tier 2 last4 + DOB matching</td></tr>
+                <tr><td>hire_date</td><td><span class="badge badge--blue">Recommended</span></td><td>Name + hire date matching, mismatch detection</td></tr>
+                <tr><td>salary</td><td>Optional</td><td>Mismatch detection, correction output</td></tr>
+                <tr><td>worker_status</td><td>Optional</td><td>Status mismatch detection</td></tr>
+                <tr><td>position / job_title</td><td>Optional</td><td>Job/org mismatch output</td></tr>
+                <tr><td>recon_id / pk</td><td>Optional</td><td>Secondary ID matching (Tier 2–3)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Column naming flexibility</h3>
+            <p>Column names don't need to exactly match the list above. The mapping layer recognizes common variations. For example, <span class="ic">employee_id</span>, <span class="ic">emp_id</span>, and <span class="ic">EmployeeNumber</span> are all mapped to <span class="ic">worker_id</span> automatically.</p>
+            <p>If your export uses unusual names, the mapping configuration can be updated to match your schema. Contact us for help with this.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>File format</h3>
+            <ul class="bullet-list">
+              <li>Plain CSV (UTF-8 or Windows-1252 encoding)</li>
+              <li>First row must be a header row</li>
+              <li>Dates in YYYY-MM-DD format preferred. Other formats are handled but YYYY-MM-DD is safest.</li>
+              <li>Salary as a plain number (no currency symbols or commas)</li>
+              <li>No requirement for a specific row count. Tested from dozens to hundreds of thousands of rows.</li>
+            </ul>
+          </div>
+
+          <div class="callout callout--tip">
+            <strong>Export tip:</strong> Pull the most complete export your system allows. More fields means better mismatch detection. You can redact sensitive fields like SSN/NI after confirming matching works, but include them for the initial run if you can.
+          </div>
+        </div>
+
+        <!-- 2. Run -->
+        <div class="doc-section" id="run">
+          <div class="doc-section__eyebrow">Step 2</div>
+          <h2>Running the tool</h2>
+          <p>Once your files are ready, the process is straightforward.</p>
+
+          <div class="doc-subsection">
+            <h3>Using the web upload (coming soon)</h3>
+            <ol class="step-list">
+              <li><p><strong>Go to the Tool page.</strong> You'll see two upload zones side by side.</p></li>
+              <li><p><strong>Upload your legacy export</strong> to the left zone and your new system export to the right.</p></li>
+              <li><p><strong>Click Run Reconciliation.</strong> The engine runs locally in your browser. Nothing is sent to any server.</p></li>
+              <li><p><strong>Wait for the run to complete.</strong> Progress updates appear in real time. A full run on 50,000 employees typically takes under 30 seconds.</p></li>
+            </ol>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Using the demo</h3>
+            <p>If you want to see the output before using your own data, the <a href="demo.html">Demo page</a> runs with preloaded sample data. No upload required. The results show a realistic output for a 250-employee migration scenario.</p>
+          </div>
+
+          <div class="callout callout--warn">
+            <strong>Important:</strong> Data Whisperer is a read-only analysis tool. It never modifies your source files. The correction output files it generates are separate, new files you can choose to import into your target system.
+          </div>
+        </div>
+
+        <!-- 3. Match summary -->
+        <div class="doc-section" id="match-summary">
+          <div class="doc-section__eyebrow">Output</div>
+          <h2>Reading the match summary</h2>
+          <p>The match summary is the first thing you see after a run completes. Here's what every field means.</p>
+
+          <div class="doc-subsection">
+            <h3>Top-level stats</h3>
+            <table class="output-table">
+              <thead>
+                <tr><th>Field</th><th>What it means</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Legacy records</td><td>Total rows in your legacy system export.</td></tr>
+                <tr><td>New system records</td><td>Total rows in your new system export.</td></tr>
+                <tr><td>Auto-matched</td><td>Pairs resolved with enough confidence to proceed without human review.</td></tr>
+                <tr><td>Review required</td><td>Records the engine couldn't resolve confidently. Routed to the review queue.</td></tr>
+                <tr><td>Match rate</td><td>Auto-matched ÷ Legacy records. Above 95% is typical for clean migrations.</td></tr>
+                <tr><td>Field mismatches</td><td>Total field-level discrepancies found across all matched pairs.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Mismatch breakdown</h3>
+            <p>Mismatches are grouped into five categories. Each row shows how many pairs have that type of discrepancy, what percentage of matched pairs that represents, how many were auto-approved (within policy thresholds), and how many need human review.</p>
+            <ul class="bullet-list">
+              <li><strong>Salary:</strong> The annual base salary differs between the legacy and new system record.</li>
+              <li><strong>Hire date:</strong> The hire date recorded in the two systems doesn't match.</li>
+              <li><strong>Job / Org:</strong> Position, department, location, or organizational unit discrepancy.</li>
+              <li><strong>Status:</strong> Worker status (Active, Inactive, Leave, etc.) differs between systems.</li>
+              <li><strong>Pay rate:</strong> The hourly or periodic pay rate differs from what the new system holds.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 4. Strategies -->
+        <div class="doc-section" id="strategies">
+          <div class="doc-section__eyebrow">Engine detail</div>
+          <h2>Match strategies explained</h2>
+          <p>The engine applies six matching strategies in priority order. Each strategy is tried in sequence. Once a record is matched and claimed, it's no longer available for lower-tier strategies. This is called staged 1-to-1 resolution, and it prevents one record from being matched to multiple counterparts.</p>
+
+          <table class="tier-table">
+            <thead>
+              <tr><th>Tier</th><th>Strategy</th><th>How it works</th><th>Confidence</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>T1</td><td>worker_id</td><td>Exact match on the employee identifier field in both systems.</td><td><span class="badge badge--green">Highest</span></td></tr>
+              <tr><td>T2</td><td>recon_id</td><td>Match on a secondary reconciliation identifier, if present.</td><td><span class="badge badge--green">High</span></td></tr>
+              <tr><td>T2</td><td>last4 + DOB</td><td>Last 4 digits of SSN/NI number combined with date of birth.</td><td><span class="badge badge--green">High</span></td></tr>
+              <tr><td>T3</td><td>DOB + name</td><td>Date of birth combined with normalized full name.</td><td><span class="badge badge--blue">Medium</span></td></tr>
+              <tr><td>T3</td><td>name + hire date</td><td>Normalized full name combined with hire date.</td><td><span class="badge badge--blue">Medium</span></td></tr>
+              <tr><td>T4</td><td>name similarity</td><td>Fuzzy name matching using sequence similarity scoring. Used as a last resort.</td><td><span class="badge badge--yellow">Lower</span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="callout callout--tip">
+            <strong>Name normalization:</strong> Before matching on name, the engine normalizes both sides: lowercasing, stripping accents, removing punctuation, and standardizing whitespace. "José García-López" and "jose garcia lopez" match correctly.
+          </div>
+        </div>
+
+        <!-- 5. Review queue -->
+        <div class="doc-section" id="review-queue">
+          <div class="doc-section__eyebrow">Output</div>
+          <h2>The review queue</h2>
+          <p>Not every record can be matched automatically with confidence. Records that don't resolve cleanly are written to a review queue for human assessment.</p>
+
+          <div class="doc-subsection">
+            <h3>What ends up in the review queue</h3>
+            <ul class="bullet-list">
+              <li>Records where no match was found in any tier</li>
+              <li>Records where the match strategy was low-confidence (name similarity only)</li>
+              <li>Matched pairs where a field mismatch exceeds the policy confidence threshold</li>
+              <li>Pairs where the worker ID exists in one system but not the other</li>
+            </ul>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>How to work through the review queue</h3>
+            <ol class="step-list">
+              <li><p><strong>Open <span class="ic">review_queue.csv</span></strong> from the run output folder.</p></li>
+              <li><p><strong>Check the <span class="ic">reason</span> column.</strong> It explains exactly why the record was flagged.</p></li>
+              <li><p><strong>Compare the <span class="ic">old_*</span> and <span class="ic">new_*</span> fields</strong> side by side for the flagged record.</p></li>
+              <li><p><strong>Decide:</strong> confirm the match, identify the correct record, or mark as no-match if the employee genuinely doesn't exist in the target system.</p></li>
+              <li><p><strong>Corrections to review items</strong> can be made directly in the correction CSV before importing.</p></li>
+            </ol>
+          </div>
+
+          <div class="callout callout--ok">
+            <strong>Target:</strong> A well-prepared migration should have a review queue of under 5% of total records. Consistently above 10% usually signals a data quality problem worth investigating before go-live.
+          </div>
+        </div>
+
+        <!-- 6. Audit files -->
+        <div class="doc-section" id="audit">
+          <div class="doc-section__eyebrow">Output</div>
+          <h2>Audit files</h2>
+          <p>Every run produces a complete set of audit outputs. These are designed to support a formal go-live sign-off. You can hand these directly to a project manager or auditor.</p>
+
+          <div class="doc-subsection">
+            <h3>What gets audited</h3>
+            <p>The audit suite runs 15 query checks (Q0–Q15) across the matched pairs. These cover:</p>
+            <ul class="bullet-list">
+              <li>Duplicate detection: are any worker IDs matched more than once?</li>
+              <li>Orphaned records: legacy records with no new-system match</li>
+              <li>Salary distribution analysis: salary buckets, outliers, and percentage changes</li>
+              <li>Hire date distribution: expected vs suspicious default dates</li>
+              <li>Status transition patterns: unexpected Active to Inactive changes</li>
+              <li>Field completeness: which fields are blank, null, or default values</li>
+            </ul>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Audit CSV files</h3>
+            <p>Each audit query that finds results produces a CSV in the <span class="ic">audit/</span> subfolder of the run output. These are named <span class="ic">audit_q1_*.csv</span> through <span class="ic">audit_q15_*.csv</span>. Each file contains the full rows that triggered that query, plus annotations.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>The audit workbook</h3>
+            <p><span class="ic">recon_workbook.xlsx</span> consolidates all audit output into a single Excel workbook with eight tabs: Summary, All Matches, Salary Mismatches, Status Mismatches, Hire Date Mismatches, Job/Org Mismatches, Review Queue, and Corrections Manifest. This is the file you share with stakeholders.</p>
+          </div>
+        </div>
+
+        <!-- 7. Sanity gate -->
+        <div class="doc-section" id="sanity-gate">
+          <div class="doc-section__eyebrow">Quality control</div>
+          <h2>The sanity gate</h2>
+          <p>The sanity gate is an automated policy check that evaluates your reconciliation results against configurable thresholds before generating correction files. It's designed to catch situations where the data is too broken to trust.</p>
+
+          <div class="doc-subsection">
+            <h3>What it checks</h3>
+            <table class="output-table">
+              <thead>
+                <tr><th>Check</th><th>Default threshold</th><th>What it means</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Salary mismatch rate</td><td>Under 40%</td><td>More than 40% of employees with salary discrepancies suggests a systemic data error.</td></tr>
+                <tr><td>Hire date default rate</td><td>Under 5%</td><td>Dates that look like system defaults (e.g. 2026-02-01) are suspicious at scale.</td></tr>
+                <tr><td>Status change rate</td><td>Under 10%</td><td>More than 1 in 10 employees changing status during migration is a data integrity signal.</td></tr>
+                <tr><td>Unmatched records</td><td>Configurable</td><td>A hard limit on how many records can remain unmatched before the run is blocked.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Gate outcomes</h3>
+            <p><strong>Gate PASSED:</strong> All thresholds are within policy. The engine proceeds to generate correction files. The full output is available.</p>
+            <p><strong>Gate FAILED:</strong> One or more thresholds were breached. Correction file generation is blocked. You should not apply corrections to a system with data at this level of inconsistency. The audit workbook, review queue, and all analysis outputs are still generated so you can investigate.</p>
+          </div>
+
+          <div class="callout callout--warn">
+            <strong>Gate failed?</strong> Look at the sanity report first. It will tell you exactly which threshold was breached and by how much. Common causes: a hire date default batch migration, a system export that omitted a field, or a mapping error where salary was pulled from the wrong column.
+          </div>
+        </div>
+
+        <!-- 8. Corrections -->
+        <div class="doc-section" id="corrections">
+          <div class="doc-section__eyebrow">Output</div>
+          <h2>Correction files</h2>
+          <p>When the sanity gate passes, Data Whisperer generates ready-to-import correction files for each mismatch category. These are formatted for Workday, with the columns your HRIS team needs.</p>
+
+          <div class="doc-subsection">
+            <h3>Files generated</h3>
+            <ul class="bullet-list">
+              <li><span class="ic">corrections_salary.csv</span>: worker_id, effective_date, compensation_amount, currency, reason</li>
+              <li><span class="ic">corrections_status.csv</span>: worker_id, effective_date, worker_status, reason</li>
+              <li><span class="ic">corrections_hire_date.csv</span>: worker_id, hire_date, reason</li>
+              <li><span class="ic">corrections_job_org.csv</span>: worker_id, position, district, location, reason</li>
+              <li><span class="ic">corrections_manifest.csv</span>: master list of all correction records with action (APPROVE / REVIEW) and confidence score</li>
+            </ul>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>APPROVE vs REVIEW</h3>
+            <p>Every correction record is tagged with an action. <strong>APPROVE</strong> means the engine assessed the mismatch, applied the confidence policy, and determined the correction is safe to apply automatically. <strong>REVIEW</strong> means a human should look at the record before importing.</p>
+            <p>The confidence thresholds are set conservatively by default. Salary corrections require 97% confidence. Hire date corrections require 95%. Status changes require 98%. You can adjust these in the policy configuration.</p>
+          </div>
+
+          <div class="callout callout--warn">
+            <strong>Before importing:</strong> Always do a spot-check on 10–20 rows from the APPROVE set before running a mass import. The correction files are designed to be safe, but no automated system replaces a final human sanity check.
+          </div>
+        </div>
+
+        <!-- 9. Outputs -->
+        <div class="doc-section" id="outputs">
+          <div class="doc-section__eyebrow">Reference</div>
+          <h2>All output files</h2>
+          <p>Every run creates a timestamped folder containing all outputs. Nothing is overwritten between runs.</p>
+          <table class="output-table">
+            <thead>
+              <tr><th>File</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>manifest.json</td><td>Run metadata: timestamp, file checksums, software version, git commit, step receipts.</td></tr>
+              <tr><td>matched_raw.csv</td><td>All matched pairs before conflict resolution. Includes all match tiers.</td></tr>
+              <tr><td>review_queue.csv</td><td>Records requiring human review, with reason and side-by-side field values.</td></tr>
+              <tr><td>recon_summary.md</td><td>Plain-text summary of the full run. Copy-paste ready for a status update.</td></tr>
+              <tr><td>recon_workbook.xlsx</td><td>Excel workbook with 8 tabs. The main deliverable for stakeholders.</td></tr>
+              <tr><td>sanity_results.json</td><td>Raw output from the sanity checks. All metrics and flag counts.</td></tr>
+              <tr><td>sanity_gate.json</td><td>Gate evaluation: passed/failed, which checks breached, threshold vs actual.</td></tr>
+              <tr><td>audit_q*.csv</td><td>Per-query audit results. One file per check that returned results.</td></tr>
+              <tr><td>corrections_*.csv</td><td>Workday-ready correction files, one per mismatch category.</td></tr>
+              <tr><td>corrections_manifest.csv</td><td>Master list of all corrections with action and confidence.</td></tr>
+              <tr><td>wide_compare.csv</td><td>All matched pairs with side-by-side field comparison. Useful for Excel analysis.</td></tr>
+              <tr><td>xlookup_keys.csv</td><td>Match keys and identifiers for XLOOKUP-based DIY analysis in Excel.</td></tr>
+              <tr><td>ui_pairs.csv</td><td>UI-ready dataset with one row per pair, all gating decisions pre-computed.</td></tr>
+              <tr><td>receipts/*.json</td><td>Step-level execution receipts. Confirms every pipeline stage completed successfully.</td></tr>
+              <tr><td>logs/pipeline.log</td><td>Full console output from the run. Useful for debugging.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 10. FAQ -->
+        <div class="doc-section" id="faq">
+          <div class="doc-section__eyebrow">Common questions</div>
+          <h2>FAQ</h2>
+
+          <div class="doc-subsection">
+            <h3>Does Data Whisperer connect to my HRIS system directly?</h3>
+            <p>No. It works exclusively with CSV exports. There's no API integration or direct system access. You export your data, run the reconciliation, and import the corrections manually. This is intentional. It keeps the tool simple and data sovereign.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Does my data leave my machine?</h3>
+            <p>No. The engine runs entirely locally. Your CSV files are processed in your browser or on your local machine. Nothing is uploaded to any server. There is no cloud backend.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>My match rate is below 90%. Is that a problem?</h3>
+            <p>It depends. A match rate below 90% usually means one of three things: (1) the two systems use different worker ID schemes and the fallback strategies can't bridge the gap, (2) there are genuine population differences between the legacy and new system that need investigating, or (3) there's a data quality issue in one of the exports. Look at the unmatched records in the review queue. The reason codes will point you to the cause.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Can I run this against a subset of employees?</h3>
+            <p>Yes. Filter your exports before uploading. The engine doesn't care about total population size. Running against a department or cost center first is a good way to validate your configuration before processing the full workforce.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>How do I know which match strategy found each pair?</h3>
+            <p>Every matched pair in the output has a <span class="ic">match_source</span> column. It contains a value like <span class="ic">worker_id</span>, <span class="ic">last4_dob</span>, or <span class="ic">name_hire_date</span>, directly identifying the tier that resolved the match. Lower-tier matches are worth reviewing even if they auto-approved.</p>
+          </div>
+
+          <div class="doc-subsection">
+            <h3>Can I use this for a non-Workday migration?</h3>
+            <p>Yes. The engine is system-agnostic. It works with any two HR datasets in CSV format. The correction file format defaults to Workday column conventions, but the underlying analysis and match output work for any target system. Contact us if you need a different correction format.</p>
+          </div>
+
+          <div style="margin-top: 32px; padding: 24px; background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-lg);">
+            <div style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Something not covered here?</div>
+            <p style="font-size: 0.875rem; margin-bottom: 16px;">Get in touch and we'll help you work through it.</p>
+            <a href="contact.html" class="btn btn--primary btn--sm">Contact us</a>
+          </div>
+        </div>
+
+      </div><!-- /content -->
+    </div><!-- /layout -->
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">© 2025 Data Whisperer. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+<script>
+/* Highlight active TOC item on scroll */
+(function () {
+  'use strict';
+  var sections = document.querySelectorAll('.doc-section');
+  var tocLinks = document.querySelectorAll('.toc__list a');
+
+  if (!sections.length || !tocLinks.length) return;
+
+  function getActive() {
+    var scrollY = window.scrollY + 100;
+    var active  = null;
+    sections.forEach(function (s) {
+      if (s.offsetTop <= scrollY) active = s.id;
+    });
+    return active;
+  }
+
+  function update() {
+    var id = getActive();
+    tocLinks.forEach(function (a) {
+      var href = a.getAttribute('href').replace('#', '');
+      a.classList.toggle('active', href === id);
+    });
+  }
+
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>

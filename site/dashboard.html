@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Recon-Kit</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* =========================================================
+       PASSWORD SCREEN
+    ========================================================= */
+    .lock-screen {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: var(--bg-0);
+    }
+
+    .lock-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .lock-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .lock-logo__mark {
+      width: 36px;
+      height: 36px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(79,142,247,0.3);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .lock-logo__brand {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .lock-card h2 { font-size: 1.25rem; margin-bottom: 6px; }
+    .lock-card__sub { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 28px; }
+
+    .lock-input {
+      width: 100%;
+      background: var(--bg-3);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      letter-spacing: 0.1em;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.15s;
+      box-sizing: border-box;
+      margin-bottom: 16px;
+    }
+
+    .lock-input:focus { border-color: var(--accent); }
+    .lock-input--error { border-color: var(--red, #e05c5c) !important; }
+
+    .lock-error {
+      font-size: 0.8rem;
+      color: var(--red, #e05c5c);
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    /* =========================================================
+       MAIN INTERFACE
+    ========================================================= */
+    .recon-interface { display: none; }
+
+    .iface-header {
+      background: var(--bg-0);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .iface-header__inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 52px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .iface-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+
+    .iface-logo__mark {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(79,142,247,0.3);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .iface-logo__name {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .session-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .session-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    .conn-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      padding: 4px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: var(--bg-2);
+      color: var(--text-muted);
+      cursor: default;
+    }
+
+    .conn-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      transition: background 0.3s;
+    }
+
+    .conn-badge--connected .conn-dot  { background: var(--green); }
+    .conn-badge--connected            { color: var(--green); border-color: rgba(62,207,142,0.25); }
+    .conn-badge--disconnected .conn-dot { background: var(--red, #e05c5c); }
+    .conn-badge--disconnected         { color: var(--red, #e05c5c); border-color: rgba(224,92,92,0.25); }
+
+    /* =========================================================
+       MODE SELECTOR
+    ========================================================= */
+    .mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .mode-card {
+      background: var(--bg-2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .mode-card:hover {
+      border-color: var(--accent);
+      background: var(--accent-ghost, rgba(79,142,247,0.04));
+    }
+
+    .mode-card--active {
+      border-color: var(--accent);
+      background: var(--accent-ghost, rgba(79,142,247,0.04));
+    }
+
+    .mode-card__check {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border-hi);
+      background: var(--bg-3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      color: transparent;
+      transition: all 0.15s;
+    }
+
+    .mode-card--active .mode-card__check {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .mode-card__icon {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+    }
+
+    .mode-card__title {
+      font-size: 0.925rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .mode-card__desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* =========================================================
+       UPLOAD ZONES
+    ========================================================= */
+    .upload-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .upload-grid-1 { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
+
+    .upload-zone {
+      background: var(--bg-2);
+      border: 2px dashed var(--border-hi);
+      border-radius: var(--radius-lg);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-ghost, rgba(79,142,247,0.04));
+    }
+
+    .upload-zone--loaded { border-color: var(--green); border-style: solid; }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 14px;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+    }
+
+    .upload-zone__label { font-size: 0.825rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+    .upload-zone__sub   { font-size: 0.78rem; color: var(--text-muted); }
+    .upload-zone__file  {
+      margin-top: 12px;
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      color: var(--green);
+      background: rgba(62,207,142,0.08);
+      border: 1px solid rgba(62,207,142,0.2);
+      padding: 4px 10px;
+      border-radius: 100px;
+      display: none;
+    }
+
+    /* =========================================================
+       RUN OPTIONS
+    ========================================================= */
+    .run-options {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    .run-options__title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .toggle-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .toggle-row__label { font-size: 0.875rem; color: var(--text-secondary); }
+    .toggle-row__label strong { display: block; font-size: 0.85rem; color: var(--text-primary); margin-bottom: 2px; }
+
+    .toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle__track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-4);
+      border: 1px solid var(--border-hi);
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .toggle__thumb {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    .toggle input:checked + .toggle__track { background: var(--accent); border-color: var(--accent); }
+    .toggle input:checked + .toggle__track .toggle__thumb { transform: translateX(18px); background: #fff; }
+
+    /* =========================================================
+       RUN BAR
+    ========================================================= */
+    .run-bar {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+
+    .run-bar__status { font-size: 0.875rem; color: var(--text-muted); }
+
+    /* =========================================================
+       PROGRESS
+    ========================================================= */
+    .progress-panel {
+      display: none;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+
+    .progress-panel__header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .progress-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      flex: 1;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--border-hi);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.825rem;
+    }
+
+    .step-row:last-child { border-bottom: none; }
+
+    .step-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      border: 1px solid var(--border-hi);
+      color: var(--text-muted);
+      background: var(--bg-3);
+    }
+
+    .step-icon--running { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .step-icon--done    { border-color: rgba(62,207,142,0.4); color: var(--green); background: rgba(62,207,142,0.08); }
+    .step-icon--warn    { border-color: rgba(232,184,75,0.4);  color: var(--yellow); background: rgba(232,184,75,0.08); }
+    .step-icon--error   { border-color: rgba(224,92,92,0.4);   color: var(--red, #e05c5c); background: rgba(224,92,92,0.08); }
+
+    .step-label { flex: 1; color: var(--text-secondary); }
+    .step-label--active { color: var(--text-primary); font-weight: 500; }
+
+    .step-status { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; }
+
+    /* =========================================================
+       RESULTS PANEL
+    ========================================================= */
+    .results-panel { display: none; margin-bottom: 32px; }
+
+    .results-header {
+      margin-bottom: 24px;
+    }
+
+    .results-header .label { margin-bottom: 8px; }
+    .results-header h2 { font-size: 1.4rem; margin-bottom: 6px; }
+    .results-header p { font-size: 0.875rem; color: var(--text-secondary); margin: 0; }
+
+    .results-stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .results-stat {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 16px;
+      text-align: center;
+    }
+
+    .results-stat__val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      margin-bottom: 4px;
+    }
+
+    .results-stat__val--green  { color: var(--green); }
+    .results-stat__val--yellow { color: var(--yellow); }
+    .results-stat__val--red    { color: var(--red, #e05c5c); }
+    .results-stat__val--accent { color: var(--accent); }
+
+    .results-stat__label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    /* Audit-mode stats (3-col) */
+    .results-stats--audit { grid-template-columns: repeat(3, 1fr); }
+
+    .downloads-section {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .downloads-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .downloads-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    .download-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 16px;
+    }
+
+    .download-row:last-child { border-bottom: none; }
+
+    .download-row__info { display: flex; flex-direction: column; gap: 2px; }
+    .download-row__name { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); }
+    .download-row__size { font-size: 0.75rem; color: var(--text-muted); }
+
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-hi);
+      background: var(--bg-3);
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+
+    .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* =========================================================
+       ERROR PANEL
+    ========================================================= */
+    .error-panel {
+      display: none;
+      background: rgba(224,92,92,0.06);
+      border: 1px solid rgba(224,92,92,0.2);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 28px;
+    }
+
+    .error-panel__title { font-size: 0.9rem; font-weight: 700; color: var(--red, #e05c5c); margin-bottom: 8px; }
+    .error-panel__msg   { font-size: 0.825rem; color: var(--text-secondary); font-family: var(--font-mono); }
+
+    /* =========================================================
+       SPEC TABLE
+    ========================================================= */
+    .spec-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .spec-table th { text-align: left; padding: 10px 16px; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+    .spec-table td { padding: 11px 16px; border-bottom: 1px solid var(--border); color: var(--text-secondary); vertical-align: top; }
+    .spec-table tbody tr:last-child td { border-bottom: none; }
+    .spec-table td:first-child { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
+
+    @media (max-width: 860px) {
+      .mode-selector { grid-template-columns: 1fr; }
+      .upload-grid-2 { grid-template-columns: 1fr; }
+      .results-stats { grid-template-columns: repeat(3, 1fr); }
+      .results-stats--audit { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 520px) {
+      .lock-card { padding: 32px 24px; }
+      .results-stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- =========================================================
+     PASSWORD SCREEN
+========================================================= -->
+<div class="lock-screen" id="lock-screen">
+  <div class="lock-card">
+    <div class="lock-logo">
+      <div class="lock-logo__mark">RK</div>
+      <span class="lock-logo__brand">Recon-Kit</span>
+    </div>
+    <h2>Private access</h2>
+    <p class="lock-card__sub">This interface is not publicly available. Enter your access password to continue.</p>
+    <form id="lock-form" onsubmit="unlock(event)">
+      <input
+        class="lock-input"
+        type="password"
+        id="lock-password"
+        placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
+        autocomplete="current-password"
+        autofocus
+      >
+      <div class="lock-error" id="lock-error">Incorrect password. Try again.</div>
+      <button type="submit" class="btn btn--primary" style="width: 100%;">Unlock</button>
+    </form>
+  </div>
+</div>
+
+<!-- =========================================================
+     MAIN INTERFACE
+========================================================= -->
+<div class="recon-interface" id="recon-interface">
+
+  <div class="iface-header">
+    <div class="iface-header__inner">
+      <div class="iface-logo">
+        <div class="iface-logo__mark">RK</div>
+        <span class="iface-logo__name">Recon-Kit</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="conn-badge" id="conn-badge">
+          <span class="conn-dot" id="conn-dot"></span>
+          <span id="conn-label">Checking engine...</span>
+        </div>
+        <div class="session-badge">
+          <span class="session-dot"></span>
+          Session active
+        </div>
+        <button onclick="lockSession()" class="btn btn--ghost btn--sm">Lock</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-header">
+    <div class="container">
+      <span class="label">Private Interface</span>
+      <h1>Recon-Kit Engine</h1>
+      <p>Upload your files, choose a mode, and run the real pipeline. Results download directly. Nothing leaves your machine.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="container">
+
+      <!-- ENGINE NOT CONNECTED WARNING -->
+      <div id="conn-warning" style="display:none; margin-bottom: 24px; padding: 16px 20px; background: rgba(232,184,75,0.07); border: 1px solid rgba(232,184,75,0.25); border-radius: var(--radius-lg); font-size: 0.85rem; color: var(--yellow);">
+        <strong>Engine server not detected.</strong>
+        Run <code style="font-family: var(--font-mono); background: var(--bg-3); padding: 2px 6px; border-radius: 4px;">venv/Scripts/python.exe api_server.py</code> in your project directory, then reload this page.
+      </div>
+
+      <!-- MODE SELECTOR -->
+      <h3 style="margin-bottom: 16px; font-size: 0.9rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;">Select mode</h3>
+      <div class="mode-selector" id="mode-selector">
+        <div class="mode-card mode-card--active" id="mode-recon" onclick="setMode('recon')">
+          <div class="mode-card__check">&#10003;</div>
+          <div class="mode-card__icon">&#128257;</div>
+          <div class="mode-card__title">Cross-System Reconciliation</div>
+          <div class="mode-card__desc">Compare records from two systems. Matches every employee, audits field-level discrepancies, generates correction files.</div>
+        </div>
+        <div class="mode-card" id="mode-audit" onclick="setMode('audit')">
+          <div class="mode-card__check">&#10003;</div>
+          <div class="mode-card__icon">&#128269;</div>
+          <div class="mode-card__title">Internal Data Audit</div>
+          <div class="mode-card__desc">Audit a single CSV for data quality issues. Detects duplicates, blank fields, suspicious defaults, and salary outliers.</div>
+        </div>
+      </div>
+
+      <!-- UPLOAD ZONES -->
+      <div id="upload-recon">
+        <div class="upload-grid-2">
+          <div class="upload-zone" id="zone-old">
+            <input type="file" accept=".csv" id="file-old" onchange="fileSelected(this, 'old')">
+            <div class="upload-icon">&#128194;</div>
+            <div class="upload-zone__label">Legacy System Export</div>
+            <div class="upload-zone__sub">Old system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__file" id="fname-old"></div>
+          </div>
+          <div class="upload-zone" id="zone-new">
+            <input type="file" accept=".csv" id="file-new" onchange="fileSelected(this, 'new')">
+            <div class="upload-icon">&#128194;</div>
+            <div class="upload-zone__label">New System Export</div>
+            <div class="upload-zone__sub">New system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__file" id="fname-new"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="upload-audit" style="display:none;">
+        <div class="upload-grid-1">
+          <div class="upload-zone" id="zone-audit">
+            <input type="file" accept=".csv" id="file-audit" onchange="fileSelected(this, 'audit')">
+            <div class="upload-icon">&#128194;</div>
+            <div class="upload-zone__label">Dataset to Audit</div>
+            <div class="upload-zone__sub">Single CSV file. Drop here or click to browse.</div>
+            <div class="upload-zone__file" id="fname-audit"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RUN OPTIONS (recon only) -->
+      <div class="run-options" id="recon-options">
+        <div class="run-options__title">Run options</div>
+        <div class="toggle-list">
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Generate correction files</strong>
+              Workday-ready CSVs per mismatch category (requires gate pass)
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="opt-corrections" checked>
+              <div class="toggle__track"><div class="toggle__thumb"></div></div>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Run sanity gate</strong>
+              Block corrections if suspicious default rates exceed policy thresholds
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="opt-sanity" checked>
+              <div class="toggle__track"><div class="toggle__thumb"></div></div>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Export Excel workbook</strong>
+              Generate recon_workbook.xlsx with 8 summary sheets
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="opt-workbook" checked>
+              <div class="toggle__track"><div class="toggle__thumb"></div></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- RUN BAR -->
+      <div class="run-bar">
+        <div class="run-bar__status" id="run-status">Select files to enable the engine.</div>
+        <button class="btn btn--primary" id="run-btn" onclick="startRun()" disabled>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex-shrink:0"><path d="M3 2L11 7L3 12V2Z" fill="currentColor"/></svg>
+          <span id="run-btn-label">Run Engine</span>
+        </button>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="progress-panel" id="progress-panel">
+        <div class="progress-panel__header">
+          <div class="progress-title" id="progress-title">Running pipeline...</div>
+          <div class="spinner" id="progress-spinner"></div>
+        </div>
+        <div id="step-list"></div>
+      </div>
+
+      <!-- ERROR -->
+      <div class="error-panel" id="error-panel">
+        <div class="error-panel__title">Run failed</div>
+        <div class="error-panel__msg" id="error-msg"></div>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="results-panel" id="results-panel">
+        <div class="results-header">
+          <span class="label" id="results-label">Run complete</span>
+          <h2 id="results-headline">Your run is ready. Here is what we found.</h2>
+          <p id="results-sub"></p>
+        </div>
+
+        <!-- Recon stats -->
+        <div class="results-stats" id="recon-stats">
+          <div class="results-stat">
+            <div class="results-stat__val" id="stat-total">0</div>
+            <div class="results-stat__label">Records</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val results-stat__val--green" id="stat-matched">0</div>
+            <div class="results-stat__label">Matched</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val results-stat__val--yellow" id="stat-review">0</div>
+            <div class="results-stat__label">Review</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val results-stat__val--accent" id="stat-rate">0%</div>
+            <div class="results-stat__label">Match Rate</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val" id="stat-gate" style="font-size:1.1rem;">PASS</div>
+            <div class="results-stat__label">Sanity Gate</div>
+          </div>
+        </div>
+
+        <!-- Audit stats -->
+        <div class="results-stats results-stats--audit" id="audit-stats" style="display:none;">
+          <div class="results-stat">
+            <div class="results-stat__val" id="astat-rows">0</div>
+            <div class="results-stat__label">Records</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val" id="astat-complete">0%</div>
+            <div class="results-stat__label">Completeness</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val results-stat__val--yellow" id="astat-issues">0</div>
+            <div class="results-stat__label">Issues Found</div>
+          </div>
+        </div>
+
+        <!-- Downloads -->
+        <div class="downloads-section">
+          <div class="downloads-header">
+            <div class="downloads-title">Download your outputs</div>
+          </div>
+          <div id="download-list"></div>
+        </div>
+      </div>
+
+      <!-- FILE SPEC -->
+      <div style="margin-top: 40px;">
+        <h3 style="margin-bottom: 6px;">Expected CSV columns</h3>
+        <p style="font-size: 0.875rem; margin-bottom: 20px;">Standard HRIS exports work without modification. The engine maps columns automatically.</p>
+        <div class="panel">
+          <div class="panel__body" style="padding: 0; overflow-x: auto;">
+            <table class="spec-table">
+              <thead>
+                <tr><th>Column</th><th>Required</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>worker_id</td><td><span class="badge badge--blue">Required</span></td><td>Employee ID. Used for Tier 1 exact matching.</td></tr>
+                <tr><td>full_name</td><td><span class="badge badge--blue">Required</span></td><td>Used in name similarity matching. Normalized internally.</td></tr>
+                <tr><td>date_of_birth</td><td><span class="badge badge--yellow">Recommended</span></td><td>Last-4 + DOB matching (Tier 2). YYYY-MM-DD preferred.</td></tr>
+                <tr><td>hire_date</td><td><span class="badge badge--yellow">Recommended</span></td><td>Mismatch detection and root cause analysis. YYYY-MM-DD.</td></tr>
+                <tr><td>salary</td><td>Optional</td><td>Annual base salary. Mismatch detection and correction output.</td></tr>
+                <tr><td>worker_status</td><td>Optional</td><td>Active / Inactive / Leave. Status mismatch detection.</td></tr>
+                <tr><td>position / job_title</td><td>Optional</td><td>Job/org mismatch pack and correction output.</td></tr>
+                <tr><td>last4_ssn / last4_ni</td><td>Optional</td><td>Last-4 identifier for Tier 2 matching. Stripped from all outputs.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="footer" style="margin-top: 48px;">
+    <div class="container">
+      <div class="footer__inner">
+        <span class="footer__brand">Recon-Kit, Private Interface</span>
+        <ul class="footer__links">
+          <li><a href="index.html">Public site</a></li>
+          <li><a href="demo.html">Demo</a></li>
+        </ul>
+        <span class="footer__copy">&copy; 2026 Data Whisperer.</span>
+      </div>
+    </div>
+  </footer>
+
+</div><!-- /recon-interface -->
+
+<script>
+(function () {
+  'use strict';
+
+  // -----------------------------------------------------------------------
+  // CONFIG — change password here
+  // -----------------------------------------------------------------------
+  var ACCESS_PASSWORD = 'recon2026';
+  var API_BASE        = 'http://localhost:5001';
+  var SESSION_KEY     = 'rk_session';
+  // -----------------------------------------------------------------------
+
+  var currentMode  = 'recon';
+  var uploadedFiles = { old: null, 'new': null, audit: null };
+  var currentRunId  = null;
+  var pollTimer     = null;
+
+  // ---- Session ----
+  if (sessionStorage.getItem(SESSION_KEY) === '1') showInterface();
+
+  window.unlock = function (e) {
+    e.preventDefault();
+    var inp = document.getElementById('lock-password');
+    var err = document.getElementById('lock-error');
+    inp.classList.remove('lock-input--error');
+    err.style.display = 'none';
+    if (inp.value === ACCESS_PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, '1');
+      showInterface();
+    } else {
+      inp.classList.add('lock-input--error');
+      err.style.display = 'block';
+      inp.value = '';
+      inp.focus();
+    }
+  };
+
+  window.lockSession = function () {
+    sessionStorage.removeItem(SESSION_KEY);
+    stopPolling();
+    document.getElementById('recon-interface').style.display = 'none';
+    document.getElementById('lock-screen').style.display    = 'flex';
+    var pw = document.getElementById('lock-password');
+    pw.value = '';
+    pw.focus();
+  };
+
+  function showInterface() {
+    document.getElementById('lock-screen').style.display   = 'none';
+    document.getElementById('recon-interface').style.display = 'block';
+    checkServerConnection();
+  }
+
+  // ---- Server connection check ----
+  function checkServerConnection() {
+    fetch(API_BASE + '/api/ping', { signal: AbortSignal.timeout(3000) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) setConnected(true);
+        else setConnected(false);
+      })
+      .catch(function () { setConnected(false); });
+  }
+
+  function setConnected(ok) {
+    var badge = document.getElementById('conn-badge');
+    var label = document.getElementById('conn-label');
+    var warn  = document.getElementById('conn-warning');
+    if (ok) {
+      badge.className = 'conn-badge conn-badge--connected';
+      label.textContent = 'Engine connected';
+      warn.style.display = 'none';
+    } else {
+      badge.className = 'conn-badge conn-badge--disconnected';
+      label.textContent = 'Engine offline';
+      warn.style.display = 'block';
+    }
+  }
+
+  // ---- Mode selector ----
+  window.setMode = function (mode) {
+    currentMode = mode;
+    document.getElementById('mode-recon').classList.toggle('mode-card--active', mode === 'recon');
+    document.getElementById('mode-audit').classList.toggle('mode-card--active', mode === 'audit');
+    document.getElementById('upload-recon').style.display  = mode === 'recon' ? '' : 'none';
+    document.getElementById('upload-audit').style.display  = mode === 'audit' ? '' : 'none';
+    document.getElementById('recon-options').style.display = mode === 'recon' ? '' : 'none';
+    // Reset results
+    hideResults();
+    updateRunBar();
+  };
+
+  // ---- File upload ----
+  window.fileSelected = function (input, side) {
+    var file = input.files[0];
+    if (!file) return;
+    uploadedFiles[side] = file;
+
+    var zoneMap  = { old: 'zone-old', 'new': 'zone-new', audit: 'zone-audit' };
+    var fnameMap = { old: 'fname-old', 'new': 'fname-new', audit: 'fname-audit' };
+
+    var zone  = document.getElementById(zoneMap[side]);
+    var fname = document.getElementById(fnameMap[side]);
+    if (zone)  zone.classList.add('upload-zone--loaded');
+    if (fname) { fname.textContent = file.name; fname.style.display = 'inline-block'; }
+
+    updateRunBar();
+  };
+
+  // Drag and drop
+  ['zone-old','zone-new','zone-audit'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('dragover',  function (e) { e.preventDefault(); el.classList.add('dragover'); });
+    el.addEventListener('dragleave', function () { el.classList.remove('dragover'); });
+    el.addEventListener('drop',      function () { el.classList.remove('dragover'); });
+  });
+
+  function updateRunBar() {
+    var btn    = document.getElementById('run-btn');
+    var status = document.getElementById('run-status');
+    var ready  = false;
+
+    if (currentMode === 'recon') {
+      ready = !!(uploadedFiles.old && uploadedFiles['new']);
+      if (!ready) {
+        if (uploadedFiles.old) status.textContent = 'Legacy file loaded. Add your new system export to continue.';
+        else if (uploadedFiles['new']) status.textContent = 'New file loaded. Add your legacy system export to continue.';
+        else status.textContent = 'Upload both CSV files to enable the engine.';
+      } else {
+        status.innerHTML =
+          '<strong style="color:var(--text-primary)">' + uploadedFiles.old.name + '</strong>' +
+          ' &amp; <strong style="color:var(--text-primary)">' + uploadedFiles['new'].name + '</strong>' +
+          ' &mdash; ready to run.';
+      }
+    } else {
+      ready = !!uploadedFiles.audit;
+      status.textContent = ready
+        ? uploadedFiles.audit.name + ' loaded. Ready to audit.'
+        : 'Upload a CSV file to audit.';
+    }
+
+    btn.disabled = !ready;
+  }
+
+  // ---- Run ----
+  window.startRun = function () {
+    hideResults();
+    document.getElementById('error-panel').style.display = 'none';
+
+    var btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    document.getElementById('run-btn-label').textContent = 'Running...';
+
+    var formData = new FormData();
+    var endpoint;
+
+    if (currentMode === 'recon') {
+      endpoint = API_BASE + '/api/run/recon';
+      formData.append('old_file', uploadedFiles.old);
+      formData.append('new_file', uploadedFiles['new']);
+      formData.append('corrections', document.getElementById('opt-corrections').checked ? 'true' : 'false');
+      formData.append('sanity_gate', document.getElementById('opt-sanity').checked ? 'true' : 'false');
+      formData.append('workbook',    document.getElementById('opt-workbook').checked ? 'true' : 'false');
+    } else {
+      endpoint = API_BASE + '/api/run/audit';
+      formData.append('audit_file', uploadedFiles.audit);
+    }
+
+    // Show progress
+    document.getElementById('progress-panel').style.display = 'block';
+    document.getElementById('progress-title').textContent = 'Running...';
+    document.getElementById('progress-spinner').style.display = 'block';
+    document.getElementById('step-list').innerHTML = '';
+
+    fetch(endpoint, { method: 'POST', body: formData })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Server error'); });
+        return r.json();
+      })
+      .then(function (d) {
+        currentRunId = d.run_id;
+        startPolling(d.run_id);
+      })
+      .catch(function (err) {
+        showError('Could not reach engine server. Make sure api_server.py is running.\n\n' + err.message);
+        resetRunBtn();
+      });
+  };
+
+  // ---- Polling ----
+  var STEP_LABELS = {
+    upload:        'Receiving uploaded files',
+    mapping:       'Mapping columns to standard schema',
+    matching:      'Running 6-tier matching engine',
+    resolve:       'Resolving match conflicts (1-to-1)',
+    load_db:       'Loading matched pairs into SQLite',
+    audit:         'Running audit queries (Q0-Q15)',
+    sanity_gate:   'Evaluating sanity gate',
+    corrections:   'Generating correction files',
+    workbook:      'Building Excel workbook',
+    exports:       'Exporting wide compare / DIY data',
+    review_queue:  'Building review queue',
+  };
+
+  function startPolling(runId) {
+    stopPolling();
+    pollTimer = setInterval(function () { pollStatus(runId); }, 1200);
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function pollStatus(runId) {
+    fetch(API_BASE + '/api/status/' + runId)
+      .then(function (r) { return r.json(); })
+      .then(function (job) {
+        updateProgress(job);
+        if (job.status === 'done') {
+          stopPolling();
+          showResults(job);
+          resetRunBtn();
+        } else if (job.status === 'error') {
+          stopPolling();
+          showError(job.error || 'Unknown error');
+          resetRunBtn();
+        }
+      })
+      .catch(function () {
+        // Network blip — keep polling
+      });
+  }
+
+  function updateProgress(job) {
+    var list = document.getElementById('step-list');
+    list.innerHTML = '';
+    (job.steps || []).forEach(function (s) {
+      var row = document.createElement('div');
+      row.className = 'step-row';
+
+      var icon = document.createElement('div');
+      icon.className = 'step-icon';
+      var statusClass = { running: 'step-icon--running', done: 'step-icon--done', warn: 'step-icon--warn', error: 'step-icon--error' }[s.status] || '';
+      if (statusClass) icon.classList.add(statusClass);
+      icon.textContent = s.status === 'done' ? '✓' : s.status === 'running' ? '▶' : s.status === 'warn' ? '!' : s.status === 'error' ? '✕' : '○';
+
+      var label = document.createElement('div');
+      label.className = 'step-label' + (s.status === 'running' ? ' step-label--active' : '');
+      label.textContent = STEP_LABELS[s.step] || s.step;
+
+      var stat = document.createElement('div');
+      stat.className = 'step-status';
+      stat.textContent = s.status.toUpperCase();
+
+      row.appendChild(icon);
+      row.appendChild(label);
+      row.appendChild(stat);
+      list.appendChild(row);
+    });
+
+    if (job.status === 'done') {
+      document.getElementById('progress-title').textContent = 'Complete';
+      document.getElementById('progress-spinner').style.display = 'none';
+    }
+  }
+
+  // ---- Results ----
+  function showResults(job) {
+    var panel = document.getElementById('results-panel');
+    panel.style.display = 'block';
+
+    if (currentMode === 'recon') {
+      var stats = job.stats || {};
+      var total   = stats.total_matched || 0;
+      var review  = stats.review_count  || 0;
+      var matched = total;
+      var rate    = total > 0 ? ((matched - review) / matched * 100).toFixed(1) + '%' : 'N/A';
+      var gate    = stats.gate_passed === false ? 'FAIL' : 'PASS';
+      var gateCol = gate === 'FAIL' ? 'results-stat__val--red' : 'results-stat__val--green';
+
+      document.getElementById('recon-stats').style.display = '';
+      document.getElementById('audit-stats').style.display = 'none';
+      document.getElementById('stat-total').textContent   = total.toLocaleString();
+      document.getElementById('stat-matched').textContent = (total - review).toLocaleString();
+      document.getElementById('stat-review').textContent  = review.toLocaleString();
+      document.getElementById('stat-rate').textContent    = rate;
+
+      var gateEl = document.getElementById('stat-gate');
+      gateEl.textContent  = gate;
+      gateEl.className    = 'results-stat__val ' + gateCol;
+
+      document.getElementById('results-label').textContent   = 'Reconciliation complete';
+      document.getElementById('results-headline').textContent = 'Your run is ready. Here is what we found.';
+      document.getElementById('results-sub').textContent      = 'Download your outputs below. Correction files are Workday-ready.';
+
+    } else {
+      var s = job.stats || {};
+      document.getElementById('recon-stats').style.display = 'none';
+      document.getElementById('audit-stats').style.display = '';
+      document.getElementById('astat-rows').textContent     = (s.total_rows || 0).toLocaleString();
+      document.getElementById('astat-complete').textContent = (s.overall_completeness || 0) + '%';
+      document.getElementById('astat-issues').textContent   = (s.issue_count || 0);
+
+      document.getElementById('results-label').textContent   = 'Audit complete';
+      document.getElementById('results-headline').textContent = 'Your audit is ready. Here is what we found.';
+      document.getElementById('results-sub').textContent      = 'Download your reports below. Review the issues CSV for details.';
+    }
+
+    // Build download list
+    var dl = document.getElementById('download-list');
+    dl.innerHTML = '';
+    var outputs = job.outputs || [];
+
+    var FILE_LABELS = {
+      'recon_workbook.xlsx':            'Excel workbook (8 sheets)',
+      'wide_compare.csv':               'Wide compare (all pairs, side-by-side)',
+      'review_queue.csv':               'Review queue (records needing attention)',
+      'corrections_salary.csv':         'Salary corrections (Workday format)',
+      'corrections_status.csv':         'Status corrections',
+      'corrections_hire_date.csv':      'Hire date corrections',
+      'corrections_job_org.csv':        'Job/org corrections',
+      'corrections_manifest.csv':       'Full corrections manifest',
+      'internal_audit_report.csv':      'Audit report (full)',
+      'internal_audit_duplicates.csv':  'Duplicate records',
+      'internal_audit_blanks.csv':      'Field completeness breakdown',
+      'internal_audit_suspicious.csv':  'Suspicious default values',
+    };
+
+    if (outputs.length === 0) {
+      dl.innerHTML = '<div style="padding: 20px; font-size: 0.85rem; color: var(--text-muted);">No output files available. Check the engine log for details.</div>';
+    } else {
+      outputs.forEach(function (f) {
+        var row = document.createElement('div');
+        row.className = 'download-row';
+
+        var info = document.createElement('div');
+        info.className = 'download-row__info';
+
+        var name = document.createElement('div');
+        name.className = 'download-row__name';
+        name.textContent = f.name;
+
+        var desc = document.createElement('div');
+        desc.className = 'download-row__size';
+        desc.textContent = (FILE_LABELS[f.name] || '') + (f.size ? '  \u00B7  ' + _fmtSize(f.size) : '');
+
+        info.appendChild(name);
+        info.appendChild(desc);
+
+        var link = document.createElement('a');
+        link.className = 'dl-btn';
+        link.href = API_BASE + '/api/download/' + currentRunId + '/' + encodeURIComponent(f.name);
+        link.textContent = 'Download';
+        link.setAttribute('download', f.name);
+
+        row.appendChild(info);
+        row.appendChild(link);
+        dl.appendChild(row);
+      });
+    }
+  }
+
+  function hideResults() {
+    document.getElementById('results-panel').style.display  = 'none';
+    document.getElementById('progress-panel').style.display = 'none';
+    document.getElementById('error-panel').style.display    = 'none';
+  }
+
+  function showError(msg) {
+    document.getElementById('error-panel').style.display = 'block';
+    document.getElementById('error-msg').textContent     = msg;
+    document.getElementById('progress-spinner').style.display = 'none';
+    document.getElementById('progress-title').textContent = 'Failed';
+  }
+
+  function resetRunBtn() {
+    var btn = document.getElementById('run-btn');
+    btn.disabled = false;
+    document.getElementById('run-btn-label').textContent = 'Run Again';
+  }
+
+  function _fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+})();
+</script>
+</body>
+</html>

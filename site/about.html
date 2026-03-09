@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About | Data Whisperer</title>
+  <meta name="description" content="What Data Whisperer is, what problem it solves, and who built it.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .prose h2 {
+      font-size: 1.35rem;
+      margin-top: 48px;
+      margin-bottom: 12px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+
+    .prose h2:first-of-type {
+      margin-top: 0;
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .prose p {
+      font-size: 0.975rem;
+      line-height: 1.75;
+      margin-bottom: 16px;
+    }
+
+    .prose p:last-child { margin-bottom: 0; }
+
+    .prose ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .prose ul li {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      padding-left: 20px;
+      position: relative;
+      line-height: 1.65;
+    }
+
+    .prose ul li::before {
+      content: '\2013';
+      position: absolute;
+      left: 0;
+      color: var(--text-muted);
+    }
+
+    .sidebar-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      position: sticky;
+      top: 80px;
+    }
+
+    .sidebar-card__title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sidebar-item:last-child { border-bottom: none; }
+
+    .sidebar-item__key {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .sidebar-item__val {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .about-layout {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 48px;
+      align-items: start;
+    }
+
+    .author-block {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px;
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin-bottom: 32px;
+    }
+
+    .author-avatar {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-dim);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .author-block__name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .author-block__title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 860px) {
+      .about-layout { grid-template-columns: 1fr; }
+      .sidebar-card { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav__inner">
+    <a href="index.html" class="nav__logo">
+      <span class="nav__logo-mark">DW</span>
+      Data Whisperer
+    </a>
+    <ul class="nav__links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="demo.html">Demo</a></li>
+      <li><a href="tool.html">Tool</a></li>
+      <li><a href="how-to.html">How To</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html" class="nav__cta">Join Waitlist</a></li>
+    </ul>
+    <button class="nav__hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav__mobile" id="nav-mobile">
+    <a href="index.html">Home</a>
+    <a href="demo.html">Demo</a>
+    <a href="tool.html">Tool</a>
+    <a href="how-to.html">How To</a>
+    <a href="about.html">About</a>
+    <a href="contact.html">Join Waitlist</a>
+  </div>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+  <div class="container">
+    <span class="label">About</span>
+    <h1>What is Data Whisperer?</h1>
+    <p>The tool built to solve the HRIS migration problem that every consultant knows and nobody talks about.</p>
+  </div>
+</div>
+
+<section>
+  <div class="container">
+    <div class="about-layout">
+
+      <!-- Main prose -->
+      <div class="prose">
+
+        <h2>The problem</h2>
+        <p>
+          Every HRIS migration has the same painful moment: somewhere between exporting data out of the legacy system
+          and importing it into the new one, records get corrupted. Hire dates reset to a default. Salaries truncate.
+          Status fields get dropped. Worker IDs shift format. The data that arrives in Workday or SuccessFactors or
+          Oracle HCM is not the same data that left the old system. Nobody catches it until payroll runs.
+        </p>
+        <p>
+          The standard approach is manual spot-checks and VLOOKUP spreadsheets. On a 5,000-employee migration, that
+          means days of analyst time, subjective sampling, and a best-guess sign-off. It's not rigorous, and when
+          something slips through, it becomes a payroll correction, or worse, a compliance issue.
+        </p>
+
+        <h2>What Data Whisperer does</h2>
+        <p>
+          Data Whisperer is a deterministic reconciliation engine. It takes your legacy system export and your new
+          system import, matches every employee across both datasets using a tiered identity-resolution algorithm,
+          and then audits every matched pair for field-level discrepancies.
+        </p>
+        <p>
+          The matching engine uses six strategies in priority order:
+        </p>
+        <ul>
+          <li>Exact worker ID match (highest confidence)</li>
+          <li>Reconciliation ID or primary key match</li>
+          <li>Last-4 digits of SSN/NI number + date of birth</li>
+          <li>Date of birth + normalized full name</li>
+          <li>Full name + hire date</li>
+          <li>Name similarity scoring (fallback)</li>
+        </ul>
+        <p>
+          Each match is assigned a confidence score and a strategy label. Conflicts are resolved deterministically
+          via staged 1-to-1 matching. No probabilistic guessing. If the engine can't resolve a match with confidence,
+          it routes the record to a human review queue.
+        </p>
+        <p>
+          Once matched, every pair is audited across five field categories: salary, pay rate, worker status, hire date,
+          and job/org data. Mismatches are quantified, bucketed, and evaluated against configurable policy thresholds.
+          If the data is clean enough to proceed, the engine auto-generates Workday-ready correction files for each
+          field category. If it isn't, the sanity gate blocks corrections and flags the migration for review.
+        </p>
+
+        <h2>Who it's built for</h2>
+        <p>
+          Data Whisperer is built for the people who actually do HRIS migrations, not the project managers who
+          oversee them. That means:
+        </p>
+        <ul>
+          <li>HRIS consultants running Workday, Oracle, SAP, or SuccessFactors implementations</li>
+          <li>Enterprise HR operations teams managing data quality during a system switch</li>
+          <li>HR data analysts who've been handed a 40,000-row CSV and told to "make sure it's right"</li>
+          <li>Implementation teams who need to evidence data accuracy for a go-live sign-off</li>
+        </ul>
+        <p>
+          If you've ever spent a week building a reconciliation spreadsheet from scratch for a migration you've
+          already done three times before, this tool was built for you.
+        </p>
+
+        <h2>What it doesn't do</h2>
+        <p>
+          Data Whisperer is not an ETL tool. It doesn't transform or migrate data. It doesn't connect to your
+          HRIS via API. It doesn't run in the cloud or share your data with anyone. It takes two CSV files,
+          runs locally on your machine, and tells you exactly where the discrepancies are before you go live.
+          That's the whole job.
+        </p>
+
+        <h2>Built from lived experience</h2>
+
+        <div class="author-block">
+          <div class="author-avatar">👤</div>
+          <div>
+            <div class="author-block__name">HRIS Analyst &amp; Implementation Consultant</div>
+            <div class="author-block__title">Built this tool to stop rebuilding it from scratch every time</div>
+          </div>
+        </div>
+
+        <p>
+          Data Whisperer was built by an HRIS analyst who has worked through multiple enterprise system
+          implementations firsthand. The matching logic, the audit query structure, the sanity gate thresholds,
+          the correction file format. All of it comes from real migration projects, real discrepancies found,
+          and real payroll corrections that should never have been necessary.
+        </p>
+        <p>
+          This is not a tool built by a software company that read about HRIS migrations. It's a tool built by
+          someone who has lived through them and got tired of rebuilding the same reconciliation workbook project
+          after project. The goal was simple: make the standard of rigor that good consultants already apply
+          available as a repeatable, automated process.
+        </p>
+        <p>
+          Data Whisperer is in active development. If you work in enterprise HR or HRIS consulting and you want
+          to be part of shaping what comes next, reach out.
+        </p>
+
+        <div style="margin-top: 32px;">
+          <a href="contact.html" class="btn btn--primary">Get Early Access</a>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div>
+        <div class="sidebar-card">
+          <div class="sidebar-card__title">At a glance</div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Type</span>
+            <span class="sidebar-item__val">Reconciliation engine</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Runs</span>
+            <span class="sidebar-item__val">100% local, no cloud</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Input</span>
+            <span class="sidebar-item__val">Two CSV files</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Match strategies</span>
+            <span class="sidebar-item__val">6 tiers, deterministic</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Audit queries</span>
+            <span class="sidebar-item__val">Q0–Q15 (15 checks)</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Mismatch categories</span>
+            <span class="sidebar-item__val">Salary, pay rate, status, hire date, job/org</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Outputs</span>
+            <span class="sidebar-item__val">Correction CSVs, workbook, audit report</span>
+          </div>
+          <div class="sidebar-item">
+            <span class="sidebar-item__key">Status</span>
+            <span class="sidebar-item__val" style="color: var(--yellow);">Early access</span>
+          </div>
+        </div>
+
+        <div class="sidebar-card" style="margin-top: 16px;">
+          <div class="sidebar-card__title">Related</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <a href="demo.html" class="btn btn--ghost" style="justify-content: flex-start;">→ Try the demo</a>
+            <a href="how-to.html" class="btn btn--ghost" style="justify-content: flex-start;">→ How it works</a>
+            <a href="contact.html" class="btn btn--outline" style="justify-content: flex-start;">→ Get early access</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__inner">
+      <span class="footer__brand">Data Whisperer</span>
+      <ul class="footer__links">
+        <li><a href="demo.html">Demo</a></li>
+        <li><a href="tool.html">Tool</a></li>
+        <li><a href="how-to.html">How To</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+      <span class="footer__copy">© 2025 Data Whisperer. All rights reserved.</span>
+    </div>
+  </div>
+</footer>
+
+<script src="js/nav.js"></script>
+</body>
+</html>

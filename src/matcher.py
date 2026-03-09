@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+import json
+import sys
+from difflib import SequenceMatcher
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
+
+import pandas as pd
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "outputs"
+OUT.mkdir(parents=True, exist_ok=True)
+
+
+def _load_extra_fields() -> list[str]:
+    """Load configured extra field names from policy.yaml (non-fatal if unavailable)."""
+    try:
+        _summary = ROOT / "audit" / "summary"
+        if str(_summary) not in sys.path:
+            sys.path.insert(0, str(_summary))
+        from config_loader import load_audit_config  # noqa: PLC0415
+        return load_audit_config()["fields"]
+    except Exception:
+        return []
+
+
+def _load(label: str) -> pd.DataFrame:
+    path = OUT / f"mapped_{label}.csv"
+    df = pd.read_csv(path, dtype="string")
+    df.columns = [c.strip() for c in df.columns]
+    return df
+
+
+def _mk_key(df: pd.DataFrame, cols: List[str]) -> pd.Series:
+    parts = []
+    for c in cols:
+        s = df.get(c, pd.Series([pd.NA] * len(df))).astype("string")
+        s = s.fillna("").str.strip()
+        parts.append(s)
+    k = parts[0]
+    for p in parts[1:]:
+        k = k + "|" + p
+    k = k.replace("", pd.NA)
+    return k
+
+
+def _one_to_one_join(
+    old: pd.DataFrame,
+    new: pd.DataFrame,
+    key_cols: List[str],
+    source: str,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Match old to new on key_cols (1-to-1, ambiguous keys on either side discarded).
+
+    Remaining pools are tracked by row-index so that rows with blank worker_id
+    (or any other missing identifier) that DO match on this tier are correctly
+    removed from the pools passed to the next tier.
+    """
+    # Reset index so __oidx / __nidx are stable 0-based positions into old/new.
+    o = old.copy().reset_index(drop=True)
+    n = new.copy().reset_index(drop=True)
+
+    o["__oidx"] = range(len(o))
+    n["__nidx"] = range(len(n))
+
+    o["_k"] = _mk_key(o, key_cols)
+    n["_k"] = _mk_key(n, key_cols)
+
+    # Only consider rows that have a valid (non-null) key for this tier.
+    o_keyed = o[o["_k"].notna()].copy()
+    n_keyed = n[n["_k"].notna()].copy()
+
+    # Discard keys that appear more than once on either side — ambiguous.
+    o_dup_keys = set(o_keyed.loc[o_keyed["_k"].duplicated(keep=False), "_k"].tolist())
+    n_dup_keys = set(n_keyed.loc[n_keyed["_k"].duplicated(keep=False), "_k"].tolist())
+    bad = o_dup_keys | n_dup_keys
+    if bad:
+        o_keyed = o_keyed[~o_keyed["_k"].isin(bad)]
+        n_keyed = n_keyed[~n_keyed["_k"].isin(bad)]
+
+    m = o_keyed.merge(n_keyed, on="_k", how="inner", suffixes=("_old", "_new"))
+
+    if len(m) == 0:
+        # No matches: return originals unchanged.
+        return pd.DataFrame(), old, new
+
+    m["match_source"] = source
+
+    # Track which original rows were consumed so they are excluded from future tiers.
+    # __oidx / __nidx are unique per side (no suffix collision) so they survive merge as-is.
+    matched_old_rows = set(m["__oidx"].tolist())
+    matched_new_rows = set(m["__nidx"].tolist())
+
+    old_remaining = (
+        o[~o["__oidx"].isin(matched_old_rows)]
+        .drop(columns=["__oidx", "_k"], errors="ignore")
+        .copy()
+    )
+    new_remaining = (
+        n[~n["__nidx"].isin(matched_new_rows)]
+        .drop(columns=["__nidx", "_k"], errors="ignore")
+        .copy()
+    )
+
+    m_out = m.drop(columns=["_k", "__oidx", "__nidx"], errors="ignore")
+    return m_out, old_remaining, new_remaining
+
+
+def compute_confidence(row: dict) -> float:
+    """
+    Compute a confidence score [0.0, 1.0] for a matched pair.
+
+    Signals and weights (as specified in the engineering plan):
+        name_similarity       * 0.5   (SequenceMatcher ratio on full_name_norm)
+        dob_match             * 0.2   (1.0 if old_dob == new_dob, else 0.0)
+        last4_match           * 0.2   (1.0 if old_last4_ssn == new_last4_ssn, else 0.0)
+        location_state_match  * 0.1   (1.0 if old_location_state == new_location_state)
+
+    worker_id and recon_id are exact business/system ID matches — always 1.0.
+    """
+    ms = str(row.get("match_source") or "").strip().lower()
+    if ms in ("worker_id", "recon_id"):
+        return 1.0
+
+    old_name  = str(row.get("old_full_name_norm") or "").strip()
+    new_name  = str(row.get("new_full_name_norm") or "").strip()
+    old_dob   = str(row.get("old_dob") or "").strip()
+    new_dob   = str(row.get("new_dob") or "").strip()
+    old_l4    = str(row.get("old_last4_ssn") or "").strip()
+    new_l4    = str(row.get("new_last4_ssn") or "").strip()
+    old_state = str(row.get("old_location_state") or "").strip().lower()
+    new_state = str(row.get("new_location_state") or "").strip().lower()
+
+    name_sim  = SequenceMatcher(None, old_name, new_name).ratio() if (old_name and new_name) else 0.0
+    dob_match = 1.0 if (old_dob and new_dob and old_dob == new_dob) else 0.0
+    l4_match  = 1.0 if (old_l4 and new_l4 and old_l4 == new_l4) else 0.0
+    loc_match = 1.0 if (old_state and new_state and old_state == new_state) else 0.0
+
+    score = name_sim * 0.5 + dob_match * 0.2 + l4_match * 0.2 + loc_match * 0.1
+    return round(min(1.0, max(0.0, score)), 4)
+
+
+def main() -> None:
+    old = _load("old")
+    new = _load("new")
+
+    report: Dict[str, Any] = {
+        "matched_total": 0,
+        "matched_by_worker_id": 0,
+        "matched_by_recon_id": 0,
+        "matched_by_pk": 0,
+        "matched_by_last4_dob": 0,
+        "matched_by_dob_name": 0,
+        "matched_by_name_hire_date": 0,
+        "unmatched_old": 0,
+        "unmatched_new": 0,
+    }
+
+    all_matches = []
+
+    # Tier 1: worker_id exact
+    m, old, new = _one_to_one_join(old, new, ["worker_id"], "worker_id")
+    report["matched_by_worker_id"] = int(len(m))
+    all_matches.append(m)
+
+    # Tier 2: recon_id exact (only if column present on both sides)
+    if "recon_id" in old.columns and "recon_id" in new.columns:
+        m, old, new = _one_to_one_join(old, new, ["recon_id"], "recon_id")
+        report["matched_by_recon_id"] = int(len(m))
+        all_matches.append(m)
+
+    # Tier 3: pk = full_name_norm + dob + last4_ssn
+    m, old, new = _one_to_one_join(old, new, ["full_name_norm", "dob", "last4_ssn"], "pk")
+    report["matched_by_pk"] = int(len(m))
+    all_matches.append(m)
+
+    # Tier 4: last4_ssn + dob
+    m, old, new = _one_to_one_join(old, new, ["last4_ssn", "dob"], "last4_dob")
+    report["matched_by_last4_dob"] = int(len(m))
+    all_matches.append(m)
+
+    # Tier 5: dob + full_name_norm
+    m, old, new = _one_to_one_join(old, new, ["dob", "full_name_norm"], "dob_name")
+    report["matched_by_dob_name"] = int(len(m))
+    all_matches.append(m)
+
+    # Tier 6: full_name_norm + hire_date
+    m, old, new = _one_to_one_join(old, new, ["full_name_norm", "hire_date"], "name_hire_date")
+    report["matched_by_name_hire_date"] = int(len(m))
+    all_matches.append(m)
+
+    matched = (
+        pd.concat([x for x in all_matches if len(x) > 0], ignore_index=True)
+        if any(len(x) > 0 for x in all_matches)
+        else pd.DataFrame()
+    )
+
+    if len(matched) > 0:
+        base = pd.DataFrame()
+
+        base["old_worker_id"] = matched.get("worker_id_old", pd.NA)
+        base["new_worker_id"] = matched.get("worker_id_new", pd.NA)
+        base["old_recon_id"] = matched.get("recon_id_old", pd.NA)
+        base["new_recon_id"] = matched.get("recon_id_new", pd.NA)
+
+        base["old_full_name_norm"] = matched.get("full_name_norm_old", pd.NA)
+        base["new_full_name_norm"] = matched.get("full_name_norm_new", pd.NA)
+        base["old_dob"] = matched.get("dob_old", pd.NA)
+        base["new_dob"] = matched.get("dob_new", pd.NA)
+        base["old_hire_date"] = matched.get("hire_date_old", pd.NA)
+        base["new_hire_date"] = matched.get("hire_date_new", pd.NA)
+
+        base["old_last4_ssn"] = matched.get("last4_ssn_old", pd.NA)
+        base["new_last4_ssn"] = matched.get("last4_ssn_new", pd.NA)
+
+        base["old_salary"] = matched.get("salary_old", pd.NA)
+        base["new_salary"] = matched.get("salary_new", pd.NA)
+        base["old_payrate"] = matched.get("payrate_old", pd.NA)
+        base["new_payrate"] = matched.get("payrate_new", pd.NA)
+
+        base["old_position"] = matched.get("position_old", pd.NA)
+        base["new_position"] = matched.get("position_new", pd.NA)
+        base["old_district"] = matched.get("district_old", pd.NA)
+        base["new_district"] = matched.get("district_new", pd.NA)
+
+        base["old_location_state"] = matched.get("location_state_old", pd.NA)
+        base["new_location_state"] = matched.get("location_state_new", pd.NA)
+
+        base["old_worker_status"] = matched.get("worker_status_old", pd.NA)
+        base["new_worker_status"] = matched.get("worker_status_new", pd.NA)
+        base["old_worker_type"] = matched.get("worker_type_old", pd.NA)
+        base["new_worker_type"] = matched.get("worker_type_new", pd.NA)
+
+        base["match_source"] = matched["match_source"].astype("string")
+
+        # Append configured extra fields (old_/new_ pair for each field).
+        # After the merge, extra field columns have _old/_new suffixes.
+        for _field in _load_extra_fields():
+            base[f"old_{_field}"] = matched.get(f"{_field}_old", pd.NA)
+            base[f"new_{_field}"] = matched.get(f"{_field}_new", pd.NA)
+
+        # Compute confidence score for every matched pair.
+        # Uses signals available before PII stripping (last4_ssn still present here).
+        base["confidence"] = [
+            compute_confidence(r) for r in base.to_dict(orient="records")
+        ]
+        matched_raw = base
+    else:
+        matched_raw = pd.DataFrame(columns=["match_source", "confidence"])
+
+    matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
+    old.to_csv(OUT / "unmatched_old.csv", index=False)
+    new.to_csv(OUT / "unmatched_new.csv", index=False)
+
+    report["matched_total"] = int(len(matched_raw))
+    report["unmatched_old"] = int(len(old))
+    report["unmatched_new"] = int(len(new))
+
+    (OUT / "match_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    print("[matcher] complete")
+    print(f"[matcher] matched_total: {report['matched_total']}")
+    print(f"[matcher] matched_by_worker_id: {report['matched_by_worker_id']}")
+    print(f"[matcher] matched_by_recon_id: {report['matched_by_recon_id']}")
+    print(f"[matcher] matched_by_pk: {report['matched_by_pk']}")
+    print(f"[matcher] matched_by_last4_dob: {report['matched_by_last4_dob']}")
+    print(f"[matcher] matched_by_dob_name: {report['matched_by_dob_name']}")
+    print(f"[matcher] matched_by_name_hire_date: {report['matched_by_name_hire_date']}")
+    print(f"[matcher] unmatched_old: {report['unmatched_old']}")
+    print(f"[matcher] unmatched_new: {report['unmatched_new']}")
+
+
+if __name__ == "__main__":
+    main()

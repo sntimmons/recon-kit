@@ -1,0 +1,127 @@
+# config/policy.yaml — Reconciliation pipeline policy configuration.
+# Edit thresholds here to control gating and sanity gate behavior.
+#
+# IMPORTANT: confidence_policy section below is the SINGLE SOURCE OF TRUTH
+# for correction approval thresholds.  confidence_policy.py reads these values
+# at import time and falls back to hardcoded defaults only if this file is
+# absent or unreadable.
+
+gating:
+  # Legacy reference values — kept for documentation only.
+  # Active thresholds are now in confidence_policy below.
+  salary_payrate_min_confidence: 0.97
+  status_min_confidence: 0.98
+  hire_date_job_org_min_confidence: 0.95
+
+# ---------------------------------------------------------------------------
+# Confidence gating policy
+# ---------------------------------------------------------------------------
+# match_source: per-source minimum confidence.
+#   auto_approve: true  — bypasses all confidence checks (worker_id exact match)
+#   min_confidence      — minimum required confidence score [0, 1]
+# fix_type: per-correction-type minimum confidence (stricter of source/fix wins)
+# low_confidence_floor: REVIEW reason changes from "below_threshold" to
+#   "low_confidence" below this value.
+# ---------------------------------------------------------------------------
+confidence_policy:
+  low_confidence_floor: 0.80
+
+  match_source:
+    worker_id:
+      auto_approve: true
+    recon_id:
+      min_confidence: 0.95
+    pk:
+      min_confidence: 0.95
+    last4_dob:
+      min_confidence: 0.97
+    dob_name:
+      min_confidence: 0.97
+    name_hire_date:
+      min_confidence: 0.97
+    _default:
+      min_confidence: 0.95
+
+  fix_type:
+    salary:
+      min_confidence: 0.97
+    payrate:
+      min_confidence: 0.97
+    status:
+      min_confidence: 0.98
+    hire_date:
+      min_confidence: 0.95
+    job_org:
+      min_confidence: 0.95
+    _default:
+      min_confidence: 0.95
+
+sanity_gate:
+  enabled: true
+  fail_exit_code: 3
+
+  # Block downstream outputs if any suspicious default rate exceeds these.
+  block_if_rate_greater_than:
+    hire_date_default_2026_02: 0.02
+    salary_suspicious_default: 0.02
+
+  # Block downstream outputs if suspicious default count exceeds these absolute numbers.
+  block_if_count_greater_than:
+    hire_date_default_2026_02: 500
+    salary_suspicious_default: 500
+
+  # Controls which downstream outputs are blocked when the gate fails.
+  block_corrections: true
+  block_workbook: false
+  block_exports: false
+
+  patterns:
+    hire_date_default_months:
+      - "2026-02"
+      - "2026-03"
+    salary_suspicious_values:
+      - 40000
+      - 40003
+      - 40013
+      - 40073
+
+# ---------------------------------------------------------------------------
+# PII minimization
+# ---------------------------------------------------------------------------
+# include_dob_in_ui      — allow old_dob/new_dob in ui_pairs.csv output
+# include_dob_in_exports — allow old_dob/new_dob in wide_compare.csv / workbook
+# Set false to suppress DOB from all downstream outputs.
+# Matching still uses DOB internally; this only controls output files.
+# ---------------------------------------------------------------------------
+pii:
+  include_dob_in_ui: false
+  include_dob_in_exports: false
+
+# ---------------------------------------------------------------------------
+# UI contract
+# ---------------------------------------------------------------------------
+ui_contract:
+  version: v1
+
+# ---------------------------------------------------------------------------
+# Extra fields — side-by-side columns that flow into wide_compare, ui_pairs,
+# and the workbook's Extra_Field_Mismatches sheet.
+# Only fields that exist as old_<field> + new_<field> in matched_pairs are
+# included; missing fields log a warning and are silently skipped.
+# ---------------------------------------------------------------------------
+extra_fields:
+  enabled: true
+  fields:
+    - cost_center
+    - company
+    - department
+    - business_unit
+
+  # Named groups — any field from a group triggers mismatch_group_<name>=True.
+  groups:
+    org: [cost_center, company, department]
+
+  # Optional gating — when enabled, extra field mismatches require min_confidence.
+  gate:
+    enabled: false
+    min_confidence: 0.95
