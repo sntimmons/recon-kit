@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import csv
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
-SCHEMA_PATH = ROOT / "audit" / "schema.sql"
 
-MAPPED_OLD = ROOT / "outputs" / "mapped_old.csv"
-MAPPED_NEW = ROOT / "outputs" / "mapped_new.csv"
-MATCHED_RAW = ROOT / "outputs" / "matched_raw.csv"
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, read/write
+# all I/O within that run-specific directory instead of global repo paths.
+_rk_work    = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+
+DB_PATH     = (_rk_work / "audit" / "audit.db")         if _rk_work else (ROOT / "audit" / "audit.db")
+SCHEMA_PATH = ROOT / "audit" / "schema.sql"             # schema is static — always from repo
+MAPPED_OLD  = (_rk_work / "outputs" / "mapped_old.csv")  if _rk_work else (ROOT / "outputs" / "mapped_old.csv")
+MAPPED_NEW  = (_rk_work / "outputs" / "mapped_new.csv")  if _rk_work else (ROOT / "outputs" / "mapped_new.csv")
+MATCHED_RAW = (_rk_work / "outputs" / "matched_raw.csv") if _rk_work else (ROOT / "outputs" / "matched_raw.csv")
 
 # If you ever generate a curated/finalized file, we'll prefer it.
 FINALIZED_CANDIDATES_DEFAULT = ROOT / "outputs" / "finalized_matches_candidates.csv"

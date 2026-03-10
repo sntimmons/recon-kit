@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -10,7 +11,11 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "outputs"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, write all
+# outputs into that run-specific directory instead of the global outputs/.
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+OUT = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
 OUT.mkdir(parents=True, exist_ok=True)
 
 

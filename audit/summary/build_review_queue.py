@@ -47,9 +47,15 @@ from confidence_policy import is_auto_approve_source
 from sanity_checks import detect_wave_dates
 from explanation import generate_explanation
 
+import os as _os_rk
 ROOT    = _HERE.parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_CSV = _HERE / "review_queue.csv"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, use the
+# per-run DB.  The --db / --out CLI args (added below in main()) take
+# precedence over both the env var and these module-level defaults.
+_rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+DB_PATH  = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_CSV  = _HERE / "review_queue.csv"
 
 _REQUIRED_COLS = [
     "pair_id", "match_source", "old_worker_id", "new_worker_id",
@@ -164,12 +170,23 @@ def _build_row(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict | 
     }
 
 
-def main() -> None:
-    if not DB_PATH.exists():
-        print(f"[error] audit.db not found: {DB_PATH}", file=sys.stderr)
+def main(argv: list[str] | None = None) -> None:
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description="Build review queue CSV.")
+    _parser.add_argument("--db",  default=None, metavar="PATH",
+                         help=f"SQLite database path (default: {DB_PATH}).")
+    _parser.add_argument("--out", default=None, metavar="PATH",
+                         help=f"Output CSV path (default: {OUT_CSV}).")
+    _args = _parser.parse_args(argv)
+
+    db_path = Path(_args.db)  if _args.db  else DB_PATH
+    out_csv = Path(_args.out) if _args.out else OUT_CSV
+
+    if not db_path.exists():
+        print(f"[error] audit.db not found: {db_path}", file=sys.stderr)
         sys.exit(2)
 
-    con = sqlite3.connect(str(DB_PATH))
+    con = sqlite3.connect(str(db_path))
     try:
         try:
             mp = pd.read_sql_query("SELECT * FROM matched_pairs", con)
@@ -217,8 +234,11 @@ def main() -> None:
             "old_position", "new_position",
             "old_district", "new_district",
             "old_location_state", "new_location_state",
-        ]).to_csv(str(OUT_CSV), index=False)
-        print(f"  wrote: {OUT_CSV.relative_to(ROOT)}  (0 rows)")
+        ]).to_csv(str(out_csv), index=False)
+        try:
+            print(f"  wrote: {out_csv.relative_to(ROOT)}  (0 rows)")
+        except ValueError:
+            print(f"  wrote: {out_csv}  (0 rows)")
         return
 
     queue = pd.DataFrame(out_rows)
@@ -230,8 +250,8 @@ def main() -> None:
         ascending=[False, False, True],
     ).drop(columns=["_abs_sal"])
 
-    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    queue.to_csv(str(OUT_CSV), index=False)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    queue.to_csv(str(out_csv), index=False)
 
     # Print action summary by fix_type
     n_approve = int((queue["action"] == "APPROVE").sum())
@@ -254,7 +274,10 @@ def main() -> None:
               f"APPROVE={counts['APPROVE']:>7,}  "
               f"REVIEW={counts['REVIEW']:>7,}")
 
-    print(f"  wrote: {OUT_CSV.relative_to(ROOT)}")
+    try:
+        print(f"  wrote: {out_csv.relative_to(ROOT)}")
+    except ValueError:
+        print(f"  wrote: {out_csv}")
 
 
 if __name__ == "__main__":

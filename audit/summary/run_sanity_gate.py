@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pandas as pd
 
+import os as _os_rk
 _HERE = Path(__file__).resolve().parent   # audit/summary/
 ROOT  = _HERE.parents[1]                  # repo root
 
@@ -36,8 +37,10 @@ from sanity_gate   import evaluate_sanity_gate                    # noqa: E402
 from config_loader import load_policy                             # noqa: E402
 from gating        import classify_all                            # noqa: E402
 
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_DIR = _HERE
+# Per-run isolation: --db CLI arg takes precedence; env var is the fallback.
+_rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+DB_PATH  = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_DIR  = _HERE
 
 
 def _compute_approve_rate(db_path: Path) -> tuple[int, int, float]:

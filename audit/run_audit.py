@@ -12,8 +12,12 @@ import pandas as pd
 
 from load_sqlite import DB_PATH, _pick_finalized_csv
 
+import os as _os_rk
 ROOT = Path(__file__).resolve().parents[1]
-AUDIT_DIR = ROOT / "audit"
+
+# Per-run isolation: write audit CSV outputs into the per-run audit/ subdir.
+_rk_work  = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+AUDIT_DIR = (_rk_work / "audit") if _rk_work else (ROOT / "audit")
 
 # Minimum columns required in a finalized CSV for it to be usable as the
 # audit dataset in Q2-Q5.  If any are absent the file is treated as a

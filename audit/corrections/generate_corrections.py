@@ -47,9 +47,14 @@ from gating import (
 )
 from sanity_checks import detect_wave_dates
 
+import os as _os_rk
 ROOT    = _HERE.parents[1]          # repo root
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_DIR = _HERE / "out"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, use the
+# per-run DB.  The --db / --out-dir CLI args take precedence over this.
+_rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+DB_PATH  = (_rk_work / "audit" / "audit.db")            if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_DIR  = (_rk_work / "audit" / "corrections" / "out") if _rk_work else (_HERE / "out")
 
 TODAY = date.today().isoformat()    # YYYY-MM-DD, determined once at import time
 

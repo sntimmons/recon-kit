@@ -181,6 +181,9 @@ if __name__ == "__main__":
     # Called as a script by api_server.py:
     #   python resolve_matched_raw.py
     # Resolves outputs/matched_raw.csv in-place (adds pair_id, enforces 1-to-1).
-    _root = Path(__file__).resolve().parent
+    # Per-run isolation: use RK_WORK_DIR when set so each run has its own DB.
+    import os as _os
+    _rk = Path(_os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os.environ else None
+    _root = _rk if _rk else Path(__file__).resolve().parent
     _path = _root / "outputs" / "matched_raw.csv"
     resolve(input_path=_path, output_path=_path)
