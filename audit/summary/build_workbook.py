@@ -58,6 +58,8 @@ from gating import (
     _norm,
 )
 from config_loader import load_policy, load_pii_config
+from explanation import generate_explanation
+from sanity_checks import detect_wave_dates
 
 ROOT         = _HERE.parents[1]
 DB_PATH      = ROOT / "audit" / "audit.db"
@@ -243,9 +245,12 @@ def _load_wide_from_db(db_path: Path) -> pd.DataFrame:
     has_loc = "new_location" in mp.columns
     has_wt  = "old_worker_type" in mp.columns
 
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+
     rows = []
-    for r in mp.to_dict(orient="records"):
-        result    = classify_all(r)
+    for r in all_rows:
+        result    = classify_all(r, wave_dates=wave_dates)
         fix_types = result["fix_types"]
         sal_d     = salary_delta(r)
         pay_d     = payrate_delta(r)
@@ -259,6 +264,7 @@ def _load_wide_from_db(db_path: Path) -> pd.DataFrame:
             "reason":             result["reason"],
             "fix_types":          "|".join(fix_types),
             "summary":            build_summary_str(r, fix_types) if fix_types else "no_changes",
+            "match_explanation":  generate_explanation(r, result),
             "priority_score":     prio,
             "old_full_name_norm": r.get("old_full_name_norm", ""),
             "new_full_name_norm": r.get("new_full_name_norm", ""),
@@ -360,16 +366,18 @@ def main(argv: list[str] | None = None) -> None:
 
     if REVIEW_CSV.exists():
         review_df = pd.read_csv(str(REVIEW_CSV))
+        # Always filter to REVIEW-only — csv may contain APPROVE rows from older runs
+        if not review_df.empty and "action" in review_df.columns:
+            review_df = review_df[review_df["action"] == "REVIEW"].copy()
         if not review_df.empty:
             review_src = REVIEW_CSV.name
         else:
-            # review_queue.csv exists but has 0 data rows — it is stale (e.g.
-            # written during a previous 0-match run).  Fall back to filtering
+            # review_queue.csv exists but has 0 REVIEW rows — fall back to filtering
             # the live dataset so the sheet is never incorrectly blank.
             review_df  = _review_from_alldf(all_df)
             review_src = (
-                f"{REVIEW_CSV.name} was empty — "
-                "filtered from All_Matches (needs_review==True)"
+                f"{REVIEW_CSV.name} had no REVIEW rows — "
+                "filtered from All_Matches (action==REVIEW)"
             )
     elif "needs_review" in all_df.columns or "action" in all_df.columns:
         review_df  = _review_from_alldf(all_df)

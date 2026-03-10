@@ -38,6 +38,8 @@ from gating import (
     _norm,
 )
 from config_loader import load_policy, load_extra_fields, load_pii_config, load_audit_config
+from explanation import generate_explanation
+from sanity_checks import detect_wave_dates
 
 ROOT    = _HERE.parents[1]
 DB_PATH = ROOT / "audit" / "audit.db"
@@ -60,7 +62,7 @@ _XLOOKUP_COLS = [
 _WIDE_COLS = [
     # Keys / gating
     "pair_id", "match_source", "confidence",
-    "action", "reason", "fix_types", "summary", "priority_score",
+    "action", "reason", "fix_types", "summary", "match_explanation", "priority_score",
     # Side-by-side fields
     "old_full_name_norm", "new_full_name_norm",
     "old_worker_status", "new_worker_status",
@@ -211,13 +213,19 @@ def main(argv: list[str] | None = None) -> None:
     if available_extra:
         print(f"  extra fields    : {available_extra}")
 
+    # Detect wave dates before per-row loop so classify_all can flag individual records
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    if wave_dates:
+        print(f"  wave dates detected: {sorted(wave_dates)}")
+
     xlookup_rows: list[dict] = []
     wide_rows:    list[dict] = []
     n_approve = 0
     n_review  = 0
 
-    for r in mp.to_dict(orient="records"):
-        result    = classify_all(r)
+    for r in all_rows:
+        result    = classify_all(r, wave_dates=wave_dates)
         fix_types = result["fix_types"]
         action    = result["action"]
         reason    = result["reason"]
@@ -252,6 +260,7 @@ def main(argv: list[str] | None = None) -> None:
             "reason":             reason,
             "fix_types":          "|".join(fix_types),
             "summary":            summary,
+            "match_explanation":  generate_explanation(r, result),
             "priority_score":     prio,
             "old_full_name_norm": r.get("old_full_name_norm", ""),
             "new_full_name_norm": r.get("new_full_name_norm", ""),

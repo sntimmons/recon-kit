@@ -424,6 +424,27 @@ def _print_report(
 # Public API
 # ---------------------------------------------------------------------------
 
+def detect_wave_dates(rows: list[dict], min_rate: float = _HIRE_DATE_WAVE_MIN_RATE) -> frozenset[str]:
+    """
+    Return the set of new_hire_date values that appear in >= min_rate of all rows.
+
+    A wave date indicates a bulk import where many records received the same date.
+    Returns a frozenset of ISO date strings (empty if none detected).
+
+    Public API — called by build_diy_exports, build_review_queue, build_workbook
+    to pass wave context into classify_all() so individual records are routed to REVIEW.
+    """
+    total = len(rows)
+    if total == 0:
+        return frozenset()
+    counter: Counter = Counter(
+        str(r.get("new_hire_date", "") or "").strip()
+        for r in rows
+        if str(r.get("new_hire_date", "") or "").strip()
+    )
+    return frozenset(nd for nd, cnt in counter.items() if cnt / total >= min_rate)
+
+
 def run_sanity_checks(db_path: Path, out_dir: Path) -> dict:
     """
     Run the full sanity check analysis and return a structured results dict.

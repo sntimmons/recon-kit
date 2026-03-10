@@ -211,9 +211,17 @@ def classify_row(row: dict, fix_type: str) -> dict:
     return result
 
 
-def classify_all(row: dict) -> dict:
+def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     """
     Classify all detected fix_types for a matched-pair row.
+
+    Parameters
+    ----------
+    row        : matched-pair dict
+    wave_dates : optional frozenset of new_hire_date strings detected as bulk-import
+                 waves by detect_wave_dates().  Any record whose new_hire_date is in
+                 this set is forced to action=REVIEW with reason "hire_date_wave",
+                 even if no other field changes are detected.
 
     Returns
     -------
@@ -225,7 +233,24 @@ def classify_all(row: dict) -> dict:
     """
     fix_types = infer_fix_types(row)
 
+    # -------------------------------------------------------------------
+    # Override 3: hire_date_wave — evaluated before the early-return so it
+    # catches records with no other field changes.
+    # -------------------------------------------------------------------
+    wave_flagged = False
+    if wave_dates:
+        new_hd = str(row.get("new_hire_date", "") or "").strip()
+        if new_hd and new_hd in wave_dates:
+            wave_flagged = True
+
     if not fix_types:
+        if wave_flagged:
+            return {
+                "fix_types": [],
+                "action":    "REVIEW",
+                "reason":    "hire_date_wave",
+                "per_fix":   {},
+            }
         return {
             "fix_types": [],
             "action":    "APPROVE",
@@ -272,6 +297,12 @@ def classify_all(row: dict) -> dict:
         for ft, v in per_fix.items()
         if v["action"] == "REVIEW"
     ]
+
+    # Append wave flag to reasons and force REVIEW
+    if wave_flagged:
+        overall_action = "REVIEW"
+        review_reasons.append("hire_date_wave")
+
     overall_reason = "|".join(review_reasons) if review_reasons else "all_fix_types_approved"
 
     return {

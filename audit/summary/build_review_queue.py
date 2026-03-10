@@ -44,6 +44,8 @@ sys.path.insert(0, str(_HERE))
 
 import gating
 from confidence_policy import is_auto_approve_source
+from sanity_checks import detect_wave_dates
+from explanation import generate_explanation
 
 ROOT    = _HERE.parents[1]
 DB_PATH = ROOT / "audit" / "audit.db"
@@ -116,13 +118,13 @@ def _priority_score(row: dict, fix_types: list[str], result: dict) -> tuple[int,
     return score, labels
 
 
-def _build_row(row: dict) -> dict | None:
+def _build_row(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict | None:
     """
-    Process one matched-pair row.  Returns None if no fix_types detected.
+    Process one matched-pair row.  Returns None if action != REVIEW.
     """
-    result    = gating.classify_all(row)
+    result    = gating.classify_all(row, wave_dates=wave_dates)
     fix_types = result["fix_types"]
-    if not fix_types:
+    if result["action"] != "REVIEW":
         return None
 
     score, labels = _priority_score(row, fix_types, result)
@@ -143,6 +145,7 @@ def _build_row(row: dict) -> dict | None:
         "priority_score":     score,
         "priority_labels":    "|".join(labels),
         "summary":            gating.build_summary_str(row, fix_types),
+        "match_explanation":  generate_explanation(row, result),
         "salary_delta":       "" if d_sal is None else round(d_sal, 2),
         "old_salary":         row.get("old_salary", ""),
         "new_salary":         row.get("new_salary", ""),
@@ -189,9 +192,15 @@ def main() -> None:
     if "confidence" not in mp.columns:
         mp["confidence"] = None
 
+    # Detect wave dates before per-row loop so classify_all can flag individual records
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    if wave_dates:
+        print(f"  wave dates detected: {sorted(wave_dates)}")
+
     out_rows: list[dict] = []
-    for r in mp.to_dict(orient="records"):
-        built = _build_row(r)
+    for r in all_rows:
+        built = _build_row(r, wave_dates=wave_dates)
         if built is not None:
             out_rows.append(built)
 
@@ -200,7 +209,8 @@ def main() -> None:
         pd.DataFrame(columns=[
             "pair_id", "match_source", "old_worker_id", "new_worker_id",
             "old_full_name_norm", "fix_types", "confidence", "action", "reason",
-            "priority_score", "priority_labels", "summary", "salary_delta",
+            "priority_score", "priority_labels", "summary", "match_explanation",
+            "salary_delta",
             "old_salary", "new_salary", "old_payrate", "new_payrate",
             "old_worker_status", "new_worker_status",
             "old_hire_date", "new_hire_date",
