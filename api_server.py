@@ -349,9 +349,10 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             _set_step(run_id, "workbook")
             rc, _ = _run_cmd(
                 [str(PYTHON), "audit/summary/build_workbook.py",
-                 "--out",  str(run_dir / "recon_workbook.xlsx"),
-                 "--wide", str(run_dir / "wide_compare.csv"),
-                 "--db",   str(run_db)],
+                 "--out",      str(run_dir / "recon_workbook.xlsx"),
+                 "--wide",     str(run_dir / "wide_compare.csv"),
+                 "--db",       str(run_db),
+                 "--manifest", str(run_corr / "corrections_manifest.csv")],
                 HERE, run_id, env=run_env,
             )
             _finish_step(run_id, "workbook", "done" if rc == 0 else "warn")

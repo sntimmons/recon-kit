@@ -61,11 +61,13 @@ from config_loader import load_policy, load_pii_config
 from explanation import generate_explanation
 from sanity_checks import detect_wave_dates
 
+import os as _os_rk
 ROOT         = _HERE.parents[1]
+_rk_work     = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
 DB_PATH      = ROOT / "audit" / "audit.db"
 WIDE_CSV     = ROOT / "audit" / "exports" / "out" / "wide_compare.csv"
-REVIEW_CSV   = _HERE / "review_queue.csv"
-MANIFEST_CSV = ROOT / "audit" / "corrections" / "out" / "corrections_manifest.csv"
+REVIEW_CSV   = (_rk_work / "review_queue.csv")                                                  if _rk_work else (_HERE / "review_queue.csv")
+MANIFEST_CSV = (_rk_work / "audit" / "corrections" / "out" / "corrections_manifest.csv")       if _rk_work else (ROOT / "audit" / "corrections" / "out" / "corrections_manifest.csv")
 OUT_PATH     = _HERE / "recon_workbook.xlsx"
 
 # ---------------------------------------------------------------------------
@@ -220,10 +222,25 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
             sal_rows_count = int(all_df["fix_types"].str.contains("salary", na=False).sum())
         else:
             sal_rows_count = None
+
+        # Active/$0 records are data quality issues (missing/bad data from source),
+        # not real salary changes.  Their delta is -(old_salary), e.g. -$50,000 for
+        # a worker whose new file has $0 — including them collapses mean/median and
+        # masks the true distribution of legitimate salary corrections.
+        # Identify them once, use for both exclusion and the CRITICAL warning below.
+        active_zero_df = validate_active_zero_salary(all_df)
+        n_az = len(active_zero_df)
+
         sal_d = pd.to_numeric(all_df["salary_delta"], errors="coerce")
+        # Drop Active/$0 records from the stats series by index alignment
+        if n_az > 0:
+            sal_d = sal_d.drop(active_zero_df.index, errors="ignore")
+
         sal_d_nonzero = sal_d[sal_d != 0].dropna()
         if len(sal_d_nonzero) > 0 or sal_rows_count:
             _kv("SALARY DELTA STATS", "", bold=True)
+            if n_az > 0:
+                _kv(f"  (excl. {n_az} Active/$0 — data quality, not real changes)", "")
             if sal_rows_count is not None:
                 _kv("  Rows with salary change", sal_rows_count)
             if len(sal_d_nonzero) > 0:
@@ -232,11 +249,10 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
                 _kv("  Max increase", round(float(sal_d_nonzero.max()), 2))
                 _kv("  Max decrease", round(float(sal_d_nonzero.min()), 2))
             # Active/$0 salary warning
-            active_zero_df = validate_active_zero_salary(all_df)
-            if len(active_zero_df) > 0:
+            if n_az > 0:
                 lc = WriteOnlyCell(ws, value=f"  CRITICAL: Active workers with $0 salary")
                 lc.font = Font(bold=True, color="C00000")
-                ws.append([lc, len(active_zero_df)])
+                ws.append([lc, n_az])
             _kv()
 
     _kv("SHEETS", "", bold=True)
@@ -392,11 +408,16 @@ def main(argv: list[str] | None = None) -> None:
         "--db", default=None, metavar="PATH",
         help=f"SQLite database path (default: {DB_PATH}).",
     )
+    parser.add_argument(
+        "--manifest", default=None, metavar="PATH",
+        help=f"corrections_manifest.csv path (default: auto from RK_WORK_DIR or {MANIFEST_CSV}).",
+    )
     args = parser.parse_args(argv)
 
-    out_path  = Path(args.out) if args.out else OUT_PATH
-    wide_path = Path(args.wide) if args.wide else WIDE_CSV
-    db_path   = Path(args.db) if args.db else DB_PATH
+    out_path      = Path(args.out)      if args.out      else OUT_PATH
+    wide_path     = Path(args.wide)     if args.wide     else WIDE_CSV
+    db_path       = Path(args.db)       if args.db       else DB_PATH
+    manifest_path = Path(args.manifest) if args.manifest else MANIFEST_CSV
 
     if not db_path.exists():
         print(f"[error] DB not found: {db_path}", file=sys.stderr)
@@ -461,14 +482,14 @@ def main(argv: list[str] | None = None) -> None:
         review_df  = pd.DataFrame()
         review_src = "unavailable"
 
-    if MANIFEST_CSV.exists():
-        manifest_df  = pd.read_csv(str(MANIFEST_CSV))
-        manifest_src = MANIFEST_CSV.name
+    if manifest_path.exists():
+        manifest_df  = pd.read_csv(str(manifest_path))
+        manifest_src = manifest_path.name
     else:
         manifest_df  = pd.DataFrame([
             {"note": "corrections_manifest.csv not found — run generate_corrections.py first"}
         ])
-        manifest_src = "placeholder"
+        manifest_src = f"placeholder (looked in: {manifest_path})"
 
     # ------------------------------------------------------------------
     # Build mismatch filter sheets
