@@ -77,6 +77,14 @@ sanity_gate:
   block_workbook: false
   block_exports: false
 
+  # Fix 6: Pipeline-level health thresholds.
+  # Gate fails if deterministic match rate is too low, approval rate is too low,
+  # or any active workers have $0 salary in the new data.
+  health_thresholds:
+    min_det_rate: 0.95          # >= 95% of matches must be via deterministic source
+    min_approve_rate: 0.80      # >= 80% of matched pairs must be auto-approvable
+    max_active_zero_salary: 0   # zero tolerance for Active workers with $0 salary
+
   patterns:
     hire_date_default_months:
       - "2026-02"

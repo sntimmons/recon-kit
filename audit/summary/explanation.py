@@ -149,15 +149,36 @@ def generate_explanation(row: dict, result: dict) -> str:
         )
 
     # ------------------------------------------------------------------
-    # Part 4: Decision suffix
+    # Part 4: REJECT_MATCH signals
     # ------------------------------------------------------------------
-    if action == "APPROVE":
+    reject_signals: list[str] = []
+    if action == "REJECT_MATCH":
+        reason_str = result.get("reason", "")
+        if "dob_name_low_confidence" in reason_str:
+            conf_val = conf if conf is not None else 0.0
+            reject_signals.append(
+                f"Confidence {conf_val:.2f} is below the 0.75 minimum for "
+                f"name/DOB matches — likely a wrong-person pairing"
+            )
+        elif "fuzzy_extreme_salary_ratio" in reason_str:
+            reject_signals.append(
+                "Salary ratio between records is extreme — likely a wrong-person pairing"
+            )
+        else:
+            reject_signals.append("Flagged as likely wrong-person pairing")
+
+    # ------------------------------------------------------------------
+    # Part 5: Decision suffix
+    # ------------------------------------------------------------------
+    if action == "REJECT_MATCH":
+        decision = "Rejected — do not apply corrections."
+    elif action == "APPROVE":
         if not fix_types:
             decision = "No field changes detected. Approved automatically."
         else:
             decision = "Approved automatically."
     else:
-        # Any REVIEW
+        # REVIEW
         decision = "Flagged for review."
 
     # ------------------------------------------------------------------
@@ -168,7 +189,13 @@ def generate_explanation(row: dict, result: dict) -> str:
     if conf_str:
         parts.append(conf_str)
 
-    if not fix_types and not wave_only:
+    if action == "REJECT_MATCH":
+        if reject_signals:
+            parts.append(", ".join(reject_signals) + ".")
+        if changes:
+            parts.append("Changes noted: " + ", ".join(changes) + ".")
+        parts.append("Rejected — do not apply corrections.")
+    elif not fix_types and not wave_only:
         # Completely clean record
         parts.append("No field changes detected. Approved automatically.")
     else:

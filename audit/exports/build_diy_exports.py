@@ -77,6 +77,7 @@ _WIDE_COLS = [
     # Computed helpers
     "salary_delta", "salary_ratio", "payrate_delta",
     "status_changed", "hire_date_changed", "job_org_changed",
+    "hire_date_pattern",
     "needs_review", "suggested_action",
 ]
 
@@ -288,6 +289,10 @@ def main(argv: list[str] | None = None) -> None:
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
             "hire_date_changed":  not _str_eq(r.get("old_hire_date"), r.get("new_hire_date")),
             "job_org_changed":    "job_org" in fix_types,
+            # Fix 4: hire_date_pattern — populated when a systematic pattern was detected
+            # (off_by_one_day_pattern or systematic_year_shift_pattern).
+            "hire_date_pattern":  result.get("per_fix", {}).get("hire_date", {}).get("reason", "")
+                                  if "hire_date" in fix_types else "",
             "needs_review":       action == "REVIEW",
             "suggested_action":   action,
         }

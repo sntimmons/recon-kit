@@ -20,20 +20,52 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 _HERE = Path(__file__).resolve().parent   # audit/summary/
 ROOT  = _HERE.parents[1]                  # repo root
 
 sys.path.insert(0, str(_HERE))
 
-from sanity_checks import run_sanity_checks    # noqa: E402
-from sanity_gate   import evaluate_sanity_gate  # noqa: E402
-from config_loader import load_policy           # noqa: E402
+from sanity_checks import run_sanity_checks, detect_wave_dates   # noqa: E402
+from sanity_gate   import evaluate_sanity_gate                    # noqa: E402
+from config_loader import load_policy                             # noqa: E402
+from gating        import classify_all                            # noqa: E402
 
 DB_PATH = ROOT / "audit" / "audit.db"
 OUT_DIR = _HERE
+
+
+def _compute_approve_rate(db_path: Path) -> tuple[int, int, float]:
+    """
+    Run classify_all on every matched pair and return (approve_count, total, approve_rate).
+    Used by Fix 6 to populate health_metrics["approve_rate"] before gate evaluation.
+    """
+    con = sqlite3.connect(str(db_path))
+    try:
+        mp = pd.read_sql_query("SELECT * FROM matched_pairs", con)
+    finally:
+        con.close()
+
+    if mp.empty:
+        return 0, 0, 0.0
+
+    if "confidence" not in mp.columns:
+        mp["confidence"] = None
+
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    total      = len(all_rows)
+    n_approve  = sum(
+        1 for r in all_rows
+        if classify_all(r, wave_dates=wave_dates)["action"] == "APPROVE"
+    )
+    rate = round(n_approve / total, 6) if total > 0 else 0.0
+    return n_approve, total, rate
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -55,6 +87,16 @@ def main(argv: list[str] | None = None) -> None:
 
     # run_sanity_checks exits 2 on missing DB / missing columns
     results = run_sanity_checks(db_path=db_path, out_dir=out_dir)
+
+    # Fix 6: Compute approve_rate (requires a full gating pass over all pairs).
+    # Populate it into results["health_metrics"] before the gate evaluates.
+    print("[run_sanity_gate] computing approve_rate (gating pass) ...")
+    n_approve, total_pairs, approve_rate = _compute_approve_rate(db_path)
+    if "health_metrics" not in results:
+        results["health_metrics"] = {}
+    results["health_metrics"]["approve_count"] = n_approve
+    results["health_metrics"]["approve_rate"]  = approve_rate
+    print(f"  approve_rate: {approve_rate:.4f}  ({n_approve:,}/{total_pairs:,} APPROVE)")
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -91,6 +133,13 @@ def main(argv: list[str] | None = None) -> None:
         blocked = [k for k, v in gate["blocked_outputs"].items() if v]
         if blocked:
             print(f"  Blocked outputs: {', '.join(blocked)}")
+
+    if gate.get("health_checks"):
+        print()
+        print("  Health checks:")
+        for check, info in gate["health_checks"].items():
+            status_icon = "OK" if info["passed"] else "FAIL"
+            print(f"    [{status_icon}] {check:<28}: {info['value']}  (threshold: {info['threshold']})")
 
     fail_code = policy.get("sanity_gate", {}).get("fail_exit_code", 3)
     sys.exit(0 if gate["passed"] else fail_code)

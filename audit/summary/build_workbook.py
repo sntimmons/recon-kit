@@ -71,9 +71,15 @@ OUT_PATH     = _HERE / "recon_workbook.xlsx"
 # ---------------------------------------------------------------------------
 # Styling constants
 # ---------------------------------------------------------------------------
-_HDR_FILL     = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
-_HDR_FONT     = Font(bold=True)
-_SUM_HDR_FONT = Font(bold=True, size=11)
+_HDR_FILL      = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
+_HDR_FONT      = Font(bold=True)
+_SUM_HDR_FONT  = Font(bold=True, size=11)
+# Red header for critical warning sheets (Active/$0 salary)
+_CRIT_HDR_FILL = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+_CRIT_HDR_FONT = Font(bold=True, color="FFFFFF")
+# Orange header for rejected-match sheet
+_REJ_HDR_FILL  = PatternFill(start_color="E26B0A", end_color="E26B0A", fill_type="solid")
+_REJ_HDR_FONT  = Font(bold=True, color="FFFFFF")
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +91,14 @@ def _header_cell(ws, value, font=None) -> WriteOnlyCell:
     cell = WriteOnlyCell(ws, value=value)
     cell.font = font or _HDR_FONT
     cell.fill = _HDR_FILL
+    return cell
+
+
+def _header_cell_styled(ws, value, font=None, fill=None) -> WriteOnlyCell:
+    """Return a WriteOnlyCell with custom font and fill."""
+    cell = WriteOnlyCell(ws, value=value)
+    cell.font = font or _HDR_FONT
+    cell.fill = fill or _HDR_FILL
     return cell
 
 
@@ -108,6 +122,43 @@ def _write_df_to_sheet(ws, df: pd.DataFrame) -> None:
         ws.append(list(row_tuple))
 
 
+def _write_df_to_sheet_styled(ws, df: pd.DataFrame, hdr_font=None, hdr_fill=None) -> None:
+    """Write DataFrame with custom header styling (for critical/rejected sheets)."""
+    cols = list(df.columns)
+    if not cols:
+        return
+    ws.append([_header_cell_styled(ws, c, font=hdr_font, fill=hdr_fill) for c in cols])
+    for row_tuple in df.itertuples(index=False, name=None):
+        ws.append(list(row_tuple))
+
+
+def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return rows where new_worker_status is 'active' and new_salary is $0 or blank.
+
+    These records indicate a mapping failure or data artefact — staging a salary
+    correction for them would zero out an active employee's pay in the target system.
+    """
+    if df.empty:
+        return df.iloc[0:0]  # empty with same columns
+    mask_status = (
+        df.get("new_worker_status", pd.Series(dtype=str))
+        .fillna("")
+        .str.strip()
+        .str.lower()
+        == "active"
+    )
+    new_sal_num = pd.to_numeric(
+        df.get("new_salary", pd.Series(dtype=object))
+        .astype(str)
+        .str.replace(",", "")
+        .str.replace("$", ""),
+        errors="coerce",
+    )
+    mask_zero = new_sal_num.isna() | (new_sal_num == 0.0)
+    return df[mask_status & mask_zero].copy()
+
+
 def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str) -> None:
     """Write the Summary sheet as a key-value table (write_only compatible)."""
 
@@ -129,16 +180,24 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
     _kv("MATCHED PAIRS", "", bold=True)
     _kv("  Total rows", total)
     if "action" in all_df.columns:
-        n_approve = int((all_df["action"] == "APPROVE").sum())
-        n_review  = int((all_df["action"] == "REVIEW").sum())
+        n_approve      = int((all_df["action"] == "APPROVE").sum())
+        n_review       = int((all_df["action"] == "REVIEW").sum())
+        n_reject_match = int((all_df["action"] == "REJECT_MATCH").sum())
         _kv("  APPROVE", n_approve)
-        _kv("  REVIEW", n_review)
+        _kv("  REVIEW",  n_review)
+        if n_reject_match:
+            _kv("  REJECT_MATCH", n_reject_match)
     _kv()
 
     if "match_source" in all_df.columns:
         _kv("BY MATCH SOURCE", "", bold=True)
         for src, cnt in all_df["match_source"].value_counts().items():
             _kv(f"  {src}", int(cnt))
+        # Fuzzy matches (sub-1.0 confidence)
+        if "confidence" in all_df.columns:
+            conf_num = pd.to_numeric(all_df["confidence"], errors="coerce")
+            n_fuzzy  = int((conf_num < 1.0).sum())
+            _kv("  Fuzzy (confidence < 1.0)", n_fuzzy)
         _kv()
 
     if "fix_types" in all_df.columns:
@@ -156,14 +215,28 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
         _kv()
 
     if "salary_delta" in all_df.columns:
-        sal_d = pd.to_numeric(all_df["salary_delta"], errors="coerce").dropna()
-        if len(sal_d) > 0:
+        # Fix 5: count rows where fix_types contains "salary" (not just non-null salary_delta)
+        if "fix_types" in all_df.columns:
+            sal_rows_count = int(all_df["fix_types"].str.contains("salary", na=False).sum())
+        else:
+            sal_rows_count = None
+        sal_d = pd.to_numeric(all_df["salary_delta"], errors="coerce")
+        sal_d_nonzero = sal_d[sal_d != 0].dropna()
+        if len(sal_d_nonzero) > 0 or sal_rows_count:
             _kv("SALARY DELTA STATS", "", bold=True)
-            _kv("  Rows with salary change", len(sal_d))
-            _kv("  Mean delta",   round(float(sal_d.mean()), 2))
-            _kv("  Median delta", round(float(sal_d.median()), 2))
-            _kv("  Max increase", round(float(sal_d.max()), 2))
-            _kv("  Max decrease", round(float(sal_d.min()), 2))
+            if sal_rows_count is not None:
+                _kv("  Rows with salary change", sal_rows_count)
+            if len(sal_d_nonzero) > 0:
+                _kv("  Mean delta",   round(float(sal_d_nonzero.mean()), 2))
+                _kv("  Median delta", round(float(sal_d_nonzero.median()), 2))
+                _kv("  Max increase", round(float(sal_d_nonzero.max()), 2))
+                _kv("  Max decrease", round(float(sal_d_nonzero.min()), 2))
+            # Active/$0 salary warning
+            active_zero_df = validate_active_zero_salary(all_df)
+            if len(active_zero_df) > 0:
+                lc = WriteOnlyCell(ws, value=f"  CRITICAL: Active workers with $0 salary")
+                lc.font = Font(bold=True, color="C00000")
+                ws.append([lc, len(active_zero_df)])
             _kv()
 
     _kv("SHEETS", "", bold=True)
@@ -292,6 +365,8 @@ def _load_wide_from_db(db_path: Path) -> pd.DataFrame:
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
             "hire_date_changed":  not _str_eq(r.get("old_hire_date"), r.get("new_hire_date")),
             "job_org_changed":    "job_org" in fix_types,
+            "hire_date_pattern":  result.get("per_fix", {}).get("hire_date", {}).get("reason", "")
+                                  if "hire_date" in fix_types else "",
             "needs_review":       result["action"] == "REVIEW",
             "suggested_action":   result["action"],
         })
@@ -418,12 +493,28 @@ def main(argv: list[str] | None = None) -> None:
     else:
         extra_mismatch_df = None
 
+    # Fix 3: Rejected_Matches — rows where action == REJECT_MATCH
+    rejected_df: pd.DataFrame | None = None
+    if "action" in all_df.columns:
+        rejected_df = all_df[all_df["action"] == "REJECT_MATCH"].copy()
+
+    # Fix 1: CRITICAL_Zero_Salary — Active workers with $0 salary in new data
+    active_zero_df = validate_active_zero_salary(all_df)
+    if len(active_zero_df) > 0:
+        print(
+            f"\n[build_workbook] *** CRITICAL: {len(active_zero_df):,} Active workers have "
+            f"$0 or missing salary in new data — see CRITICAL_Zero_Salary sheet ***\n"
+        )
+
     print(f"  review_queue src       : {review_src}  ({len(review_df):,} rows)")
     print(f"  manifest src           : {manifest_src}  ({len(manifest_df):,} rows)")
     print(f"  Salary_Mismatches      : {len(salary_df):,}")
     print(f"  Status_Mismatches      : {len(status_df):,}")
     print(f"  HireDate_Mismatches    : {len(hire_df):,}")
     print(f"  JobOrg_Mismatches      : {len(job_org_df):,}")
+    if rejected_df is not None:
+        print(f"  Rejected_Matches       : {len(rejected_df):,}")
+    print(f"  CRITICAL_Zero_Salary   : {len(active_zero_df):,}")
     if extra_mismatch_df is not None:
         print(f"  Extra_Field_Mismatches : {len(extra_mismatch_df):,}  (mm_ cols: {mm_cols})")
 
@@ -446,6 +537,8 @@ def main(argv: list[str] | None = None) -> None:
         ("Review_Queue",         review_df),
         ("Corrections_Manifest", manifest_df),
     ]
+    if rejected_df is not None and not rejected_df.empty:
+        data_sheets.insert(-1, ("Rejected_Matches", rejected_df))
     if extra_mismatch_df is not None:
         data_sheets.insert(-1, ("Extra_Field_Mismatches", extra_mismatch_df))
 
@@ -453,6 +546,11 @@ def main(argv: list[str] | None = None) -> None:
         ws = wb.create_sheet(sheet_name)
         _write_df_to_sheet(ws, df)
         print(f"  wrote: {sheet_name:<25}  ({len(df):,} rows)")
+
+    # CRITICAL_Zero_Salary sheet with red header — always write (even if 0 rows)
+    ws_crit = wb.create_sheet("CRITICAL_Zero_Salary")
+    _write_df_to_sheet_styled(ws_crit, active_zero_df, hdr_font=_CRIT_HDR_FONT, hdr_fill=_CRIT_HDR_FILL)
+    print(f"  wrote: {'CRITICAL_Zero_Salary':<25}  ({len(active_zero_df):,} rows)")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(out_path))

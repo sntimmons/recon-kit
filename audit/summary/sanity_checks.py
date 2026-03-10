@@ -551,10 +551,34 @@ def run_sanity_checks(db_path: Path, out_dir: Path) -> dict:
         rate = round(cnt / total, 6) if total > 0 else 0.0
         suspicious_dict[norm_key] = {"count": cnt, "rate": rate}
 
+    # ------------------------------------------------------------------
+    # Fix 6: Health metrics — deterministic match rate and active/$0 count.
+    # approve_rate is NOT computed here (requires gating engine) — it is
+    # added by run_sanity_gate.py after classify_all pass.
+    # ------------------------------------------------------------------
+    _DET_SOURCES: frozenset[str] = frozenset({"worker_id", "pk", "recon_id"})
+    det_count = sum(
+        1 for r in rows
+        if str(r.get("match_source", "") or "").strip().lower() in _DET_SOURCES
+    )
+    det_rate = round(det_count / total, 6) if total > 0 else 0.0
+
+    active_zero_salary_count = sum(
+        1 for r in rows
+        if str(r.get("new_worker_status", "") or "").strip().lower() == "active"
+        and (_parse_float(r.get("new_salary")) or 0.0) == 0.0
+    )
+
     return {
         "total_pairs":     total,
         "mismatch_counts": counts,
         "suspicious":      suspicious_dict,
+        "health_metrics": {
+            "det_count":              det_count,
+            "det_rate":               det_rate,
+            "active_zero_salary":     active_zero_salary_count,
+            # approve_rate / approve_count populated by run_sanity_gate.py
+        },
         "files_written": {
             "sanity_salary_buckets.csv":      str(salary_path),
             "sanity_hire_date_diff.csv":      str(hire_path),
