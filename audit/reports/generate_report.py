@@ -26,8 +26,12 @@ Run:
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sqlite3
+import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -411,20 +415,47 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     # Salary details
     _add_heading(doc, "4.1 Salary Changes", 2)
     if "salary_delta" in df.columns:
-        sal_df    = df[df["fix_types"].str.contains("salary", na=False)].copy()
+        sal_df_all = df[df["fix_types"].str.contains("salary", na=False)].copy()
+
+        # Exclude Active/$0 records: these are data quality issues (missing salary
+        # in source data), not real salary changes.  Including them collapses
+        # mean/median dramatically — e.g. $0 for a $50k worker gives delta -$50k.
+        # Same exclusion used by build_workbook.py validate_active_zero_salary().
+        n_excluded = 0
+        if "new_worker_status" in sal_df_all.columns and "new_salary" in sal_df_all.columns:
+            _am = sal_df_all["new_worker_status"].fillna("").str.strip().str.lower() == "active"
+            _sn = pd.to_numeric(
+                sal_df_all["new_salary"].astype(str).str.replace(",", "").str.replace("$", ""),
+                errors="coerce",
+            )
+            _az_mask   = _am & (_sn.isna() | (_sn == 0))
+            n_excluded = int(_az_mask.sum())
+            sal_df     = sal_df_all[~_az_mask].copy()
+        else:
+            sal_df = sal_df_all.copy()
+
         sal_delta = pd.to_numeric(sal_df["salary_delta"], errors="coerce").dropna()
+        sal_delta = sal_delta[sal_delta != 0]   # only rows with an actual change
+
         if len(sal_delta) > 0:
             n_increase = int((sal_delta > 0).sum())
             n_decrease = int((sal_delta < 0).sum())
-            _kv_table(doc, [
-                ("Salary changes total",  f"{len(sal_df):,}"),
-                ("Increases",            f"{n_increase:,}"),
-                ("Decreases",            f"{n_decrease:,}"),
-                ("Mean delta",           f"${sal_delta.mean():,.2f}"),
-                ("Median delta",         f"${sal_delta.median():,.2f}"),
-                ("Largest increase",     f"${sal_delta.max():,.2f}"),
-                ("Largest decrease",     f"${sal_delta.min():,.2f}"),
-            ])
+            kv_rows = [("Salary changes (total)",  f"{len(sal_df_all):,}")]
+            if n_excluded > 0:
+                kv_rows.append((
+                    "  — Active/$0 excl. from stats",
+                    f"{n_excluded:,}  (data quality — not real changes)",
+                ))
+            kv_rows += [
+                ("  — Included in stats",     f"{len(sal_df):,}"),
+                ("Increases",                 f"{n_increase:,}"),
+                ("Decreases",                 f"{n_decrease:,}"),
+                ("Mean delta",                f"${sal_delta.mean():,.2f}"),
+                ("Median delta",              f"${sal_delta.median():,.2f}"),
+                ("Largest increase",          f"${sal_delta.max():,.2f}"),
+                ("Largest decrease",          f"${sal_delta.min():,.2f}"),
+            ]
+            _kv_table(doc, kv_rows)
         else:
             doc.add_paragraph("No parseable salary deltas found.")
     else:
@@ -595,6 +626,287 @@ def _section_recommendations(doc: Document, df: pd.DataFrame) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Node.js generator support
+# ---------------------------------------------------------------------------
+
+def _active_zero_mask(df: pd.DataFrame) -> "pd.Series":
+    """Return boolean mask: Active workers where new_salary is 0 or null."""
+    if "new_worker_status" not in df.columns or "new_salary" not in df.columns:
+        return pd.Series([False] * len(df), index=df.index)
+    am = df["new_worker_status"].fillna("").str.strip().str.lower() == "active"
+    sn = pd.to_numeric(
+        df["new_salary"].astype(str).str.replace(",", "").str.replace("$", ""),
+        errors="coerce",
+    )
+    return am & (sn.isna() | (sn == 0))
+
+
+def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dict:
+    """Serialize the full run dataset into a JSON-serialisable dict for build_report.js."""
+    total  = len(df)
+    az_mask = _active_zero_mask(df)
+
+    # Actions
+    def _n(col_val: str) -> int:
+        return int((df["action"] == col_val).sum()) if "action" in df.columns else 0
+    actions = {"APPROVE": _n("APPROVE"), "REVIEW": _n("REVIEW"), "REJECT_MATCH": _n("REJECT_MATCH")}
+
+    # Match sources
+    match_sources = (
+        [[str(s), int(c)] for s, c in df["match_source"].value_counts().items()]
+        if "match_source" in df.columns else []
+    )
+
+    # Confidence bands
+    confidence_bands: dict = {}
+    if "confidence" in df.columns:
+        cn = pd.to_numeric(df["confidence"], errors="coerce")
+        confidence_bands = {
+            "exact":   int((cn == 1.0).sum()),
+            "high":    int(((cn >= 0.97) & (cn < 1.0)).sum()),
+            "medium":  int(((cn >= 0.80) & (cn < 0.97)).sum()),
+            "low":     int(((cn < 0.80) & cn.notna()).sum()),
+            "missing": int(cn.isna().sum()),
+        }
+
+    # Active/$0 sample (up to 10 rows for table in report)
+    active_zero_count = int(az_mask.sum())
+    active_zero_sample: list = []
+    if active_zero_count > 0:
+        az_df = df[az_mask]
+        sample_cols = [c for c in ["pair_id", "old_full_name_norm", "old_salary", "new_salary"] if c in az_df.columns]
+        for _, row in az_df[sample_cols].head(10).iterrows():
+            active_zero_sample.append([str(row.get(c, "")) for c in sample_cols])
+
+    # Salary stats (Active/$0 excluded)
+    salary: dict | None = None
+    if "salary_delta" in df.columns and "fix_types" in df.columns:
+        sal_all  = df[df["fix_types"].str.contains("salary", na=False)].copy()
+        az_in    = az_mask.reindex(sal_all.index, fill_value=False)
+        sal_incl = sal_all[~az_in]
+        sal_d    = pd.to_numeric(sal_incl["salary_delta"], errors="coerce").dropna()
+        sal_d    = sal_d[sal_d != 0]
+        salary = {
+            "total":                   int(len(sal_all)),
+            "n_excluded_active_zero":  int(az_in.sum()),
+            "n_included":              int(len(sal_incl)),
+            "n_increase":              int((sal_d > 0).sum())         if len(sal_d) > 0 else 0,
+            "n_decrease":              int((sal_d < 0).sum())         if len(sal_d) > 0 else 0,
+            "mean_delta":              round(float(sal_d.mean()), 2)   if len(sal_d) > 0 else 0.0,
+            "median_delta":            round(float(sal_d.median()), 2) if len(sal_d) > 0 else 0.0,
+            "max_increase":            round(float(sal_d.max()), 2)    if len(sal_d) > 0 else 0.0,
+            "max_decrease":            round(float(sal_d.min()), 2)    if len(sal_d) > 0 else 0.0,
+        }
+
+    # Status transitions
+    status_transitions: list = []
+    if all(c in df.columns for c in ["old_worker_status", "new_worker_status", "fix_types"]):
+        st_df = df[df["fix_types"].str.contains("status", na=False)]
+        trans = (
+            st_df["old_worker_status"].fillna("blank").str.lower().str.strip()
+            + " → "
+            + st_df["new_worker_status"].fillna("blank").str.lower().str.strip()
+        ).value_counts().head(10)
+        status_transitions = [[str(t), int(c)] for t, c in trans.items()]
+
+    # Hire date stats
+    hire_date_stats: dict = {}
+    if "fix_types" in df.columns:
+        hd_df = df[df["fix_types"].str.contains("hire_date", na=False)]
+        hire_date_stats["total"] = int(len(hd_df))
+        if "reason" in df.columns:
+            hire_date_stats["n_wave"] = int(df["reason"].fillna("").str.contains("hire_date_wave").sum())
+        if "hire_date_pattern" in hd_df.columns:
+            pats = hd_df["hire_date_pattern"].fillna("").replace("", "none").value_counts().head(8)
+            hire_date_stats["patterns"] = [[str(p), int(c)] for p, c in pats.items()]
+
+    # Wave dates
+    wave_dates: list = []
+    if "new_hire_date" in df.columns and "reason" in df.columns:
+        wr = df[df["reason"].fillna("").str.contains("hire_date_wave", na=False)]
+        if not wr.empty:
+            wave_dates = [[str(d), int(c)] for d, c in wr["new_hire_date"].value_counts().head(10).items()]
+
+    # Reject matches
+    reject_matches: dict = {"total": 0, "reasons": [], "by_source": []}
+    if "action" in df.columns:
+        rej_df = df[df["action"] == "REJECT_MATCH"]
+        reject_matches["total"] = int(len(rej_df))
+        if not rej_df.empty:
+            if "reason" in rej_df.columns:
+                reject_matches["reasons"] = [[str(r), int(c)] for r, c in rej_df["reason"].value_counts().head(5).items()]
+            if "match_source" in rej_df.columns:
+                reject_matches["by_source"] = [[str(s), int(c)] for s, c in rej_df["match_source"].value_counts().items()]
+
+    # Review queue
+    review_queue: dict = {"total": 0, "top_items": [], "by_fix_type": []}
+    if "action" in df.columns:
+        rev_df = df[df["action"] == "REVIEW"].copy()
+        review_queue["total"] = int(len(rev_df))
+        if "priority_score" in rev_df.columns:
+            top = rev_df.sort_values("priority_score", ascending=False).head(20)
+            cols = [c for c in ["pair_id", "match_source", "fix_types", "priority_score", "reason"] if c in top.columns]
+            review_queue["top_items"] = [[str(row.get(c, "")) for c in cols] for _, row in top[cols].iterrows()]
+        if "fix_types" in rev_df.columns:
+            ft_c: dict = {}
+            for _, row in rev_df.iterrows():
+                for ft in str(row.get("fix_types", "")).split("|"):
+                    if ft:
+                        ft_c[ft] = ft_c.get(ft, 0) + 1
+            review_queue["by_fix_type"] = [[ft, c] for ft, c in sorted(ft_c.items(), key=lambda x: -x[1])]
+
+    # Computed findings list
+    sev_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "BUG": 3, "INFO": 4}
+    findings: list = []
+    if active_zero_count > 0:
+        findings.append({"severity": "CRITICAL", "count": active_zero_count,
+                         "title":  "Active Employees with $0 Salary",
+                         "impact": "Salary corrections blocked; source data correction required"})
+    if reject_matches["total"] > 0:
+        findings.append({"severity": "HIGH", "count": reject_matches["total"],
+                         "title":  "Wrong-Person Pairings (REJECT_MATCH)",
+                         "impact": "Excluded from all corrections; require manual investigation"})
+    if actions["REVIEW"] > 0:
+        findings.append({"severity": "HIGH", "count": actions["REVIEW"],
+                         "title":  "Pairs Requiring Human Review",
+                         "impact": "Corrections held until reviewer approves"})
+    if "confidence" in df.columns:
+        cn     = pd.to_numeric(df["confidence"], errors="coerce")
+        n_low  = int(((cn < 0.70) & cn.notna()).sum())
+        if n_low > 0:
+            findings.append({"severity": "HIGH", "count": n_low,
+                             "title":  "Low-Confidence Fuzzy Matches (< 0.70)",
+                             "impact": "High risk of wrong-person corrections; verify before applying"})
+    findings.sort(key=lambda f: sev_order.get(f["severity"], 99))
+
+    # Change summary
+    change_summary: list = []
+    if "fix_types" in df.columns:
+        for ft, label in [("salary", "Salary"), ("payrate", "Payrate"),
+                          ("status", "Worker Status"), ("hire_date", "Hire Date"),
+                          ("job_org", "Job / Organization")]:
+            cnt = int(df["fix_types"].str.contains(ft, na=False).sum())
+            change_summary.append([label, f"{cnt:,}", f"{cnt/total*100:.1f}%" if total > 0 else "0.0%"])
+
+    # Sanity gate — try per-run path first, then promotion-path fallback
+    sanity_gate: dict = {"passed": True, "metrics": []}
+    for sg_candidate in [
+        db_path.parent / "summary" / "sanity_gate.json",
+        db_path.parent.parent / "sanity_gate.json",
+    ]:
+        if sg_candidate.exists():
+            try:
+                sg = json.loads(sg_candidate.read_text(encoding="utf-8"))
+                sanity_gate["passed"] = bool(sg.get("passed", True))
+                sanity_gate["metrics"] = [
+                    {"name": k, "value": str(v), "threshold": "", "passed": True}
+                    for k, v in sg.items() if k not in ("passed", "reason", "failures")
+                ]
+            except Exception:
+                pass
+            break
+
+    return {
+        "run_date":           datetime.now().strftime("%B %d, %Y %H:%M"),
+        "db_name":            db_path.name,
+        "total_records":      total,
+        "actions":            actions,
+        "n_with_changes":     int((df["fix_types"].fillna("") != "").sum()) if "fix_types" in df.columns else 0,
+        "n_clean":            int((df["fix_types"].fillna("") == "").sum()) if "fix_types" in df.columns else 0,
+        "sanity_gate":        sanity_gate,
+        "match_sources":      match_sources,
+        "confidence_bands":   confidence_bands,
+        "active_zero_count":  active_zero_count,
+        "active_zero_sample": active_zero_sample,
+        "salary":             salary,
+        "status_transitions": status_transitions,
+        "hire_date_stats":    hire_date_stats,
+        "wave_dates":         wave_dates,
+        "reject_matches":     reject_matches,
+        "review_queue":       review_queue,
+        "findings":           findings,
+        "change_summary":     change_summary,
+    }
+
+
+def _os_cleanup(path: str) -> None:
+    """Remove a temp file, silently ignoring errors."""
+    try:
+        os.unlink(path)
+    except Exception:
+        pass
+
+
+def _try_node_generator(df: pd.DataFrame, db_path: Path, wide_path: Path, out_path: Path) -> bool:
+    """Attempt to generate the report using the Node.js/docx v9 generator.
+
+    Returns True if the report was produced successfully.
+    Returns False (caller falls back to python-docx) if:
+      - node is not installed / not in PATH
+      - the docx npm package is missing
+      - build_report.js exits non-zero
+      - the output file is absent or suspiciously small
+    """
+    # 1. Probe for node
+    try:
+        probe = subprocess.run(
+            ["node", "--version"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if probe.returncode != 0:
+            return False
+        node_ver = probe.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+    print(f"[generate_report] Node.js {node_ver} detected — trying JS generator")
+
+    # 2. Locate build_report.js
+    js_path = _HERE / "build_report.js"
+    if not js_path.exists():
+        print(f"[generate_report] build_report.js not found at {js_path} — falling back")
+        return False
+
+    # 3. Serialise run data to a temp JSON file
+    try:
+        data = _serialize_run_data(df, db_path, wide_path)
+    except Exception as exc:
+        print(f"[generate_report] serialize error: {exc} — falling back")
+        return False
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".json")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, default=str)
+
+        # 4. Run node
+        result = subprocess.run(
+            ["node", str(js_path), "--data", tmp_path, "--out", str(out_path)],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.stdout:
+            print(result.stdout.rstrip())
+        if result.stderr:
+            print(result.stderr.rstrip(), file=sys.stderr)
+        if result.returncode != 0:
+            print(f"[generate_report] JS generator exited {result.returncode} — falling back")
+            return False
+        if not out_path.exists() or out_path.stat().st_size < 2048:
+            print("[generate_report] JS generator output missing or too small — falling back")
+            return False
+        return True
+
+    except subprocess.TimeoutExpired:
+        print("[generate_report] JS generator timed out — falling back")
+        return False
+    except Exception as exc:
+        print(f"[generate_report] JS generator error: {exc} — falling back")
+        return False
+    finally:
+        _os_cleanup(tmp_path)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -606,6 +918,8 @@ def main(argv: list[str] | None = None) -> None:
                         help=f"wide_compare.csv path (default: {WIDE_CSV}).")
     parser.add_argument("--out",  default=None, metavar="PATH",
                         help=f"Output .docx path (default: {OUT_PATH}).")
+    parser.add_argument("--no-node", action="store_true",
+                        help="Skip Node.js generator and use python-docx directly.")
     args = parser.parse_args(argv)
 
     db_path   = Path(args.db)   if args.db   else DB_PATH
@@ -624,7 +938,21 @@ def main(argv: list[str] | None = None) -> None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # ---------------------------------------------------------------------------
-    # Build document
+    # Try Node.js generator first (brand spec: navy headers, badges, callouts)
+    # Falls back to python-docx automatically if node is unavailable.
+    # ---------------------------------------------------------------------------
+    if not args.no_node:
+        if _try_node_generator(df, db_path, wide_path, out_path):
+            try:
+                display_path = out_path.relative_to(ROOT)
+            except ValueError:
+                display_path = out_path
+            print(f"\n[generate_report] saved (JS/docx v9): {display_path}")
+            return
+        print("[generate_report] using python-docx fallback")
+
+    # ---------------------------------------------------------------------------
+    # Build document (python-docx fallback)
     # ---------------------------------------------------------------------------
     doc = Document()
 
