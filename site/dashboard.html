@@ -1093,6 +1093,7 @@
     workbook:      'Building Excel workbook',
     exports:       'Exporting wide compare / DIY data',
     review_queue:  'Building review queue',
+    audit_report:  'Generating executive audit report (.docx)',
   };
 
   function startPolling(runId) {
@@ -1205,7 +1206,8 @@
     var outputs = job.outputs || [];
 
     var FILE_LABELS = {
-      'recon_workbook.xlsx':            'Excel workbook (8 sheets)',
+      'audit_report.docx':              'Audit report — executive summary (Word)',
+      'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
       'wide_compare.csv':               'Wide compare (all pairs, side-by-side)',
       'review_queue.csv':               'Review queue (records needing attention)',
       'corrections_salary.csv':         'Salary corrections (Workday format)',
@@ -1213,7 +1215,9 @@
       'corrections_hire_date.csv':      'Hire date corrections',
       'corrections_job_org.csv':        'Job/org corrections',
       'corrections_manifest.csv':       'Full corrections manifest',
-      'internal_audit_report.csv':      'Audit report (full)',
+      'held_corrections.csv':           'Held corrections (REVIEW / rejected pairs)',
+      'audit_report.csv':               'Audit report — raw (CSV)',
+      'internal_audit_report.csv':      'Internal audit report (full)',
       'internal_audit_duplicates.csv':  'Duplicate records',
       'internal_audit_blanks.csv':      'Field completeness breakdown',
       'internal_audit_suspicious.csv':  'Suspicious default values',

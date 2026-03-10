@@ -658,7 +658,11 @@ def main(argv: list[str] | None = None) -> None:
     # Save
     out_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(out_path))
-    print(f"\n[generate_report] saved: {out_path.relative_to(ROOT)}")
+    try:
+        display_path = out_path.relative_to(ROOT)
+    except ValueError:
+        display_path = out_path
+    print(f"\n[generate_report] saved: {display_path}")
     print(f"  sections: Executive Summary, Match Quality, Data Quality,")
     print(f"            Field Changes, Review Queue, Rejected Matches, Recommendations")
 

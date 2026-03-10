@@ -115,6 +115,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     wanted = [
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
+        "audit_report.docx",
         "wide_compare.csv",
         "review_queue.csv",
         "corrections_salary.csv",
@@ -122,6 +123,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "corrections_hire_date.csv",
         "corrections_job_org.csv",
         "corrections_manifest.csv",
+        "held_corrections.csv",
         "audit_report.csv",
         "sanity_results.json",
         "sanity_gate.json",
@@ -303,7 +305,18 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "review_queue", "done" if rc == 0 else "warn")
 
-        # 12. Copy key outputs to run_dir
+        # 12. Audit report (.docx) — non-fatal; warn on failure
+        _set_step(run_id, "audit_report")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/generate_report.py",
+             "--db",  str(HERE / "audit" / "audit.db"),
+             "--wide", str(run_dir / "wide_compare.csv"),
+             "--out", str(run_dir / "audit_report.docx")],
+            HERE, run_id
+        )
+        _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
+
+        # 13. Copy key outputs to run_dir
         _copy_key_outputs(run_dir)
 
         # Parse stats
@@ -333,7 +346,8 @@ def _copy_key_outputs(run_dir: Path):
         HERE / "audit" / "corrections" / "out" / "corrections_hire_date.csv": run_dir / "corrections_hire_date.csv",
         HERE / "audit" / "corrections" / "out" / "corrections_job_org.csv":   run_dir / "corrections_job_org.csv",
         HERE / "audit" / "corrections" / "out" / "corrections_manifest.csv":  run_dir / "corrections_manifest.csv",
-        HERE / "audit" / "ui" / "ui_pairs.csv":                       run_dir / "wide_compare.csv",
+        HERE / "audit" / "corrections" / "out" / "held_corrections.csv":      run_dir / "held_corrections.csv",
+        HERE / "audit" / "ui" / "ui_pairs.csv":                               run_dir / "wide_compare.csv",
     }
     for src, dst in mapping.items():
         if dst is None:
