@@ -165,6 +165,13 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         for p in corr_dir.iterdir():
             if p.suffix in (".csv", ".xlsx", ".json") and p.name not in [f["name"] for f in found]:
                 found.append({"name": "corrections/" + p.name, "size": p.stat().st_size})
+
+    # Dynamically pick up per-department review queue CSVs
+    existing_names = {f["name"] for f in found}
+    for p in run_dir.glob("review_queue_*.csv"):
+        if p.name not in existing_names and p.exists() and p.stat().st_size > 0:
+            found.append({"name": p.name, "size": p.stat().st_size})
+
     return found
 
 
@@ -449,6 +456,16 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "review_queue", "done" if rc == 0 else "warn")
+
+        # 11.5 Split review queue by department
+        _set_step(run_id, "split_rq")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/summary/split_review_queue.py",
+             "--rq",  str(run_dir / "review_queue.csv"),
+             "--out", str(run_dir)],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "split_rq", "done" if rc == 0 else "warn")
 
         # 12. Audit report (.docx) - fully isolated, writes directly to run_dir
         _set_step(run_id, "audit_report")
