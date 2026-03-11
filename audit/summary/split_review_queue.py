@@ -84,13 +84,23 @@ def split_review_queue(rq_path: Path, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     dept_files: list[str] = []
     summary_rows: list[dict] = []
+    used_slugs: dict[str, int] = {}   # slug -> count, for collision deduplication
 
     # Priority score column for "highest priority" summary
     prio_col = "priority_score" if "priority_score" in rq.columns else None
 
     for dept in depts:
         subset = rq[rq["_dept"] == dept].drop(columns=["_dept"]).copy()
-        slug   = _safe_slug(dept) if dept else "no_department"
+        base_slug = _safe_slug(dept) if dept else "no_department"
+
+        # Deduplicate colliding slugs (e.g. "HR & Admin" and "HR---Admin" → hr_admin, hr_admin_2)
+        if base_slug in used_slugs:
+            used_slugs[base_slug] += 1
+            slug = f"{base_slug}_{used_slugs[base_slug]}"
+        else:
+            used_slugs[base_slug] = 1
+            slug = base_slug
+
         fname  = f"review_queue_{slug}.csv"
         fpath  = out_dir / fname
         subset.to_csv(fpath, index=False)

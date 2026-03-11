@@ -225,8 +225,22 @@ def _load_extra_fields() -> list[str]:
 
 
 def _norm_str(x) -> str:
-    if x is None or (isinstance(x, float) and pd.isna(x)) or pd.isna(x):
+    if x is None:
         return ""
+    if isinstance(x, float):
+        try:
+            if pd.isna(x):
+                return ""
+        except Exception:
+            return ""
+    # Guard against list/dict/array types from malformed XLSX cells
+    try:
+        is_na = pd.isna(x)
+        # pd.isna on a scalar returns a bool; on a collection raises or returns array
+        if isinstance(is_na, bool) and is_na:
+            return ""
+    except Exception:
+        pass
     s = str(x).strip()
     s = re.sub(r"\s+", " ", s)
     return s

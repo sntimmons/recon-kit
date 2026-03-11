@@ -1126,8 +1126,8 @@
     if (!file) return;
     uploadedFiles[side] = file;
 
-    var zoneMap  = { old: 'zone-old', 'new': 'zone-new', audit: 'zone-audit' };
-    var fnameMap = { old: 'fname-old', 'new': 'fname-new', audit: 'fname-audit' };
+    var zoneMap  = { old: 'zone-old', 'new': 'zone-new', audit: 'zone-audit', bands: 'zone-bands' };
+    var fnameMap = { old: 'fname-old', 'new': 'fname-new', audit: 'fname-audit', bands: 'fname-bands' };
 
     var zone  = document.getElementById(zoneMap[side]);
     var fname = document.getElementById(fnameMap[side]);
@@ -1137,13 +1137,36 @@
     updateRunBar();
   };
 
-  // Drag and drop
-  ['zone-old','zone-new','zone-audit'].forEach(function (id) {
+  // Drag and drop - map zone id → input element id and side key
+  var _DROP_MAP = {
+    'zone-old':   { inputId: 'file-old',   side: 'old'   },
+    'zone-new':   { inputId: 'file-new',   side: 'new'   },
+    'zone-audit': { inputId: 'file-audit', side: 'audit' },
+    'zone-bands': { inputId: 'file-bands', side: 'bands' },
+  };
+  Object.keys(_DROP_MAP).forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
+    var cfg = _DROP_MAP[id];
     el.addEventListener('dragover',  function (e) { e.preventDefault(); el.classList.add('dragover'); });
-    el.addEventListener('dragleave', function () { el.classList.remove('dragover'); });
-    el.addEventListener('drop',      function () { el.classList.remove('dragover'); });
+    el.addEventListener('dragleave', function ()  { el.classList.remove('dragover'); });
+    el.addEventListener('drop',      function (e) {
+      e.preventDefault();
+      el.classList.remove('dragover');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      // Inject into the hidden file input so fileSelected() path reuses existing logic
+      var input = document.getElementById(cfg.inputId);
+      if (input) {
+        try {
+          // Modern browsers allow programmatic FileList injection via DataTransfer
+          var dt = new DataTransfer();
+          dt.items.add(files[0]);
+          input.files = dt.files;
+        } catch (_) { /* DataTransfer not supported - fall through */ }
+      }
+      fileSelected({ files: files }, cfg.side);
+    });
   });
 
   function updateRunBar() {

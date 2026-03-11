@@ -226,22 +226,22 @@ def detect_payrate_conversion(row: dict) -> "str | None":
     new_pay = _parse_num(row.get("new_payrate"))
 
     # Annual → hourly: the old system stored an annual salary; the new stores hourly
-    if old_sal and new_pay and new_pay > 0:
+    if old_sal is not None and new_pay is not None and new_pay > 0:
         if _within_pct(old_sal / new_pay, 2080):
             return "annual_to_hourly"
 
     # Hourly → annual: the old system stored hourly; the new stores annual salary
-    if new_sal and old_pay and old_pay > 0:
+    if new_sal is not None and old_pay is not None and old_pay > 0:
         if _within_pct(new_sal / old_pay, 2080):
             return "hourly_to_annual"
 
     # Biweekly → annual (old biweekly rate * 26 = new annual salary)
-    if new_sal and old_pay and old_pay > 0:
+    if new_sal is not None and old_pay is not None and old_pay > 0:
         if _within_pct(new_sal / old_pay, 26):
             return "biweekly_to_annual"
 
     # Annual → biweekly (old annual salary / 26 = new biweekly rate)
-    if old_sal and new_pay and new_pay > 0:
+    if old_sal is not None and new_pay is not None and new_pay > 0:
         if _within_pct(old_sal / new_pay, 26):
             return "annual_to_biweekly"
 
@@ -467,10 +467,14 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     if not reject_reason and ms not in _DETERMINISTIC_SOURCES:
         ratio = _salary_ratio(row)
         if ratio is not None and ratio > _REJECT_MATCH_SALARY_RATIO:
-            reject_reason = (
-                f"reject_match:fuzzy_extreme_salary_ratio ({ratio:.4f}"
-                f">{_REJECT_MATCH_SALARY_RATIO:.1f})"
-            )
+            # Do NOT trigger REJECT_MATCH when the extreme ratio is explained by
+            # a payrate unit conversion (e.g. old_salary=25 hourly → new_salary=52000
+            # annual gives ratio=2080 which far exceeds 2.5 but is legitimate).
+            if conversion_type is None:
+                reject_reason = (
+                    f"reject_match:fuzzy_extreme_salary_ratio ({ratio:.4f}"
+                    f">{_REJECT_MATCH_SALARY_RATIO:.1f})"
+                )
 
     # Overall action computation
     review_reasons = [

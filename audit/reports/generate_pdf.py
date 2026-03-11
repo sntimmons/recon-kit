@@ -66,7 +66,7 @@ def _try_libreoffice(docx_path: Path, pdf_path: Path) -> bool:
         candidate = pdf_path.parent / (docx_path.stem + ".pdf")
         if candidate.exists() and candidate.stat().st_size > 0:
             if candidate != pdf_path:
-                candidate.rename(pdf_path)
+                candidate.replace(pdf_path)  # atomic on POSIX; overwrites on Windows
             print(f"[generate_pdf] LibreOffice succeeded -> {pdf_path.name}")
             return True
         print(

@@ -65,7 +65,7 @@ def _norm_title(s: str) -> str:
     return " ".join(str(s or "").lower().split())
 
 
-def load_bands(bands_path: Path) -> pd.DataFrame:
+def load_bands(bands_path: Path) -> "tuple[pd.DataFrame, bool]":
     """Read and normalise the compensation_bands.csv file."""
     df = pd.read_csv(bands_path, dtype=str)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -198,9 +198,18 @@ def annotate_wide(
     n_above   = 0
     n_no_band = 0
 
-    for idx, row in wide.iterrows():
-        title   = str(row.get("new_position") or row.get("old_position") or "").strip()
-        state   = str(row.get("new_location_state") or row.get("old_location_state") or "").strip()
+    # Collect annotation results in lists (vectorised assignment - avoids O(n²) iterrows loop)
+    statuses:    list[str] = []
+    band_mins:   list      = []
+    band_mids:   list      = []
+    band_maxes:  list      = []
+    band_matches: list[str] = []
+    new_actions: list[str] = []
+    new_reasons: list[str] = []
+
+    for _, row in wide.iterrows():
+        title       = str(row.get("new_position") or row.get("old_position") or "").strip()
+        state       = str(row.get("new_location_state") or row.get("old_location_state") or "").strip()
         new_sal_raw = str(row.get("new_salary") or "").strip()
 
         # Parse new_salary
@@ -237,23 +246,31 @@ def annotate_wide(
                 status    = "within_band"
                 n_within += 1
 
-        wide.at[idx, "comp_band_status"] = status
-        wide.at[idx, "comp_band_min"]    = "" if band_min is None else band_min
-        wide.at[idx, "comp_band_mid"]    = "" if band_mid is None else band_mid
-        wide.at[idx, "comp_band_max"]    = "" if band_max is None else band_max
-        wide.at[idx, "comp_band_match"]  = band_match
-
-        # Override action to REVIEW for out-of-band records
-        if status in ("below_band_min", "above_band_max"):
-            current_action = str(row.get("action") or "").strip()
-            current_reason = str(row.get("reason") or "").strip()
+        # Compute action / reason override for out-of-band records
+        current_action = str(row.get("action") or "").strip()
+        current_reason = str(row.get("reason") or "").strip()
+        if status in ("below_band_min", "above_band_max") and current_action != "REJECT_MATCH":
             band_reason = f"comp_band:{status} ({band_match})"
+            new_actions.append("REVIEW")
+            new_reasons.append(f"{current_reason}|{band_reason}" if current_reason else band_reason)
+        else:
+            new_actions.append(current_action)
+            new_reasons.append(current_reason)
 
-            if current_action != "REJECT_MATCH":
-                wide.at[idx, "action"] = "REVIEW"
-                wide.at[idx, "reason"] = (
-                    f"{current_reason}|{band_reason}" if current_reason else band_reason
-                )
+        statuses.append(status)
+        band_mins.append("" if band_min is None else band_min)
+        band_mids.append("" if band_mid is None else band_mid)
+        band_maxes.append("" if band_max is None else band_max)
+        band_matches.append(band_match)
+
+    # Vectorised write-back (fast - single assignment per column)
+    wide["comp_band_status"] = statuses
+    wide["comp_band_min"]    = band_mins
+    wide["comp_band_mid"]    = band_mids
+    wide["comp_band_max"]    = band_maxes
+    wide["comp_band_match"]  = band_matches
+    wide["action"]           = new_actions
+    wide["reason"]           = new_reasons
 
     wide.to_csv(out_path, index=False)
 
