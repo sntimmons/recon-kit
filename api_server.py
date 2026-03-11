@@ -324,23 +324,28 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         for d in (run_inputs, run_outputs, run_summary, run_corr):
             d.mkdir(parents=True, exist_ok=True)
 
-        # 1. Copy input files into per-run inputs/
+        # Resolve file-type options
+        old_ext    = options.get("old_ext", ".csv")
+        new_ext    = options.get("new_ext", ".csv")
+        sheet_name = options.get("sheet_name", 0)
+
+        # 1. Copy input files into per-run inputs/ (preserve original extension)
         _set_step(run_id, "upload")
-        shutil.copy2(old_path, run_inputs / "old.csv")
-        shutil.copy2(new_path, run_inputs / "new.csv")
+        shutil.copy2(old_path, run_inputs / f"old{old_ext}")
+        shutil.copy2(new_path, run_inputs / f"new{new_ext}")
         _finish_step(run_id, "upload")
 
         # 2. Mapping - use absolute run_dir paths so no global outputs/ is touched
         _set_step(run_id, "mapping")
-        old_in  = run_inputs  / "old.csv"
-        new_in  = run_inputs  / "new.csv"
+        old_in  = run_inputs  / f"old{old_ext}"
+        new_in  = run_inputs  / f"new{new_ext}"
         old_out = run_outputs / "mapped_old.csv"
         new_out = run_outputs / "mapped_new.csv"
         rc, _ = _run_cmd(
             [str(PYTHON), "-c",
              f"from src.mapping import map_file; "
-             f"map_file(r'{old_in}', r'{old_out}', 'old'); "
-             f"map_file(r'{new_in}', r'{new_out}', 'new')"],
+             f"map_file(r'{old_in}', r'{old_out}', 'old', sheet_name={sheet_name!r}); "
+             f"map_file(r'{new_in}', r'{new_out}', 'new', sheet_name={sheet_name!r})"],
             HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "mapping", "done" if rc == 0 else "error")
@@ -542,6 +547,15 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
+def _safe_ext(filename: str) -> str:
+    """Return .xlsx (or .xls/.xlsm) or .csv based on the uploaded filename."""
+    if filename:
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
+            return ext
+    return ".csv"
+
+
 @app.post("/api/run/recon")
 def api_run_recon():
     old_file = request.files.get("old_file")
@@ -549,18 +563,28 @@ def api_run_recon():
     if not old_file or not new_file:
         return jsonify({"error": "Both old_file and new_file are required"}), 400
 
+    old_ext = _safe_ext(old_file.filename)
+    new_ext = _safe_ext(new_file.filename)
+
+    # sheet_name: int index or sheet name string; default to first sheet (0)
+    raw_sn = request.form.get("sheet_name", "0").strip()
+    sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
+
     options = {
         "sanity_gate": request.form.get("sanity_gate", "true").lower() == "true",
         "corrections": request.form.get("corrections", "true").lower() == "true",
         "workbook":    request.form.get("workbook",    "true").lower() == "true",
+        "old_ext":     old_ext,
+        "new_ext":     new_ext,
+        "sheet_name":  sheet_name,
     }
 
     run_id  = _make_run_id()
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    old_path = run_dir / "old_input.csv"
-    new_path = run_dir / "new_input.csv"
+    old_path = run_dir / f"old_input{old_ext}"
+    new_path = run_dir / f"new_input{new_ext}"
     old_file.save(str(old_path))
     new_file.save(str(new_path))
 

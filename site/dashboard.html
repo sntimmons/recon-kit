@@ -811,17 +811,17 @@
       <div id="upload-recon">
         <div class="upload-grid-2">
           <div class="upload-zone" id="zone-old">
-            <input type="file" accept=".csv" id="file-old" onchange="fileSelected(this, 'old')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-old" onchange="fileSelected(this, 'old')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">Legacy System Export</div>
-            <div class="upload-zone__sub">Old system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">Old system CSV or Excel (.xlsx). Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-old"></div>
           </div>
           <div class="upload-zone" id="zone-new">
-            <input type="file" accept=".csv" id="file-new" onchange="fileSelected(this, 'new')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-new" onchange="fileSelected(this, 'new')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">New System Export</div>
-            <div class="upload-zone__sub">New system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">New system CSV or Excel (.xlsx). Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-new"></div>
           </div>
         </div>
@@ -830,10 +830,10 @@
       <div id="upload-audit" style="display:none;">
         <div class="upload-grid-1">
           <div class="upload-zone" id="zone-audit">
-            <input type="file" accept=".csv" id="file-audit" onchange="fileSelected(this, 'audit')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-audit" onchange="fileSelected(this, 'audit')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">Dataset to Audit</div>
-            <div class="upload-zone__sub">Single CSV file. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">Single CSV or Excel (.xlsx) file. Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-audit"></div>
           </div>
         </div>
@@ -872,6 +872,14 @@
               <input type="checkbox" id="opt-workbook" checked>
               <div class="toggle__track"><div class="toggle__thumb"></div></div>
             </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Excel sheet name / index</strong>
+              Which sheet to read when input files are .xlsx (default: 0 = first sheet)
+            </div>
+            <input type="text" id="opt-sheet-name" value="0"
+              style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--bg-card);color:var(--text-primary)">
           </div>
         </div>
       </div>
@@ -1137,7 +1145,7 @@
       if (!ready) {
         if (uploadedFiles.old) status.textContent = 'Legacy file loaded. Add your new system export to continue.';
         else if (uploadedFiles['new']) status.textContent = 'New file loaded. Add your legacy system export to continue.';
-        else status.textContent = 'Upload both CSV files to enable the engine.';
+        else status.textContent = 'Upload both files (CSV or Excel) to enable the engine.';
       } else {
         status.innerHTML =
           '<strong style="color:var(--text-primary)">' + uploadedFiles.old.name + '</strong>' +
@@ -1148,7 +1156,7 @@
       ready = !!uploadedFiles.audit;
       status.textContent = ready
         ? uploadedFiles.audit.name + ' loaded. Ready to audit.'
-        : 'Upload a CSV file to audit.';
+        : 'Upload a CSV or Excel file to audit.';
     }
 
     btn.disabled = !ready;
@@ -1173,6 +1181,7 @@
       formData.append('corrections', document.getElementById('opt-corrections').checked ? 'true' : 'false');
       formData.append('sanity_gate', document.getElementById('opt-sanity').checked ? 'true' : 'false');
       formData.append('workbook',    document.getElementById('opt-workbook').checked ? 'true' : 'false');
+      formData.append('sheet_name',  (document.getElementById('opt-sheet-name').value || '0').trim());
     } else {
       endpoint = API_BASE + '/api/run/audit';
       formData.append('audit_file', uploadedFiles.audit);

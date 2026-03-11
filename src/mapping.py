@@ -488,12 +488,22 @@ def _dedupe_option_a(df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
     return keep_df
 
 
-def map_file(input_path: str | Path, output_path: str | Path, label: str) -> None:
+def map_file(
+    input_path: str | Path,
+    output_path: str | Path,
+    label: str,
+    sheet_name: int | str = 0,
+) -> None:
     input_path = Path(input_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(input_path)
+    ext = input_path.suffix.lower()
+    if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
+        print(f"[map_file] reading Excel file: {input_path.name}  sheet={sheet_name!r}")
+        df = pd.read_excel(input_path, sheet_name=sheet_name, dtype=str)
+    else:
+        df = pd.read_csv(input_path)
     df.columns = [c.strip() for c in df.columns]
 
     # Resolve non-standard column names (e.g. "Associate_ID" → "worker_id",
