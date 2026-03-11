@@ -1,5 +1,5 @@
 """
-smoke_check_corrections.py — Verifies the Correction File Generator output.
+smoke_check_corrections.py - Verifies the Correction File Generator output.
 
 Assertions
 ----------

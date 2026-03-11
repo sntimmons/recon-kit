@@ -1,5 +1,5 @@
 """
-smoke_check_resolver.py — Quick sanity check for resolve_matched_raw.py outputs.
+smoke_check_resolver.py - Quick sanity check for resolve_matched_raw.py outputs.
 
 Assertions
 ----------

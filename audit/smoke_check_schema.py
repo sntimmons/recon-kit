@@ -1,5 +1,5 @@
 """
-smoke_check_schema.py — Validates schema_validator logic (no live DB required).
+smoke_check_schema.py - Validates schema_validator logic (no live DB required).
 
 Assertions
 ----------

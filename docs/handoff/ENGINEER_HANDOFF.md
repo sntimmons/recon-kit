@@ -1,4 +1,4 @@
-# Engineer Handoff — recon-kit
+# Engineer Handoff - recon-kit
 
 ## Product Overview
 
@@ -16,8 +16,8 @@
 | 2 | `src/matcher.py` | mapped CSVs | `outputs/matched_raw.csv`, `match_report.json` |
 | 3 | `resolve_matched_raw.py` | `matched_raw.csv` | `matched_raw.csv` (overwritten), conflict CSVs |
 | 4 | `audit/load_sqlite.py` | `matched_raw.csv` | `audit/audit.db` |
-| 5 | `audit/schema_validator.py` | `audit.db` | (validates — exits 2 on missing columns) |
-| 6 | `audit/run_audit.py` | `audit.db` | Q0–Q15 CSV outputs, `audit_runs/` package |
+| 5 | `audit/schema_validator.py` | `audit.db` | (validates - exits 2 on missing columns) |
+| 6 | `audit/run_audit.py` | `audit.db` | Q0-Q15 CSV outputs, `audit_runs/` package |
 
 ### Optional (pipeline continues on failure)
 
@@ -82,7 +82,7 @@ Produced by `matcher.py`, overwritten by `resolve_matched_raw.py`. Key columns:
 |--------|--------|
 | `old_worker_id`, `new_worker_id` | mapping.py |
 | `match_source` | matcher.py (worker_id/recon_id/pk/last4_dob/dob_name/name_hire_date) |
-| `confidence` | matcher.py — formula: name_sim×0.5 + dob×0.2 + last4×0.2 + location_state×0.1 |
+| `confidence` | matcher.py - formula: name_sim×0.5 + dob×0.2 + last4×0.2 + location_state×0.1 |
 | `pair_id` | resolve_matched_raw.py |
 
 DOB (`old_dob`, `new_dob`) and SSN (`old_last4_ssn`, `new_last4_ssn`) are present in `matched_raw.csv` for matching purposes but are **not** loaded into `audit.db` (SSN stripped by `load_sqlite.py`; DOB suppression controlled by `pii.include_dob_in_ui/exports` in `policy.yaml`).
@@ -97,7 +97,7 @@ DOB (`old_dob`, `new_dob`) and SSN (`old_last4_ssn`, `new_last4_ssn`) are presen
 
 Gating is applied in `audit/summary/gating.py` using thresholds from `audit/summary/confidence_policy.py` (loaded from `config/policy.yaml`).
 
-**Auto-approve**: `match_source == worker_id` — bypasses all confidence checks.
+**Auto-approve**: `match_source == worker_id` - bypasses all confidence checks.
 
 **Fix-type thresholds** (minimum confidence required for APPROVE):
 
@@ -137,8 +137,8 @@ When confidence is below `low_confidence_floor` (0.80) → `REVIEW(low_confidenc
 
 `audit/summary/run_sanity_gate.py` runs after `build_review_queue` and checks:
 
-1. **Suspicious hire-date defaults** (e.g., 2026-02) — blocks corrections if rate > 2% or count > 500.
-2. **Suspicious salary defaults** (40000, 40003, 40013, 40073) — same thresholds.
+1. **Suspicious hire-date defaults** (e.g., 2026-02) - blocks corrections if rate > 2% or count > 500.
+2. **Suspicious salary defaults** (40000, 40003, 40013, 40073) - same thresholds.
 
 When gate fails (exit code 3):
 - Corrections blocked (`generate_corrections.py` skipped).
@@ -182,6 +182,6 @@ runs/<timestamp>/
 ## Known Bugs
 
 1. `confidence_policy.py` thresholds are hardcoded in Python. Editing `config/policy.yaml` does **not** change active gating thresholds. The YAML values are documentation only.
-2. `load_sqlite.py` interpolates CSV headers directly into SQL — SQL injection risk with malformed input files.
+2. `load_sqlite.py` interpolates CSV headers directly into SQL - SQL injection risk with malformed input files.
 3. Correction CSVs are not sanitized for CSV injection (formula-starting cell values).
 4. Smoke test gap: no end-to-end test for `mapping.py` (requires client-specific raw input files).

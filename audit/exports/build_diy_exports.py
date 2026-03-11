@@ -1,13 +1,13 @@
 """
-build_diy_exports.py — DIY XLOOKUP export generator.
+build_diy_exports.py - DIY XLOOKUP export generator.
 
 Writes two CSVs to audit/exports/out/ for use in Excel XLOOKUP formulas
 and wide side-by-side comparison with gating decisions.
 
 Outputs
 -------
-  xlookup_keys.csv  — key fields for XLOOKUP matching
-  wide_compare.csv  — all matched_pairs with gating columns appended
+  xlookup_keys.csv  - key fields for XLOOKUP matching
+  wide_compare.csv  - all matched_pairs with gating columns appended
 
 Extra fields from config/policy.yaml are appended to wide_compare as
 old_<field>, new_<field>, mm_<field> triplets when available in matched_pairs.
@@ -57,7 +57,7 @@ _XLOOKUP_COLS = [
     "old_full_name_norm", "new_full_name_norm",
 ]
 
-# Stable wide_compare columns — do not reorder.
+# Stable wide_compare columns - do not reorder.
 # Extra field triplets (old_/new_/mm_) are appended after this list.
 _WIDE_COLS = [
     # Keys / gating
@@ -81,7 +81,7 @@ _WIDE_COLS = [
     "needs_review", "suggested_action",
 ]
 
-# Set of column names already in the stable schema — used to prevent duplication
+# Set of column names already in the stable schema - used to prevent duplication
 _WIDE_EXISTING = set(_WIDE_COLS)
 
 
@@ -289,7 +289,7 @@ def main(argv: list[str] | None = None) -> None:
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
             "hire_date_changed":  not _str_eq(r.get("old_hire_date"), r.get("new_hire_date")),
             "job_org_changed":    "job_org" in fix_types,
-            # Fix 4: hire_date_pattern — populated when a systematic pattern was detected
+            # Fix 4: hire_date_pattern - populated when a systematic pattern was detected
             # (off_by_one_day_pattern or systematic_year_shift_pattern).
             "hire_date_pattern":  result.get("per_fix", {}).get("hire_date", {}).get("reason", "")
                                   if "hire_date" in fix_types else "",
@@ -308,7 +308,7 @@ def main(argv: list[str] | None = None) -> None:
             wide_row[f"mm_{field}"]  = mm
             field_mm[field] = mm
 
-        # Group mismatch booleans — True if any field in the group has a mismatch.
+        # Group mismatch booleans - True if any field in the group has a mismatch.
         for group_name, group_fields in extra_groups.items():
             wide_row[f"mismatch_group_{group_name}"] = any(
                 field_mm.get(f, False) for f in group_fields

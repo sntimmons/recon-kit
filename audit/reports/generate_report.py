@@ -1,5 +1,5 @@
 """
-generate_report.py — Audit Report Generator for the Data Whisperer reconciliation pipeline.
+generate_report.py - Audit Report Generator for the Data Whisperer reconciliation pipeline.
 
 Reads data from audit/audit.db, audit/summary/*.csv, and audit/exports/out/wide_compare.csv
 to produce a professional .docx audit report summarising the reconciliation run.
@@ -87,21 +87,21 @@ _REASON_MAP: dict[str, str] = {
     "hire_date:year_shift_with_other_mismatches":
         "Start date changed by a full year, plus other fields also changed",
     "hire_date:off_by_one_day_pattern":
-        "Start date off by one day (likely a system convention difference — auto-approved)",
+        "Start date off by one day (likely a system convention difference - auto-approved)",
     "hire_date:year_shift_systematic":
-        "Start date changed by one year — appears to be a systematic pattern (auto-approved)",
+        "Start date changed by one year - appears to be a systematic pattern (auto-approved)",
     "hire_date:off_by_one_year_systematic":
-        "Start date off by one year across many records — auto-approved as systematic",
+        "Start date off by one year across many records - auto-approved as systematic",
     "hire_date:off_by_one_year_pattern":
-        "Start date off by exactly one year (likely a system import convention — auto-approved)",
+        "Start date off by exactly one year (likely a system import convention - auto-approved)",
     "worker_id_auto_approve":
-        "Exact ID match — auto-approved",
+        "Exact ID match - auto-approved",
     "pk_auto_approve":
-        "Matched on name, date of birth, and last-4 identifier — auto-approved",
+        "Matched on name, date of birth, and last-4 identifier - auto-approved",
     "active_to_terminated":
-        "Status changed from active to terminated — needs human review",
+        "Status changed from active to terminated - needs human review",
     "hire_date_wave":
-        "Start date matches a bulk import date shared by many other employees — needs human review",
+        "Start date matches a bulk import date shared by many other employees - needs human review",
 }
 
 _MATCH_SOURCE_MAP: dict[str, str] = {
@@ -115,47 +115,113 @@ _MATCH_SOURCE_MAP: dict[str, str] = {
 
 
 def _translate_reason(reason: str) -> str:
-    """Translate an internal engine flag to a plain-English description."""
+    """Translate an internal engine flag (or pipe-separated list) to plain English."""
     if not reason or str(reason).strip() in ("", "nan", "None"):
         return "No reason recorded"
     r = str(reason).strip()
 
-    # dob_name_low_confidence (0.600<0.75)  — extract confidence %
-    m = _re.match(r"dob_name_low_confidence\s*\(?([\d.]+)", r)
+    # Pipe-separated multi-reason (REVIEW records): translate each part
+    if "|" in r:
+        parts = [_translate_reason(p.strip()) for p in r.split("|") if p.strip()]
+        return "; ".join(parts)
+
+    # Strip "reject_match:" prefix (REJECT_MATCH tier reasons)
+    r_inner = _re.sub(r"^reject_match:", "", r, flags=_re.IGNORECASE).strip()
+
+    # Strip leading "fix_type:" prefix (REVIEW reasons like "salary:below_threshold")
+    r_noprefix = _re.sub(r"^[a-z_]+:", "", r_inner).strip()
+
+    # dob_name_low_confidence (0.600<0.75) - extract actual score AND minimum threshold
+    m = _re.match(r"dob_name_low_confidence\s*\(?([\d.]+)<([\d.]+)", r_inner)
+    if m:
+        try:
+            pct_score  = int(round(float(m.group(1)) * 100))
+            pct_thresh = int(round(float(m.group(2)) * 100))
+        except ValueError:
+            pct_score, pct_thresh = 0, 75
+        return (
+            f"Matched on name and date of birth only - confidence score of {pct_score}% "
+            f"fell below the {pct_thresh}% minimum required to trust the match."
+        )
+
+    # Legacy: dob_name_low_confidence (0.600) without threshold value
+    m = _re.match(r"dob_name_low_confidence\s*\(?([\d.]+)", r_inner)
     if m:
         try:
             pct = int(round(float(m.group(1)) * 100))
         except ValueError:
             pct = 0
-        return f"Matched on name and date of birth only — confidence too low to trust ({pct}%)"
+        return f"Matched on name and date of birth only - confidence too low to trust ({pct}%)"
 
-    # salary_ratio_extreme (2.0000 outside [0.85, 1.15])  — extract ratio
-    m = _re.match(r"salary_ratio_extreme\s*\(?([\d.]+)", r)
+    # fuzzy_extreme_salary_ratio (2.5000>2.5) - wrong-person signal from salary mismatch
+    m = _re.match(r"fuzzy_extreme_salary_ratio\s*\(?([\d.]+)", r_inner)
+    if m:
+        try:
+            ratio = float(m.group(1))
+        except ValueError:
+            ratio = 2.5
+        return (
+            f"Salary is {ratio:.1f}x different between systems on a fuzzy match - "
+            f"flagged as possible wrong-person pairing"
+        )
+
+    # salary_ratio_extreme (2.0000 outside [0.85, 1.15]) - large salary change on known worker
+    m = (_re.match(r"salary_ratio_extreme\s*\(?([\d.]+)", r_noprefix) or
+         _re.match(r"salary_ratio_extreme\s*\(?([\d.]+)", r))
     if m:
         try:
             ratio = float(m.group(1))
         except ValueError:
             ratio = 2.0
         if ratio > 1.5:
-            return "Salary more than doubled between systems — needs human review"
+            return "Salary more than doubled between systems - needs human review"
         if ratio < 0.5:
-            return "Salary dropped by more than half between systems — needs human review"
-        return "Salary changed significantly between systems — needs human review"
+            return "Salary dropped by more than half between systems - needs human review"
+        return "Salary changed significantly between systems - needs human review"
 
-    # Exact match
-    if r in _REASON_MAP:
-        return _REASON_MAP[r]
-    # Prefix match
+    # below_threshold (0.82<0.97) - confidence below the required minimum for this field type
+    m = _re.match(r"below_threshold\s*\(?([\d.]+)<([\d.]+)", r_noprefix)
+    if m:
+        try:
+            pct_score  = int(round(float(m.group(1)) * 100))
+            pct_thresh = int(round(float(m.group(2)) * 100))
+        except ValueError:
+            pct_score, pct_thresh = 0, 95
+        return (
+            f"Confidence score of {pct_score}% fell below the {pct_thresh}% "
+            f"minimum required for this field - needs human review"
+        )
+
+    # low_confidence (0.82) - single value fallback
+    m = _re.match(r"low_confidence\s*\(?([\d.]+)", r_noprefix)
+    if m:
+        try:
+            pct = int(round(float(m.group(1)) * 100))
+        except ValueError:
+            pct = 0
+        return f"Confidence score too low ({pct}%) - needs human review"
+
+    # active_to_terminated (active->terminated)
+    if _re.match(r"active_to_terminated", r_noprefix):
+        return "Status changed from active to terminated - needs human review"
+
+    # Exact map lookups: try r_inner, r_noprefix, then full r
+    for candidate in (r_inner, r_noprefix, r):
+        if candidate in _REASON_MAP:
+            return _REASON_MAP[candidate]
+
+    # Prefix map lookup
     for key, val in _REASON_MAP.items():
-        if r.startswith(key):
+        if r_inner.startswith(key) or r_noprefix.startswith(key) or r.startswith(key):
             return val
 
-    # Generic fallback: humanise snake_case
-    return (r.replace("hire_date:", "start date: ")
-             .replace("_", " ")
-             .replace("  ", " ")
-             .strip()
-             .capitalize())
+    # Generic fallback: humanise snake_case from the most-stripped form
+    display = r_noprefix or r_inner or r
+    return (display.replace("hire_date:", "start date: ")
+                   .replace("_", " ")
+                   .replace("  ", " ")
+                   .strip()
+                   .capitalize())
 
 
 def _translate_match_source(source: str) -> str:
@@ -249,7 +315,7 @@ def _load_data(db_path: Path, wide_path: Path) -> pd.DataFrame:
         print(f"[generate_report] loaded {len(df):,} rows from {wide_path.name}")
         return df
 
-    print(f"[generate_report] {wide_path.name} not found — computing from DB ...")
+    print(f"[generate_report] {wide_path.name} not found - computing from DB ...")
     con = sqlite3.connect(str(db_path))
     try:
         mp = pd.read_sql_query("SELECT * FROM matched_pairs", con)
@@ -313,7 +379,7 @@ def _section_executive_summary(doc: Document, df: pd.DataFrame) -> None:
         active_zero = int((_am & (_sn.isna() | (_sn == 0))).sum())
 
     # -----------------------------------------------------------------------
-    # Plain-language opening — readable by non-HR managers in 60 seconds
+    # Plain-language opening - readable by non-HR managers in 60 seconds
     # -----------------------------------------------------------------------
     doc.add_paragraph(
         f"We compared {total:,} employee records between the source system and the new "
@@ -321,7 +387,7 @@ def _section_executive_summary(doc: Document, df: pd.DataFrame) -> None:
     )
 
     bullets = [
-        f"{n_approve:,} records look correct and are ready to load — no action needed.",
+        f"{n_approve:,} records look correct and are ready to load - no action needed.",
         f"{n_review:,} records need a human to review them before they go in.",
     ]
     if n_reject > 0:
@@ -331,7 +397,7 @@ def _section_executive_summary(doc: Document, df: pd.DataFrame) -> None:
         )
     if active_zero > 0:
         bullets.append(
-            f"{active_zero:,} employees are showing $0 salary in the new system — "
+            f"{active_zero:,} employees are showing $0 salary in the new system - "
             f"this needs to be fixed before anyone gets paid."
         )
 
@@ -362,7 +428,7 @@ def _section_executive_summary(doc: Document, df: pd.DataFrame) -> None:
 
     if n_reject > 0:
         _callout(doc,
-            f"{n_reject:,} employee records were blocked from corrections entirely — these appear "
+            f"{n_reject:,} employee records were blocked from corrections entirely - these appear "
             f"to be wrong-person matches and need manual investigation. Do not load corrections "
             f"for these records.",
             level="warning",
@@ -402,8 +468,8 @@ def _section_match_quality(doc: Document, df: pd.DataFrame) -> None:
             ["Confidence Band", "Count", "% of Total"],
             [
                 ["Exact (1.00)",          f"{n_exact:,}",   f"{n_exact/total*100:.1f}%"],
-                ["High (0.97–0.99)",      f"{n_high:,}",    f"{n_high/total*100:.1f}%"],
-                ["Medium (0.80–0.96)",    f"{n_medium:,}",  f"{n_medium/total*100:.1f}%"],
+                ["High (0.97-0.99)",      f"{n_high:,}",    f"{n_high/total*100:.1f}%"],
+                ["Medium (0.80-0.96)",    f"{n_medium:,}",  f"{n_medium/total*100:.1f}%"],
                 ["Low (< 0.80)",          f"{n_low:,}",     f"{n_low/total*100:.1f}%"],
                 ["Missing / not scored",  f"{n_missing:,}", f"{n_missing/total*100:.1f}%"],
             ]
@@ -460,7 +526,7 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
             wave_dates_top = wave_date_vals[wave_date_vals > len(df) * 0.01].head(10)
             _callout(doc,
                 f"{len(wave_rows):,} records share hire dates that appear in ≥ 1% of all pairs "
-                f"— indicative of a bulk import. These have been routed to REVIEW.",
+                f"- indicative of a bulk import. These have been routed to REVIEW.",
                 level="warning"
             )
             if not wave_dates_top.empty:
@@ -473,7 +539,7 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
     doc.add_paragraph()
 
     # Blocked records (REJECT_MATCH)
-    _add_heading(doc, "3.3 Blocked Records — Possible Wrong-Person Matches", 2)
+    _add_heading(doc, "3.3 Blocked Records - Possible Wrong-Person Matches", 2)
     if "action" in df.columns:
         rej_df = df[df["action"] == "REJECT_MATCH"]
         if rej_df.empty:
@@ -481,7 +547,7 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
             p.runs[0].font.color.rgb = _GREEN
         else:
             _callout(doc,
-                f"{len(rej_df):,} pairs were blocked — the matching engine detected these are "
+                f"{len(rej_df):,} pairs were blocked - the matching engine detected these are "
                 f"likely wrong-person pairings. No corrections will be applied to these records.",
                 level="critical",
             )
@@ -524,7 +590,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
 
         # Exclude Active/$0 records: these are data quality issues (missing salary
         # in source data), not real salary changes.  Including them collapses
-        # mean/median dramatically — e.g. $0 for a $50k worker gives delta -$50k.
+        # mean/median dramatically - e.g. $0 for a $50k worker gives delta -$50k.
         # Same exclusion used by build_workbook.py validate_active_zero_salary().
         n_excluded = 0
         if "new_worker_status" in sal_df_all.columns and "new_salary" in sal_df_all.columns:
@@ -548,11 +614,11 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
             kv_rows = [("Salary changes (total)",  f"{len(sal_df_all):,}")]
             if n_excluded > 0:
                 kv_rows.append((
-                    "  — Active/$0 excl. from stats",
-                    f"{n_excluded:,}  (data quality — not real changes)",
+                    "  - Active/$0 excl. from stats",
+                    f"{n_excluded:,}  (data quality - not real changes)",
                 ))
             kv_rows += [
-                ("  — Included in stats",     f"{len(sal_df):,}"),
+                ("  - Included in stats",     f"{len(sal_df):,}"),
                 ("Increases",                 f"{n_increase:,}"),
                 ("Decreases",                 f"{n_decrease:,}"),
                 ("Mean delta",                f"${sal_delta.mean():,.2f}"),
@@ -585,7 +651,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
             )
     doc.add_paragraph()
 
-    # Hire date changes — plain-English summary (no technical pattern table)
+    # Hire date changes - plain-English summary (no technical pattern table)
     _add_heading(doc, "4.3 Hire Date Changes", 2)
     hd_df = df[df["fix_types"].str.contains("hire_date", na=False)].copy() \
         if "fix_types" in df.columns else pd.DataFrame()
@@ -671,10 +737,10 @@ def _section_review_queue(doc: Document, df: pd.DataFrame) -> None:
 
     rows_data = []
     for _, row in top_review.iterrows():
-        name     = str(row.get("old_full_name_norm", row.get("pair_id", "—"))) if has_name \
-                   else str(row.get("pair_id", "—"))
-        reason   = _translate_reason(str(row.get("reason", ""))) if has_reason else "—"
-        fix_typs = str(row.get("fix_types", "")).replace("|", ", ") if has_fix else "—"
+        name     = str(row.get("old_full_name_norm", row.get("pair_id", "-"))) if has_name \
+                   else str(row.get("pair_id", "-"))
+        reason   = _translate_reason(str(row.get("reason", ""))) if has_reason else "-"
+        fix_typs = str(row.get("fix_types", "")).replace("|", ", ") if has_fix else "-"
         rows_data.append([name, reason, fix_typs])
 
     _data_table(doc, ["Employee", "Why It Needs Review", "Fields Changed"], rows_data)
@@ -703,7 +769,7 @@ def _section_review_queue(doc: Document, df: pd.DataFrame) -> None:
 
 
 def _section_rejected_matches(doc: Document, df: pd.DataFrame) -> None:
-    _add_heading(doc, "6. Blocked Records — Possible Wrong-Person Matches", 1)
+    _add_heading(doc, "6. Blocked Records - Possible Wrong-Person Matches", 1)
 
     if "action" not in df.columns:
         doc.add_paragraph("(action column not available)")
@@ -720,7 +786,7 @@ def _section_rejected_matches(doc: Document, df: pd.DataFrame) -> None:
 
     doc.add_paragraph(
         f"{len(rej_df):,} records were blocked from corrections because the matching engine "
-        f"detected they were likely wrong-person pairings — the system matched an employee "
+        f"detected they were likely wrong-person pairings - the system matched an employee "
         f"to someone else in the other file. These records have been completely excluded "
         f"from all correction files and must be investigated and re-matched manually."
     )
@@ -762,7 +828,7 @@ def _section_recommendations(doc: Document, df: pd.DataFrame) -> None:
     if active_zero_count > 0:
         rec_items.append(
             f"Fix {active_zero_count:,} active employees who show $0 salary in the new system. "
-            f"This is a data extraction issue — these employees had salary data in the old system "
+            f"This is a data extraction issue - these employees had salary data in the old system "
             f"that did not transfer correctly. Salary corrections for these records are blocked "
             f"until the underlying data problem is resolved."
         )
@@ -779,7 +845,7 @@ def _section_recommendations(doc: Document, df: pd.DataFrame) -> None:
         rec_items.append(
             f"Work through the review queue before running corrections. {n_rev:,} records need "
             f"a reviewer to look at them and confirm they are correct. Some corrections were "
-            f"held and not applied automatically — these are in the held_corrections file and "
+            f"held and not applied automatically - these are in the held_corrections file and "
             f"require manual review and approval before they can be loaded into the new system."
         )
 
@@ -967,7 +1033,7 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
             cnt = int(df["fix_types"].str.contains(ft, na=False).sum())
             change_summary.append([label, f"{cnt:,}", f"{cnt/total*100:.1f}%" if total > 0 else "0.0%"])
 
-    # Sanity gate — try per-run path first, then promotion-path fallback
+    # Sanity gate - try per-run path first, then promotion-path fallback
     sanity_gate: dict = {"passed": True, "metrics": []}
     for sg_candidate in [
         db_path.parent / "summary" / "sanity_gate.json",
@@ -1038,19 +1104,19 @@ def _try_node_generator(df: pd.DataFrame, db_path: Path, wide_path: Path, out_pa
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
-    print(f"[generate_report] Node.js {node_ver} detected — trying JS generator")
+    print(f"[generate_report] Node.js {node_ver} detected - trying JS generator")
 
     # 2. Locate build_report.js
     js_path = _HERE / "build_report.js"
     if not js_path.exists():
-        print(f"[generate_report] build_report.js not found at {js_path} — falling back")
+        print(f"[generate_report] build_report.js not found at {js_path} - falling back")
         return False
 
     # 3. Serialise run data to a temp JSON file
     try:
         data = _serialize_run_data(df, db_path, wide_path)
     except Exception as exc:
-        print(f"[generate_report] serialize error: {exc} — falling back")
+        print(f"[generate_report] serialize error: {exc} - falling back")
         return False
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".json")
@@ -1068,18 +1134,18 @@ def _try_node_generator(df: pd.DataFrame, db_path: Path, wide_path: Path, out_pa
         if result.stderr:
             print(result.stderr.rstrip(), file=sys.stderr)
         if result.returncode != 0:
-            print(f"[generate_report] JS generator exited {result.returncode} — falling back")
+            print(f"[generate_report] JS generator exited {result.returncode} - falling back")
             return False
         if not out_path.exists() or out_path.stat().st_size < 2048:
-            print("[generate_report] JS generator output missing or too small — falling back")
+            print("[generate_report] JS generator output missing or too small - falling back")
             return False
         return True
 
     except subprocess.TimeoutExpired:
-        print("[generate_report] JS generator timed out — falling back")
+        print("[generate_report] JS generator timed out - falling back")
         return False
     except Exception as exc:
-        print(f"[generate_report] JS generator error: {exc} — falling back")
+        print(f"[generate_report] JS generator error: {exc} - falling back")
         return False
     finally:
         _os_cleanup(tmp_path)
@@ -1136,7 +1202,7 @@ def main(argv: list[str] | None = None) -> None:
     doc = Document()
 
     # Title page
-    title   = doc.add_heading("Data Whisperer — Reconciliation Audit Report", 0)
+    title   = doc.add_heading("Data Whisperer - Reconciliation Audit Report", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in title.runs:
         run.font.color.rgb = _BLUE_DARK

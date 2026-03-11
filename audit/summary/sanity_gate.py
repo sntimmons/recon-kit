@@ -1,5 +1,5 @@
 """
-sanity_gate.py — Evaluate sanity check results against policy thresholds.
+sanity_gate.py - Evaluate sanity check results against policy thresholds.
 
 Public API
 ----------
@@ -30,8 +30,8 @@ def evaluate_sanity_gate(results: dict, policy: dict) -> dict:
     If sanity_gate.enabled is False, returns passed=True immediately.
 
     Two groups of checks are performed:
-    1. Suspicious-pattern checks (existing) — rate/count thresholds from policy.
-    2. Health-metric checks (Fix 6) — det_rate, approve_rate, active_zero_salary.
+    1. Suspicious-pattern checks (existing) - rate/count thresholds from policy.
+    2. Health-metric checks (Fix 6) - det_rate, approve_rate, active_zero_salary.
 
     If any check fails, passed=False and blocked_outputs reflects the
     block_corrections / block_workbook / block_exports flags in policy.
@@ -85,8 +85,8 @@ def evaluate_sanity_gate(results: dict, policy: dict) -> dict:
     #   1. det_rate >= min_det_rate        (worker_id + pk / total)
     #   2. approve_rate >= min_approve_rate (APPROVE / total)
     #   3. active_zero_approved == 0       (active/$0 workers with APPROVE action)
-    #      — "active/$0 with corrections staged = 0"
-    #      — active_zero_approved is always 0 because salary_ratio override routes
+    #      - "active/$0 with corrections staged = 0"
+    #      - active_zero_approved is always 0 because salary_ratio override routes
     #        all active/$0 workers to REVIEW before corrections can be staged.
     #      Falls back to the legacy active_zero_salary count if active_zero_approved
     #      is not present in health_metrics (older pipeline runs).

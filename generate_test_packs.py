@@ -6,22 +6,22 @@ The packs cover one controlled mess each, chosen to exercise distinct pipeline p
 
 Packs
 -----
-1. accent              — wd00014 (Jose Smith): first_name → "José", worker_id blanked in NEW
+1. accent              - wd00014 (Jose Smith): first_name → "José", worker_id blanked in NEW
                          → must match via Tier 2 (last4+dob); accent doesn't prevent match.
-2. middle_name         — wd00003 (Ricky Mitchell): first_name → "Ricky James" in NEW
+2. middle_name         - wd00003 (Ricky Mitchell): first_name → "Ricky James" in NEW
                          → Tier 1 match; name discrepancy captured in output.
-3. suffix              — wd00008 (Carl Rodriguez): last_name → "Rodriguez Jr." in NEW
+3. suffix              - wd00008 (Carl Rodriguez): last_name → "Rodriguez Jr." in NEW
                          → Tier 1 match; suffix discrepancy captured.
-4. hyphen_apos         — wd00005: OLD last_name → "O'Cantrell", NEW → "OCantrell"
+4. hyphen_apos         - wd00005: OLD last_name → "O'Cantrell", NEW → "OCantrell"
                          → Tier 1 match; punctuation diff captured.
-5. dup_name_diff_salary— wd00017 and wd00011 both renamed to "Alex Kim" in both files,
+5. dup_name_diff_salary- wd00017 and wd00011 both renamed to "Alex Kim" in both files,
                          but each gets a different salary bump in NEW.
                          → Two separate Tier 1 matches; both show salary mismatch.
-6. swapped_salary      — wd00006 (Paul Poole) and wd00010 (Paul Diaz) have salaries
+6. swapped_salary      - wd00006 (Paul Poole) and wd00010 (Paul Diaz) have salaries
                          swapped in NEW. → Two Tier 1 matches; both show salary mismatch.
-7. missing_worker_id_new — wd00020 (Chelsea Lopez): worker_id blanked in NEW only.
+7. missing_worker_id_new - wd00020 (Chelsea Lopez): worker_id blanked in NEW only.
                          → Falls to Tier 2 (last4+dob); successfully matched.
-8. dup_worker_id_new   — wd00015 (David Curtis): NEW gets a second phantom row with the
+8. dup_worker_id_new   - wd00015 (David Curtis): NEW gets a second phantom row with the
                          same worker_id but a bogus last4_ssn → both excluded from Tier 1;
                          real row still matches via Tier 2; phantom is unmatched.
 """
@@ -54,7 +54,7 @@ def main() -> None:
     old = pd.read_csv(OLD_SRC, dtype=str).fillna("")
     new = pd.read_csv(NEW_SRC, dtype=str).fillna("")
 
-    # 20-row base: wd00001–wd00020 (present in both files)
+    # 20-row base: wd00001-wd00020 (present in both files)
     base_ids = [f"wd{i:05d}" for i in range(1, 21)]
     old_b = (
         old[old["worker_id"].isin(base_ids)]

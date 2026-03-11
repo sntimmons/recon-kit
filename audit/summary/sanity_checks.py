@@ -1,14 +1,14 @@
 """
-sanity_checks.py — Sanity pack analyzer for matched_pairs mismatches.
+sanity_checks.py - Sanity pack analyzer for matched_pairs mismatches.
 
 Reads matched_pairs from audit/audit.db, computes mismatch distributions,
 detects suspicious default patterns, and writes diagnostic CSVs.
 
 Outputs (written to audit/summary/ by default)
 -----------------------------------------------
-  sanity_salary_buckets.csv    — salary-delta distribution by bucket
-  sanity_hire_date_diff.csv    — hire-date day-gap distribution by bucket
-  sanity_suspicious_defaults.csv — rows matching known bad-data patterns
+  sanity_salary_buckets.csv    - salary-delta distribution by bucket
+  sanity_hire_date_diff.csv    - hire-date day-gap distribution by bucket
+  sanity_suspicious_defaults.csv - rows matching known bad-data patterns
 
 Public API
 ----------
@@ -36,7 +36,7 @@ DB_PATH = ROOT / "audit" / "audit.db"
 OUT_DIR = _HERE
 
 # ---------------------------------------------------------------------------
-# Required columns — hard-fail if any missing
+# Required columns - hard-fail if any missing
 # ---------------------------------------------------------------------------
 _REQUIRED_COLS = [
     "pair_id", "match_source", "old_worker_id", "new_worker_id", "old_full_name_norm",
@@ -292,7 +292,7 @@ def _analyse(rows: list[dict]) -> tuple[dict, dict, list[dict], dict]:
                         "notes": (
                             f"new_hire_date={n_hd_str} shared by "
                             f"{wave_cnt:,}/{total:,} pairs "
-                            f"({wave_rate:.2%}) — possible import wave"
+                            f"({wave_rate:.2%}) - possible import wave"
                         ),
                     })
 
@@ -377,7 +377,7 @@ def _print_report(
         deltas = bd["deltas"]
         n      = len(deltas)
         if n == 0:
-            print(f"  {label:<18} {0:>7} {0:>9} {0:>9} {'—':>10} {'—':>8} {'—':>8}")
+            print(f"  {label:<18} {0:>7} {0:>9} {0:>9} {'-':>10} {'-':>8} {'-':>8}")
         else:
             avg_d = round(sum(deltas) / n, 2)
             p50   = _pct(deltas, 50)
@@ -394,7 +394,7 @@ def _print_report(
     print("  " + "-" * 60)
     for label, _, _ in _HIRE_DATE_BUCKETS:
         bd       = hire_data[label]
-        examples = "|".join(bd["examples"]) if bd["examples"] else "—"
+        examples = "|".join(bd["examples"]) if bd["examples"] else "-"
         print(f"  {label:<24} {bd['count']:>7,}  {examples}")
 
     # Suspicious defaults
@@ -431,7 +431,7 @@ def detect_wave_dates(rows: list[dict], min_rate: float = _HIRE_DATE_WAVE_MIN_RA
     A wave date indicates a bulk import where many records received the same date.
     Returns a frozenset of ISO date strings (empty if none detected).
 
-    Public API — called by build_diy_exports, build_review_queue, build_workbook
+    Public API - called by build_diy_exports, build_review_queue, build_workbook
     to pass wave context into classify_all() so individual records are routed to REVIEW.
     """
     total = len(rows)
@@ -552,8 +552,8 @@ def run_sanity_checks(db_path: Path, out_dir: Path) -> dict:
         suspicious_dict[norm_key] = {"count": cnt, "rate": rate}
 
     # ------------------------------------------------------------------
-    # Fix 6: Health metrics — deterministic match rate and active/$0 count.
-    # approve_rate is NOT computed here (requires gating engine) — it is
+    # Fix 6: Health metrics - deterministic match rate and active/$0 count.
+    # approve_rate is NOT computed here (requires gating engine) - it is
     # added by run_sanity_gate.py after classify_all pass.
     # ------------------------------------------------------------------
     _DET_SOURCES: frozenset[str] = frozenset({"worker_id", "pk", "recon_id"})

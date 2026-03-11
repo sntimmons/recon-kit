@@ -1,22 +1,22 @@
 """
-build_workbook.py — Full Excel workbook export.
+build_workbook.py - Full Excel workbook export.
 
 Sheets
 ------
-  1) Summary              — key statistics
-  2) All_Matches          — full dataset (all rows, all wide_compare columns)
-  3) Salary_Mismatches    — rows where fix_types contains "salary"
-  4) Status_Mismatches    — rows where fix_types contains "status"
-  5) HireDate_Mismatches  — rows where fix_types contains "hire_date"
-  6) JobOrg_Mismatches    — rows where fix_types contains "job_org"
-  7) Review_Queue         — review_queue.csv if present, else action==REVIEW filter
-  8) Corrections_Manifest — corrections_manifest.csv if present, else placeholder
+  1) Summary              - key statistics
+  2) All_Matches          - full dataset (all rows, all wide_compare columns)
+  3) Salary_Mismatches    - rows where fix_types contains "salary"
+  4) Status_Mismatches    - rows where fix_types contains "status"
+  5) HireDate_Mismatches  - rows where fix_types contains "hire_date"
+  6) JobOrg_Mismatches    - rows where fix_types contains "job_org"
+  7) Review_Queue         - review_queue.csv if present, else action==REVIEW filter
+  8) Corrections_Manifest - corrections_manifest.csv if present, else placeholder
 
 Source priority for All_Matches data:
   1. audit/exports/out/wide_compare.csv  (preferred)
   2. matched_pairs view in audit.db      (fallback, computes gating on the fly)
 
-Uses openpyxl write_only=True mode for streaming writes — no MemoryError on large
+Uses openpyxl write_only=True mode for streaming writes - no MemoryError on large
 datasets.  Formatting: bold/coloured header row via WriteOnlyCell; freeze_panes and
 auto_filter are not available in write_only mode.
 
@@ -119,7 +119,7 @@ def _write_df_to_sheet(ws, df: pd.DataFrame) -> None:
     # Header row with bold/colour formatting
     ws.append([_header_cell(ws, c) for c in cols])
 
-    # Data rows — no per-cell formatting for streaming performance
+    # Data rows - no per-cell formatting for streaming performance
     for row_tuple in df.itertuples(index=False, name=None):
         ws.append(list(row_tuple))
 
@@ -138,7 +138,7 @@ def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
     """
     Return rows where new_worker_status is 'active' and new_salary is $0 or blank.
 
-    These records indicate a mapping failure or data artefact — staging a salary
+    These records indicate a mapping failure or data artefact - staging a salary
     correction for them would zero out an active employee's pay in the target system.
     """
     if df.empty:
@@ -225,7 +225,7 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
 
         # Active/$0 records are data quality issues (missing/bad data from source),
         # not real salary changes.  Their delta is -(old_salary), e.g. -$50,000 for
-        # a worker whose new file has $0 — including them collapses mean/median and
+        # a worker whose new file has $0 - including them collapses mean/median and
         # masks the true distribution of legitimate salary corrections.
         # Identify them once, use for both exclusion and the CRITICAL warning below.
         active_zero_df = validate_active_zero_salary(all_df)
@@ -240,7 +240,7 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
         if len(sal_d_nonzero) > 0 or sal_rows_count:
             _kv("SALARY DELTA STATS", "", bold=True)
             if n_az > 0:
-                _kv(f"  (excl. {n_az} Active/$0 — data quality, not real changes)", "")
+                _kv(f"  (excl. {n_az} Active/$0 - data quality, not real changes)", "")
             if sal_rows_count is not None:
                 _kv("  Rows with salary change", sal_rows_count)
             if len(sal_d_nonzero) > 0:
@@ -431,7 +431,7 @@ def main(argv: list[str] | None = None) -> None:
         all_df   = pd.read_csv(str(wide_path))
         wide_src = str(wide_path.relative_to(ROOT)) if wide_path.is_relative_to(ROOT) else str(wide_path)
     else:
-        print(f"[build_workbook] {wide_path.name} not found — computing from DB ...")
+        print(f"[build_workbook] {wide_path.name} not found - computing from DB ...")
         all_df   = _load_wide_from_db(db_path)
         wide_src = f"{db_path.name} (gating computed on the fly)"
 
@@ -462,17 +462,17 @@ def main(argv: list[str] | None = None) -> None:
 
     if REVIEW_CSV.exists():
         review_df = pd.read_csv(str(REVIEW_CSV))
-        # Always filter to REVIEW-only — csv may contain APPROVE rows from older runs
+        # Always filter to REVIEW-only - csv may contain APPROVE rows from older runs
         if not review_df.empty and "action" in review_df.columns:
             review_df = review_df[review_df["action"] == "REVIEW"].copy()
         if not review_df.empty:
             review_src = REVIEW_CSV.name
         else:
-            # review_queue.csv exists but has 0 REVIEW rows — fall back to filtering
+            # review_queue.csv exists but has 0 REVIEW rows - fall back to filtering
             # the live dataset so the sheet is never incorrectly blank.
             review_df  = _review_from_alldf(all_df)
             review_src = (
-                f"{REVIEW_CSV.name} had no REVIEW rows — "
+                f"{REVIEW_CSV.name} had no REVIEW rows - "
                 "filtered from All_Matches (action==REVIEW)"
             )
     elif "needs_review" in all_df.columns or "action" in all_df.columns:
@@ -487,7 +487,7 @@ def main(argv: list[str] | None = None) -> None:
         manifest_src = manifest_path.name
     else:
         manifest_df  = pd.DataFrame([
-            {"note": "corrections_manifest.csv not found — run generate_corrections.py first"}
+            {"note": "corrections_manifest.csv not found - run generate_corrections.py first"}
         ])
         manifest_src = f"placeholder (looked in: {manifest_path})"
 
@@ -504,7 +504,7 @@ def main(argv: list[str] | None = None) -> None:
     hire_df    = _fix_filter("hire_date")
     job_org_df = _fix_filter("job_org")
 
-    # Extra_Field_Mismatches — rows where any mm_<field> column is True
+    # Extra_Field_Mismatches - rows where any mm_<field> column is True
     mm_cols = [c for c in all_df.columns if c.startswith("mm_")]
     if mm_cols:
         def _mm_true(series: pd.Series) -> pd.Series:
@@ -514,17 +514,17 @@ def main(argv: list[str] | None = None) -> None:
     else:
         extra_mismatch_df = None
 
-    # Fix 3: Rejected_Matches — rows where action == REJECT_MATCH
+    # Fix 3: Rejected_Matches - rows where action == REJECT_MATCH
     rejected_df: pd.DataFrame | None = None
     if "action" in all_df.columns:
         rejected_df = all_df[all_df["action"] == "REJECT_MATCH"].copy()
 
-    # Fix 1: CRITICAL_Zero_Salary — Active workers with $0 salary in new data
+    # Fix 1: CRITICAL_Zero_Salary - Active workers with $0 salary in new data
     active_zero_df = validate_active_zero_salary(all_df)
     if len(active_zero_df) > 0:
         print(
             f"\n[build_workbook] *** CRITICAL: {len(active_zero_df):,} Active workers have "
-            f"$0 or missing salary in new data — see CRITICAL_Zero_Salary sheet ***\n"
+            f"$0 or missing salary in new data - see CRITICAL_Zero_Salary sheet ***\n"
         )
 
     print(f"  review_queue src       : {review_src}  ({len(review_df):,} rows)")
@@ -540,7 +540,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  Extra_Field_Mismatches : {len(extra_mismatch_df):,}  (mm_ cols: {mm_cols})")
 
     # ------------------------------------------------------------------
-    # Build workbook (write_only streaming — no MemoryError on large sets)
+    # Build workbook (write_only streaming - no MemoryError on large sets)
     # ------------------------------------------------------------------
     print(f"\n[build_workbook] writing workbook (streaming mode) ...")
     wb = Workbook(write_only=True)
@@ -568,7 +568,7 @@ def main(argv: list[str] | None = None) -> None:
         _write_df_to_sheet(ws, df)
         print(f"  wrote: {sheet_name:<25}  ({len(df):,} rows)")
 
-    # CRITICAL_Zero_Salary sheet with red header — always write (even if 0 rows)
+    # CRITICAL_Zero_Salary sheet with red header - always write (even if 0 rows)
     ws_crit = wb.create_sheet("CRITICAL_Zero_Salary")
     _write_df_to_sheet_styled(ws_crit, active_zero_df, hdr_font=_CRIT_HDR_FONT, hdr_fill=_CRIT_HDR_FILL)
     print(f"  wrote: {'CRITICAL_Zero_Salary':<25}  ({len(active_zero_df):,} rows)")

@@ -1,5 +1,5 @@
 """
-run_pipeline_runfolder.py — Run the full pipeline and collect outputs into a
+run_pipeline_runfolder.py - Run the full pipeline and collect outputs into a
 timestamped run folder.
 
 Run folder structure:
@@ -75,7 +75,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, log, optional: bool = False) -
 
 
 def _run(cmd: list[str], cwd: Path, env: dict, log, label: str = "") -> None:
-    """Required step — raises SystemExit on non-zero exit code."""
+    """Required step - raises SystemExit on non-zero exit code."""
     rc = _stream(cmd, cwd, env, log, optional=False)
     if rc != 0:
         msg = f"[error] Required step '{label or cmd[-1]}' exited {rc}. Aborting.\n"
@@ -85,10 +85,10 @@ def _run(cmd: list[str], cwd: Path, env: dict, log, label: str = "") -> None:
 
 
 def _run_opt(cmd: list[str], cwd: Path, env: dict, log, label: str = "") -> int:
-    """Optional step — logs warning on non-zero exit, never raises. Returns exit code."""
+    """Optional step - logs warning on non-zero exit, never raises. Returns exit code."""
     rc = _stream(cmd, cwd, env, log, optional=True)
     if rc not in (0,):
-        msg = f"[warning] {label or cmd[-1]} exited {rc} — pipeline continues.\n"
+        msg = f"[warning] {label or cmd[-1]} exited {rc} - pipeline continues.\n"
         sys.stdout.write(msg)
         log.write(msg)
     return rc
@@ -214,7 +214,7 @@ def _main_inner(
     log.write(msg)
 
     # -------------------------------------------------------------------
-    # Optional steps — non-fatal
+    # Optional steps - non-fatal
     # -------------------------------------------------------------------
 
     # Console-only; no output files to copy
@@ -241,13 +241,13 @@ def _main_inner(
     gate_passed, blocked = _read_gate_json(run_summary_dir / "sanity_gate.json")
 
     if not gate_passed:
-        msg = f"\n[WARNING] Sanity gate FAILED — see {run_dir.name}/summary/sanity_gate.json\n"
+        msg = f"\n[WARNING] Sanity gate FAILED - see {run_dir.name}/summary/sanity_gate.json\n"
         sys.stdout.write(msg)
         log.write(msg)
 
-    # DIY exports — write directly to run_exports_dir
+    # DIY exports - write directly to run_exports_dir
     if blocked.get("exports"):
-        msg = "[pipeline] Skipping build_diy_exports — blocked by sanity gate.\n"
+        msg = "[pipeline] Skipping build_diy_exports - blocked by sanity gate.\n"
         sys.stdout.write(msg)
         log.write(msg)
     else:
@@ -257,9 +257,9 @@ def _main_inner(
             cwd=root, env=env, log=log, label="build_diy_exports",
         )
 
-    # Corrections — write directly to run_corr_dir
+    # Corrections - write directly to run_corr_dir
     if blocked.get("corrections"):
-        msg = "[pipeline] Skipping generate_corrections — blocked by sanity gate.\n"
+        msg = "[pipeline] Skipping generate_corrections - blocked by sanity gate.\n"
         sys.stdout.write(msg)
         log.write(msg)
     else:
@@ -282,9 +282,9 @@ def _main_inner(
         charts_dest.mkdir(parents=True, exist_ok=True)
         _copy_glob(charts_src, charts_dest, "*.png")
 
-    # Workbook — write directly to run_summary_dir
+    # Workbook - write directly to run_summary_dir
     if blocked.get("workbook"):
-        msg = "[pipeline] Skipping build_workbook — blocked by sanity gate.\n"
+        msg = "[pipeline] Skipping build_workbook - blocked by sanity gate.\n"
         sys.stdout.write(msg)
         log.write(msg)
     else:

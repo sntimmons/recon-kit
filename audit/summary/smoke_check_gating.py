@@ -1,5 +1,5 @@
 """
-smoke_check_gating.py — Validates gating logic against audit/audit.db.
+smoke_check_gating.py - Validates gating logic against audit/audit.db.
 
 Assertions checked
 ------------------
@@ -75,7 +75,7 @@ def main() -> None:
     print(f"  Found {n_mismatch} mismatch rows in first {total:,} (capped at {SAMPLE_SIZE}).")
 
     if n_mismatch == 0:
-        print("  No mismatches found — cannot perform all checks. (DB may need re-running pipeline.)")
+        print("  No mismatches found - cannot perform all checks. (DB may need re-running pipeline.)")
 
     # ------------------------------------------------------------------
     # Assertion 1: worker_id rows must always be APPROVE

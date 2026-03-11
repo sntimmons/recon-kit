@@ -1,17 +1,17 @@
 """
-generate_corrections.py — Workday-ready Correction File Generator.
+generate_corrections.py - Workday-ready Correction File Generator.
 
 Reads matched_pairs from audit/audit.db, applies the gating engine per fix_type,
 and writes APPROVE-only correction CSVs to audit/corrections/out/.
 
 Output files
 ------------
-  corrections_salary.csv    — APPROVE salary changes
-  corrections_status.csv    — APPROVE status changes
-  corrections_hire_date.csv — APPROVE hire-date changes
-  corrections_job_org.csv   — APPROVE position/district/location changes
-  review_needed.csv         — rows where ANY fix_type is REVIEW
-  corrections_manifest.csv  — one row per correction generated (all fix types)
+  corrections_salary.csv    - APPROVE salary changes
+  corrections_status.csv    - APPROVE status changes
+  corrections_hire_date.csv - APPROVE hire-date changes
+  corrections_job_org.csv   - APPROVE position/district/location changes
+  review_needed.csv         - rows where ANY fix_type is REVIEW
+  corrections_manifest.csv  - one row per correction generated (all fix types)
 
 Run:
     venv/Scripts/python.exe audit/corrections/generate_corrections.py [--dry-run] [--out-dir PATH]
@@ -110,7 +110,7 @@ _HELD_COLS = [
 
 
 # ---------------------------------------------------------------------------
-# Row builders — one per correction type
+# Row builders - one per correction type
 # ---------------------------------------------------------------------------
 
 def _conf_str(row: dict) -> str:
@@ -458,7 +458,7 @@ def main(argv: list[str] | None = None) -> None:
         summary = build_summary_str(r, fix_types)
 
         # -----------------------------------------------------------------------
-        # Fix 2: APPROVE gate — hold all corrections for REVIEW or REJECT_MATCH
+        # Fix 2: APPROVE gate - hold all corrections for REVIEW or REJECT_MATCH
         # pairs.  A pair with overall_action=REVIEW means at least one field
         # change needs human sign-off; we must not stage any corrections until
         # the reviewer approves.  REJECT_MATCH pairs should never be corrected.
@@ -475,14 +475,14 @@ def main(argv: list[str] | None = None) -> None:
                     review_rows.append(_build_review_row(r, result, summary))
             continue   # <-- no correction rows for this pair
 
-        # From here: overall_action == "APPROVE" — route per fix_type.
+        # From here: overall_action == "APPROVE" - route per fix_type.
         for ft, gate in result["per_fix"].items():
             if only_approved and gate["action"] != "APPROVE":
                 continue
 
             if ft == "salary":
                 # ---------------------------------------------------------------
-                # Fix 1: CRITICAL — never stage a salary correction that would
+                # Fix 1: CRITICAL - never stage a salary correction that would
                 # write $0 (or blank) onto an Active worker.  Such a record
                 # indicates a mapping failure or data artefact.
                 # ---------------------------------------------------------------

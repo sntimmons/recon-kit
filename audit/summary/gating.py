@@ -150,7 +150,7 @@ def evaluate_hire_date_delta(
     Check whether a hire-date change matches a known systematic pattern.
 
     Returns (action, reason) when a pattern applies, None otherwise.
-    Only fires for deterministic sources (worker_id, pk) — never for fuzzy matches.
+    Only fires for deterministic sources (worker_id, pk) - never for fuzzy matches.
 
     Rules
     -----
@@ -310,7 +310,7 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     fix_types = infer_fix_types(row)
 
     # -------------------------------------------------------------------
-    # Override 3: hire_date_wave — evaluated before the early-return so it
+    # Override 3: hire_date_wave - evaluated before the early-return so it
     # catches records with no other field changes.
     # -------------------------------------------------------------------
     wave_flagged = False
@@ -339,7 +339,7 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
         per_fix[ft] = classify_row(row, ft)
 
     # -------------------------------------------------------------------
-    # Override 1: extreme salary ratio — fires even for auto-approve
+    # Override 1: extreme salary ratio - fires even for auto-approve
     # sources (e.g. worker_id).  Any ratio outside [0.85, 1.15] → REVIEW.
     # -------------------------------------------------------------------
     if "salary" in per_fix:
@@ -351,7 +351,7 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
             )
 
     # -------------------------------------------------------------------
-    # Override 2: active → terminated / inactive — always routes to REVIEW
+    # Override 2: active → terminated / inactive - always routes to REVIEW
     # regardless of confidence score or match_source auto-approve flag.
     # -------------------------------------------------------------------
     if "status" in per_fix:
@@ -380,10 +380,10 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
             per_fix["hire_date"]["pattern_applied"] = True
 
     # -------------------------------------------------------------------
-    # Override 4: REJECT_MATCH — wrong-person pairing signals (Fix 3)
+    # Override 4: REJECT_MATCH - wrong-person pairing signals (Fix 3)
     # (a) dob_name source with confidence < 0.75
     # (b) Any non-deterministic source with salary_ratio > 2.5
-    # REJECT_MATCH overrides everything — treated as worse than REVIEW.
+    # REJECT_MATCH overrides everything - treated as worse than REVIEW.
     # -------------------------------------------------------------------
     ms         = _norm(row.get("match_source", ""))
     confidence = _parse_confidence(row.get("confidence"))

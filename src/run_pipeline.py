@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 # ---------------------------------------------------------------------------
-# Log tee — mirrors Python-level writes to both console and a log file
+# Log tee - mirrors Python-level writes to both console and a log file
 # ---------------------------------------------------------------------------
 
 class _Tee:
@@ -76,7 +76,7 @@ def run_cmd_optional(cmd: list[str], cwd: Path, env: dict[str, str], label: str)
     print(f"\n[{ts}] RUN (optional): {' '.join(cmd)}")
     rc = _stream_proc(cmd, cwd, env)
     if rc != 0:
-        print(f"[warning] {label} exited with code {rc} — pipeline continues.")
+        print(f"[warning] {label} exited with code {rc} - pipeline continues.")
     return rc
 
 
@@ -163,7 +163,7 @@ def main() -> None:
 
     try:
         # ==============================================================
-        # REQUIRED STEPS — abort on failure
+        # REQUIRED STEPS - abort on failure
         # ==============================================================
 
         # --- mapping ---------------------------------------------------
@@ -253,7 +253,7 @@ def main() -> None:
         })
 
         # ==============================================================
-        # OPTIONAL STEPS — failures are non-fatal
+        # OPTIONAL STEPS - failures are non-fatal
         # ==============================================================
 
         # --- reconciliation_summary ------------------------------------
@@ -284,7 +284,7 @@ def main() -> None:
             "ok":            rc == 0,
         })
 
-        # --- build_ui_pairs (first pass — before sanity gate) ----------
+        # --- build_ui_pairs (first pass - before sanity gate) ----------
         t0 = time.monotonic()
         rc = run_cmd_optional(
             [py, str(root / "audit" / "ui" / "build_ui_pairs.py")],
@@ -310,7 +310,7 @@ def main() -> None:
         gate_passed, blocked = _read_gate_json(gate_json_path)
         gate_status = "PASS" if gate_passed else "FAIL"
 
-        # Triage: when gate fails, we do NOT block exports/workbook/report —
+        # Triage: when gate fails, we do NOT block exports/workbook/report -
         # only corrections are blocked. Override blocked to reflect triage policy.
         if not gate_passed:
             blocked = {
@@ -334,7 +334,7 @@ def main() -> None:
         })
 
         if not gate_passed:
-            print(f"\n[pipeline] WARNING: Sanity gate FAILED — triage mode active.")
+            print(f"\n[pipeline] WARNING: Sanity gate FAILED - triage mode active.")
             print(f"[pipeline]   blocked : corrections")
             print(f"[pipeline]   running : exports, workbook, report, root-cause")
 
@@ -358,7 +358,7 @@ def main() -> None:
 
         # --- build_diy_exports -----------------------------------------
         if blocked.get("exports"):
-            print("\n[pipeline] Skipping build_diy_exports — blocked by sanity gate.")
+            print("\n[pipeline] Skipping build_diy_exports - blocked by sanity gate.")
         else:
             t0 = time.monotonic()
             rc = run_cmd_optional(
@@ -378,11 +378,11 @@ def main() -> None:
 
         # --- generate_corrections (BLOCKED in triage mode) -------------
         if blocked.get("corrections"):
-            print("\n[pipeline] Skipping generate_corrections — blocked by sanity gate (triage mode).")
+            print("\n[pipeline] Skipping generate_corrections - blocked by sanity gate (triage mode).")
             _write_receipt(run_paths, "generate_corrections", {
                 "inputs":      [],
                 "outputs":     [],
-                "warnings":    ["skipped — gate failed, corrections blocked in triage mode"],
+                "warnings":    ["skipped - gate failed, corrections blocked in triage mode"],
                 "elapsed_sec": 0.0,
                 "ok":          False,
                 "skipped":     True,
@@ -422,7 +422,7 @@ def main() -> None:
 
         # --- build_workbook --------------------------------------------
         if blocked.get("workbook"):
-            print("\n[pipeline] Skipping build_workbook — blocked by sanity gate.")
+            print("\n[pipeline] Skipping build_workbook - blocked by sanity gate.")
         else:
             t0 = time.monotonic()
             rc = run_cmd_optional(
@@ -437,7 +437,7 @@ def main() -> None:
                 "ok":            rc == 0,
             })
 
-        # --- build_ui_pairs (second pass — after exports + gate) -------
+        # --- build_ui_pairs (second pass - after exports + gate) -------
         t0 = time.monotonic()
         rc = run_cmd_optional(
             [py, str(root / "audit" / "ui" / "build_ui_pairs.py")],

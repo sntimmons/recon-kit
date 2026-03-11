@@ -1,5 +1,5 @@
 """
-smoke_check_report.py — Smoke test for generate_report.py
+smoke_check_report.py - Smoke test for generate_report.py
 
 Creates a minimal in-memory SQLite database with synthetic matched_pairs data,
 runs generate_report.main(), and asserts that a non-empty .docx is produced.
@@ -8,8 +8,8 @@ Run:
     venv/Scripts/python.exe audit/reports/smoke_check_report.py
 
 Exit codes:
-    0  — all checks passed
-    1  — one or more checks failed
+    0  - all checks passed
+    1  - one or more checks failed
 """
 from __future__ import annotations
 

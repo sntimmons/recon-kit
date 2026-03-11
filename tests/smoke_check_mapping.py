@@ -1,5 +1,5 @@
 """
-smoke_check_mapping.py — Quick sanity check for mapping pipeline outputs.
+smoke_check_mapping.py - Quick sanity check for mapping pipeline outputs.
 
 Assertions
 ----------

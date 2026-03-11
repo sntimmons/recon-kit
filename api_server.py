@@ -1,13 +1,13 @@
 """
-api_server.py — Local API server for the Recon-Kit dashboard.
+api_server.py - Local API server for the Recon-Kit dashboard.
 
 Run with:
     venv/Scripts/python.exe api_server.py
 
 Listens on http://localhost:5001
 Serves the static site from site/ and provides two API endpoints:
-  POST /api/run/recon   — cross-system reconciliation (old + new CSV)
-  POST /api/run/audit   — internal data audit (single CSV)
+  POST /api/run/recon   - cross-system reconciliation (old + new CSV)
+  POST /api/run/audit   - internal data audit (single CSV)
   GET  /api/status/<run_id>
   GET  /api/download/<run_id>/<filename>
 """
@@ -154,7 +154,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     found = []
     for name in wanted:
         p = run_dir / name
-        if p.exists():
+        if p.exists() and p.stat().st_size > 0:
             found.append({"name": name, "size": p.stat().st_size})
     # Also pick up anything in corrections subfolder
     corr_dir = run_dir / "corrections"
@@ -213,11 +213,24 @@ def _parse_run_stats(run_dir: Path) -> dict:
         try:
             gate = json.loads(gate_file.read_text(encoding="utf-8"))
             stats["gate_passed"] = gate.get("passed", True)
+            stats["gate_reasons"] = gate.get("reasons", [])
             # Extract det_match_rate for the DET. MATCH RATE dashboard card
             hc     = gate.get("health_checks", {})
             dr_val = hc.get("det_rate", {}).get("value")
             if dr_val is not None:
                 stats["det_match_rate"] = f"{float(dr_val) * 100:.1f}%"
+                stats["det_match_rate_raw"] = float(dr_val)
+            # approve_rate from health checks
+            ar_val = hc.get("approve_rate", {}).get("value")
+            if ar_val is not None and ar_val != "not_computed":
+                try:
+                    stats["approve_rate_pct"] = f"{float(ar_val) * 100:.1f}%"
+                except (ValueError, TypeError):
+                    pass
+            # active_zero check
+            az = hc.get("active_zero_salary", {})
+            if az:
+                stats["active_zero_approved"] = az.get("value_approved", az.get("value", 0))
         except Exception:
             pass
 
@@ -231,6 +244,40 @@ def _parse_run_stats(run_dir: Path) -> dict:
                 stats["approve_count"] = int(hm["approve_count"])
         except Exception:
             pass
+
+    # Count REJECT_MATCH rows from wide_compare.csv
+    wide = run_dir / "wide_compare.csv"
+    if wide.exists():
+        try:
+            import csv as _csv
+            n_reject = 0
+            with wide.open(encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    if row.get("action") == "REJECT_MATCH":
+                        n_reject += 1
+            stats["reject_count"] = n_reject
+        except Exception:
+            pass
+
+    # Per-fix correction counts from individual correction CSVs
+    fix_counts: dict[str, int] = {}
+    for fix_name in ("salary", "status", "hire_date", "job_org"):
+        p = run_dir / f"corrections_{fix_name}.csv"
+        if p.exists() and p.stat().st_size > 0:
+            try:
+                import csv as _csv
+                with p.open(encoding="utf-8") as f:
+                    reader = _csv.reader(f)
+                    next(reader)
+                    n = sum(1 for _ in reader)
+                if n > 0:
+                    fix_counts[fix_name] = n
+            except Exception:
+                pass
+    if fix_counts:
+        stats["fix_counts"] = fix_counts
+        stats["total_corrections"] = sum(fix_counts.values())
 
     return stats
 
@@ -283,7 +330,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         shutil.copy2(new_path, run_inputs / "new.csv")
         _finish_step(run_id, "upload")
 
-        # 2. Mapping — use absolute run_dir paths so no global outputs/ is touched
+        # 2. Mapping - use absolute run_dir paths so no global outputs/ is touched
         _set_step(run_id, "mapping")
         old_in  = run_inputs  / "old.csv"
         new_in  = run_inputs  / "new.csv"
@@ -300,35 +347,35 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         if rc != 0:
             raise RuntimeError("Mapping step failed")
 
-        # 3. Matching — RK_WORK_DIR tells matcher.py where to write matched_raw.csv
+        # 3. Matching - RK_WORK_DIR tells matcher.py where to write matched_raw.csv
         _set_step(run_id, "matching")
         rc, _ = _run_cmd([str(PYTHON), "src/matcher.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "matching", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Matcher step failed")
 
-        # 4. Resolve conflicts — RK_WORK_DIR tells resolve where matched_raw.csv lives
+        # 4. Resolve conflicts - RK_WORK_DIR tells resolve where matched_raw.csv lives
         _set_step(run_id, "resolve")
         rc, _ = _run_cmd([str(PYTHON), "resolve_matched_raw.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "resolve", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Resolve step failed")
 
-        # 5. Load SQLite — RK_WORK_DIR tells load_sqlite where to place audit.db
+        # 5. Load SQLite - RK_WORK_DIR tells load_sqlite where to place audit.db
         _set_step(run_id, "load_db")
         rc, _ = _run_cmd([str(PYTHON), "audit/load_sqlite.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "load_db", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("DB load step failed")
 
-        # 6. Run audit queries — RK_WORK_DIR tells run_audit.py which DB to use
+        # 6. Run audit queries - RK_WORK_DIR tells run_audit.py which DB to use
         _set_step(run_id, "audit")
         rc, _ = _run_cmd([str(PYTHON), "audit/run_audit.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Audit step failed")
 
-        # 7. Optional: sanity gate — write JSON to per-run summary dir
+        # 7. Optional: sanity gate - write JSON to per-run summary dir
         if options.get("sanity_gate", True):
             _set_step(run_id, "sanity_gate")
             rc, _ = _run_cmd(
@@ -339,7 +386,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             )
             _finish_step(run_id, "sanity_gate", "done" if rc == 0 else "warn")
 
-        # 8. Optional: generate corrections — pass per-run DB and output dir
+        # 8. Optional: generate corrections - pass per-run DB and output dir
         if options.get("corrections", True):
             _set_step(run_id, "corrections")
             rc, _ = _run_cmd(
@@ -350,7 +397,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             )
             _finish_step(run_id, "corrections", "done" if rc == 0 else "warn")
 
-        # 9. DIY exports — writes wide_compare.csv directly to run_dir
+        # 9. DIY exports - writes wide_compare.csv directly to run_dir
         _set_step(run_id, "exports")
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/exports/build_diy_exports.py",
@@ -360,7 +407,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "exports", "done" if rc == 0 else "warn")
 
-        # 10. Optional: Excel workbook — reads wide_compare.csv from run_dir
+        # 10. Optional: Excel workbook - reads wide_compare.csv from run_dir
         if options.get("workbook", True):
             _set_step(run_id, "workbook")
             rc, _ = _run_cmd(
@@ -373,7 +420,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             )
             _finish_step(run_id, "workbook", "done" if rc == 0 else "warn")
 
-        # 11. Review queue — pass per-run DB and output path
+        # 11. Review queue - pass per-run DB and output path
         _set_step(run_id, "review_queue")
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/summary/build_review_queue.py",
@@ -383,7 +430,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "review_queue", "done" if rc == 0 else "warn")
 
-        # 12. Audit report (.docx) — fully isolated, writes directly to run_dir
+        # 12. Audit report (.docx) - fully isolated, writes directly to run_dir
         _set_step(run_id, "audit_report")
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/reports/generate_report.py",
@@ -432,14 +479,14 @@ def _promote_run_outputs(run_dir: Path) -> None:
         run_summary / "sanity_results.json":           run_dir / "sanity_results.json",
         run_summary / "sanity_gate.json":              run_dir / "sanity_gate.json",
         # corrections (build_review_queue writes directly to run_dir/review_queue.csv
-        # via --out arg, so it's already there — entries below are safety copies)
+        # via --out arg, so it's already there - entries below are safety copies)
         run_corr    / "corrections_salary.csv":        run_dir / "corrections_salary.csv",
         run_corr    / "corrections_status.csv":        run_dir / "corrections_status.csv",
         run_corr    / "corrections_hire_date.csv":     run_dir / "corrections_hire_date.csv",
         run_corr    / "corrections_job_org.csv":       run_dir / "corrections_job_org.csv",
         run_corr    / "corrections_manifest.csv":      run_dir / "corrections_manifest.csv",
         run_corr    / "held_corrections.csv":          run_dir / "held_corrections.csv",
-        # matched_raw (informational — not required for downloads but useful)
+        # matched_raw (informational - not required for downloads but useful)
         run_outputs / "matched_raw.csv":               run_dir / "matched_raw.csv",
     }
     for src, dst in flat_map.items():
@@ -601,13 +648,36 @@ def api_download(run_id: str, filename: str):
     run_dir = RUNS_DIR / run_id
     if not run_dir.exists():
         abort(404)
-    # Security: only allow files within run_dir
-    target = (run_dir / filename).resolve()
-    if not str(target).startswith(str(run_dir.resolve())):
+    # Security: only allow files within run_dir (resolve symlinks)
+    try:
+        target = (run_dir / filename).resolve()
+        base   = run_dir.resolve()
+    except Exception:
+        abort(403)
+    if not str(target).startswith(str(base) + os.sep) and str(target) != str(base):
         abort(403)
     if not target.exists():
         abort(404)
-    return send_from_directory(str(run_dir), filename, as_attachment=True)
+    if target.stat().st_size == 0:
+        abort(404)   # empty file - treat as not yet generated
+
+    # Explicit MIME types for Office formats (some systems don't register these)
+    _MIME = {
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".csv":  "text/csv",
+        ".json": "application/json",
+    }
+    ext      = os.path.splitext(filename)[1].lower()
+    mimetype = _MIME.get(ext)
+
+    # serve the file relative to run_dir (handles subdirectories like corrections/)
+    rel_dir  = str(target.parent)
+    basename = target.name
+    return send_from_directory(rel_dir, basename,
+                               as_attachment=True,
+                               mimetype=mimetype,
+                               download_name=basename)
 
 
 @app.get("/api/ping")

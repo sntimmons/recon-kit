@@ -1,5 +1,5 @@
 """
-explanation.py — Plain-language match explanation generator.
+explanation.py - Plain-language match explanation generator.
 
 Public API
 ----------
@@ -17,16 +17,16 @@ generate_explanation(row: dict, result: dict) -> str
     Output example
     --------------
     "Matched on Worker ID. Salary unchanged. Job title changed from Charge Nurse
-     to Accountant — flagged for review."
+     to Accountant - flagged for review."
 
     "Matched on Worker ID with full confidence. No field changes detected.
      Approved automatically."
 
     "Matched on name and hire date. Confidence 0.60. Salary increased $256,000,
      status changed active to terminated, hire date changed, job title changed
-     — sent to human review."
+     - sent to human review."
 
-    "Matched on Worker ID. Salary appears to be a decimal shift — old shows
+    "Matched on Worker ID. Salary appears to be a decimal shift - old shows
      $318,500, new shows $31,850. Flagged for review."
 """
 from __future__ import annotations
@@ -93,7 +93,7 @@ def generate_explanation(row: dict, result: dict) -> str:
             conf_str = "Confidence not recorded."
 
     # ------------------------------------------------------------------
-    # Part 3: Field changes — collect change phrases and unchanged notes
+    # Part 3: Field changes - collect change phrases and unchanged notes
     # ------------------------------------------------------------------
     unchanged: list[str] = []   # mentioned explicitly to reassure reader
     changes:   list[str] = []   # things that actually changed
@@ -109,13 +109,13 @@ def generate_explanation(row: dict, result: dict) -> str:
             o_fmt = _fmt_salary(o_raw)
             n_fmt = _fmt_salary(n_raw)
             changes.append(
-                f"Salary appears to be a decimal shift — old shows {o_fmt}, new shows {n_fmt}"
+                f"Salary appears to be a decimal shift - old shows {o_fmt}, new shows {n_fmt}"
             )
         else:
             direction = "increased" if sal_d > 0 else "decreased"
             changes.append(f"Salary {direction} ${abs(sal_d):,.0f}")
     elif fix_types:
-        # Other changes present but salary is untouched — state it for clarity
+        # Other changes present but salary is untouched - state it for clarity
         unchanged.append("Salary unchanged")
 
     # Status
@@ -158,11 +158,11 @@ def generate_explanation(row: dict, result: dict) -> str:
             conf_val = conf if conf is not None else 0.0
             reject_signals.append(
                 f"Confidence {conf_val:.2f} is below the 0.75 minimum for "
-                f"name/DOB matches — likely a wrong-person pairing"
+                f"name/DOB matches - likely a wrong-person pairing"
             )
         elif "fuzzy_extreme_salary_ratio" in reason_str:
             reject_signals.append(
-                "Salary ratio between records is extreme — likely a wrong-person pairing"
+                "Salary ratio between records is extreme - likely a wrong-person pairing"
             )
         else:
             reject_signals.append("Flagged as likely wrong-person pairing")
@@ -171,7 +171,7 @@ def generate_explanation(row: dict, result: dict) -> str:
     # Part 5: Decision suffix
     # ------------------------------------------------------------------
     if action == "REJECT_MATCH":
-        decision = "Rejected — do not apply corrections."
+        decision = "Rejected - do not apply corrections."
     elif action == "APPROVE":
         if not fix_types:
             decision = "No field changes detected. Approved automatically."
@@ -194,7 +194,7 @@ def generate_explanation(row: dict, result: dict) -> str:
             parts.append(", ".join(reject_signals) + ".")
         if changes:
             parts.append("Changes noted: " + ", ".join(changes) + ".")
-        parts.append("Rejected — do not apply corrections.")
+        parts.append("Rejected - do not apply corrections.")
     elif not fix_types and not wave_only:
         # Completely clean record
         parts.append("No field changes detected. Approved automatically.")
@@ -206,7 +206,7 @@ def generate_explanation(row: dict, result: dict) -> str:
         if changes:
             changes_joined = ", ".join(changes)
             if action == "REVIEW":
-                parts.append(changes_joined + " — flagged for review.")
+                parts.append(changes_joined + " - flagged for review.")
             else:
                 parts.append(changes_joined + ". Approved automatically.")
         else:

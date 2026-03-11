@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * build_report.js — Data Whisperer Audit Report Generator
+ * build_report.js - Data Whisperer Audit Report Generator
  *
  * Uses docx npm library v9.5+ to produce a fully-formatted .docx that matches
  * the brand specification in DataWhisperer_Engine_Prompt.docx.
@@ -22,7 +22,7 @@ const fs   = require('fs');
 const path = require('path');
 
 // ---------------------------------------------------------------------------
-// Load docx — try global install first, then local node_modules
+// Load docx - try global install first, then local node_modules
 // ---------------------------------------------------------------------------
 let docx;
 try {
@@ -44,7 +44,7 @@ const {
 } = docx;
 
 // ---------------------------------------------------------------------------
-// Brand palette — DataWhisperer_Engine_Prompt.docx spec
+// Brand palette - DataWhisperer_Engine_Prompt.docx spec
 // ---------------------------------------------------------------------------
 const NAVY     = '1B3F6B';   // H1 colour
 const BLUE     = '2C5F8A';   // H2 colour, info badge/callout border
@@ -80,42 +80,98 @@ function translateReason (reason) {
   if (!reason || String(reason).trim() === '' || reason === 'nan') return 'No reason recorded';
   const r = String(reason).trim();
 
-  const dobM = r.match(/^dob_name_low_confidence\s*\(?([\d.]+)/);
-  if (dobM) {
-    const pct = Math.round(parseFloat(dobM[1]) * 100);
-    return `Matched on name and date of birth only — confidence too low to trust (${pct}%)`;
+  // Pipe-separated multi-reason (REVIEW records): translate each part
+  if (r.includes('|')) {
+    return r.split('|').map(p => translateReason(p.trim())).filter(Boolean).join('; ');
   }
 
-  const salM = r.match(/^salary_ratio_extreme\s*\(?([\d.]+)/);
+  // Strip "reject_match:" prefix (REJECT_MATCH tier reasons)
+  const rInner = r.replace(/^reject_match:/i, '').trim();
+
+  // Strip leading "fix_type:" prefix (REVIEW reasons like "salary:below_threshold")
+  const rNoPrefix = rInner.replace(/^[a-z_]+:/, '').trim();
+
+  // dob_name_low_confidence (0.600<0.75) - extract actual score AND minimum threshold
+  const dobFull = rInner.match(/^dob_name_low_confidence\s*\(?([\d.]+)<([\d.]+)/);
+  if (dobFull) {
+    const pctScore  = Math.round(parseFloat(dobFull[1]) * 100);
+    const pctThresh = Math.round(parseFloat(dobFull[2]) * 100);
+    return `Matched on name and date of birth only - confidence score of ${pctScore}% fell below the ${pctThresh}% minimum required to trust the match.`;
+  }
+
+  // Legacy: dob_name_low_confidence (0.600) without threshold
+  const dobM = rInner.match(/^dob_name_low_confidence\s*\(?([\d.]+)/);
+  if (dobM) {
+    const pct = Math.round(parseFloat(dobM[1]) * 100);
+    return `Matched on name and date of birth only - confidence too low to trust (${pct}%)`;
+  }
+
+  // fuzzy_extreme_salary_ratio (2.5000>2.5) - wrong-person signal
+  const fuzzyM = rInner.match(/^fuzzy_extreme_salary_ratio\s*\(?([\d.]+)/);
+  if (fuzzyM) {
+    const ratio = parseFloat(fuzzyM[1]);
+    return `Salary is ${ratio.toFixed(1)}x different between systems on a fuzzy match - flagged as possible wrong-person pairing`;
+  }
+
+  // salary_ratio_extreme (2.0000 outside [0.85, 1.15])
+  const salM = (rNoPrefix.match(/^salary_ratio_extreme\s*\(?([\d.]+)/) ||
+                r.match(/^salary_ratio_extreme\s*\(?([\d.]+)/));
   if (salM) {
     const ratio = parseFloat(salM[1]);
-    if (ratio > 1.5) return 'Salary more than doubled between systems — needs human review';
-    if (ratio < 0.5) return 'Salary dropped by more than half between systems — needs human review';
-    return 'Salary changed significantly between systems — needs human review';
+    if (ratio > 1.5) return 'Salary more than doubled between systems - needs human review';
+    if (ratio < 0.5) return 'Salary dropped by more than half between systems - needs human review';
+    return 'Salary changed significantly between systems - needs human review';
+  }
+
+  // below_threshold (0.82<0.97) - confidence below required minimum
+  const belowM = rNoPrefix.match(/^below_threshold\s*\(?([\d.]+)<([\d.]+)/);
+  if (belowM) {
+    const pctScore  = Math.round(parseFloat(belowM[1]) * 100);
+    const pctThresh = Math.round(parseFloat(belowM[2]) * 100);
+    return `Confidence score of ${pctScore}% fell below the ${pctThresh}% minimum required for this field - needs human review`;
+  }
+
+  // low_confidence (0.82) single value
+  const lowM = rNoPrefix.match(/^low_confidence\s*\(?([\d.]+)/);
+  if (lowM) {
+    const pct = Math.round(parseFloat(lowM[1]) * 100);
+    return `Confidence score too low (${pct}%) - needs human review`;
+  }
+
+  // active_to_terminated
+  if (/^active_to_terminated/.test(rNoPrefix)) {
+    return 'Status changed from active to terminated - needs human review';
   }
 
   const EXACT = {
     'hire_date:year_shift_with_other_mismatches':
       'Start date changed by a full year, plus other fields also changed',
     'hire_date:off_by_one_day_pattern':
-      'Start date off by one day (likely a system convention difference — auto-approved)',
+      'Start date off by one day (likely a system convention difference - auto-approved)',
     'hire_date:year_shift_systematic':
-      'Start date changed by one year — appears to be a systematic pattern (auto-approved)',
+      'Start date changed by one year - appears to be a systematic pattern (auto-approved)',
     'hire_date:off_by_one_year_systematic':
-      'Start date off by one year across many records — auto-approved as systematic',
+      'Start date off by one year across many records - auto-approved as systematic',
     'hire_date:off_by_one_year_pattern':
-      'Start date off by exactly one year (likely a system import convention — auto-approved)',
-    'worker_id_auto_approve':  'Exact ID match — auto-approved',
-    'pk_auto_approve':         'Matched on name, date of birth, and last-4 identifier — auto-approved',
-    'active_to_terminated':    'Status changed from active to terminated — needs human review',
-    'hire_date_wave':          'Start date matches a bulk import date shared by many other employees — needs human review',
+      'Start date off by exactly one year (likely a system import convention - auto-approved)',
+    'worker_id_auto_approve':  'Exact ID match - auto-approved',
+    'pk_auto_approve':         'Matched on name, date of birth, and last-4 identifier - auto-approved',
+    'active_to_terminated':    'Status changed from active to terminated - needs human review',
+    'hire_date_wave':          'Start date matches a bulk import date shared by many other employees - needs human review',
   };
 
-  if (EXACT[r]) return EXACT[r];
-  for (const [key, val] of Object.entries(EXACT)) {
-    if (r.startsWith(key)) return val;
+  // Exact lookups on rInner, rNoPrefix, then full r
+  for (const candidate of [rInner, rNoPrefix, r]) {
+    if (EXACT[candidate]) return EXACT[candidate];
   }
-  return r.replace(/hire_date:/g, 'start date: ').replace(/_/g, ' ').trim();
+  // Prefix lookups
+  for (const [key, val] of Object.entries(EXACT)) {
+    if (rInner.startsWith(key) || rNoPrefix.startsWith(key) || r.startsWith(key)) return val;
+  }
+
+  // Generic fallback: humanise from most-stripped form
+  const display = rNoPrefix || rInner || r;
+  return display.replace(/hire_date:/g, 'start date: ').replace(/_/g, ' ').trim();
 }
 
 function translateMatchSource (source) {
@@ -299,7 +355,7 @@ function dataTable (headers, rows, colWidths) {
 // 4-column stats box used on cover / executive summary
 // ---------------------------------------------------------------------------
 function statsBox (cols) {
-  // cols: [{label, value, sub?}]  — up to 4 entries
+  // cols: [{label, value, sub?}]  - up to 4 entries
   const n  = cols.length;
   const cW = Math.floor(CONTENT_W / n);
   const ws = [...Array(n - 1).fill(cW), CONTENT_W - cW * (n - 1)];
@@ -449,14 +505,14 @@ function buildExecutiveSummary (data) {
   });
 
   const bulletItems = [
-    `${nApprove.toLocaleString()} records look correct and are ready to load — no action needed.`,
+    `${nApprove.toLocaleString()} records look correct and are ready to load - no action needed.`,
     `${nReview.toLocaleString()} records need a human to review them before they go in.`,
   ];
   if (nReject > 0) bulletItems.push(
     `${nReject.toLocaleString()} records were flagged as possible wrong-person matches and blocked entirely.`
   );
   if (nAZ > 0) bulletItems.push(
-    `${nAZ.toLocaleString()} employees are showing $0 salary in the new system — ` +
+    `${nAZ.toLocaleString()} employees are showing $0 salary in the new system - ` +
     `this needs to be fixed before anyone gets paid.`
   );
 
@@ -498,7 +554,7 @@ function buildExecutiveSummary (data) {
 
   if (nReject > 0) {
     elems.push(callout(
-      `${nReject.toLocaleString()} records were blocked from corrections entirely — these appear to be ` +
+      `${nReject.toLocaleString()} records were blocked from corrections entirely - these appear to be ` +
       `wrong-person matches and need manual investigation. Do not load corrections for these records.`,
       'warning'
     ));
@@ -554,8 +610,8 @@ function buildMatchQuality (data) {
       ['Confidence Band', 'Count', '% of Total'],
       [
         ['Exact (1.00)',          Number(cb.exact   || 0).toLocaleString(), `${((cb.exact   || 0) / total * 100).toFixed(1)}%`],
-        ['High (0.97–0.99)',      Number(cb.high    || 0).toLocaleString(), `${((cb.high    || 0) / total * 100).toFixed(1)}%`],
-        ['Medium (0.80–0.96)',    Number(cb.medium  || 0).toLocaleString(), `${((cb.medium  || 0) / total * 100).toFixed(1)}%`],
+        ['High (0.97-0.99)',      Number(cb.high    || 0).toLocaleString(), `${((cb.high    || 0) / total * 100).toFixed(1)}%`],
+        ['Medium (0.80-0.96)',    Number(cb.medium  || 0).toLocaleString(), `${((cb.medium  || 0) / total * 100).toFixed(1)}%`],
         ['Low (< 0.80)',          Number(cb.low     || 0).toLocaleString(), `${((cb.low     || 0) / total * 100).toFixed(1)}%`],
         ['Missing / not scored',  Number(cb.missing || 0).toLocaleString(), `${((cb.missing || 0) / total * 100).toFixed(1)}%`],
       ],
@@ -603,7 +659,7 @@ function buildDataQuality (data) {
 
   if (data.wave_dates && data.wave_dates.length > 0) {
     elems.push(callout(
-      `${Number(data.hire_date_stats?.n_wave || 0).toLocaleString()} records share hire dates that appear in a concentrated cluster — ` +
+      `${Number(data.hire_date_stats?.n_wave || 0).toLocaleString()} records share hire dates that appear in a concentrated cluster - ` +
       `indicative of a bulk import. These have been routed to REVIEW.`,
       'warning'
     ));
@@ -656,8 +712,8 @@ function buildFieldChanges (data) {
     const kvRows = [['Salary changes (total)', Number(sal.total || 0).toLocaleString()]];
     if ((sal.n_excluded_active_zero || 0) > 0) {
       kvRows.push([
-        '  — Active/$0 excl. from stats',
-        `${Number(sal.n_excluded_active_zero).toLocaleString()}  (data quality — not real changes)`,
+        '  - Active/$0 excl. from stats',
+        `${Number(sal.n_excluded_active_zero).toLocaleString()}  (data quality - not real changes)`,
       ]);
     }
     const fmt = (n) => {
@@ -665,7 +721,7 @@ function buildFieldChanges (data) {
       return `$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${v < 0 ? ' (decrease)' : ''}`;
     };
     kvRows.push(
-      ['  — Included in stats',    Number(sal.n_included   || 0).toLocaleString()],
+      ['  - Included in stats',    Number(sal.n_included   || 0).toLocaleString()],
       ['Increases',                Number(sal.n_increase   || 0).toLocaleString()],
       ['Decreases',                Number(sal.n_decrease   || 0).toLocaleString()],
       ['Mean delta',               `$${Number(sal.mean_delta   || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`],
@@ -689,7 +745,7 @@ function buildFieldChanges (data) {
   }
   elems.push(spacer());
 
-  // 5.3 Hire date changes — plain-English summary (no technical pattern table)
+  // 5.3 Hire date changes - plain-English summary (no technical pattern table)
   elems.push(h2('5.3 Hire Date Changes'));
   elems.push(spacer());
   const hd = data.hire_date_stats || {};
@@ -736,15 +792,15 @@ function buildReviewQueue (data) {
     elems.push(callout('No records require human review. All approved records are ready to load.', 'info'));
   } else {
     if (rq.top_items && rq.top_items.length > 0) {
-      // top_items: [name, reason, fix_types] — translate reason column
+      // top_items: [name, reason, fix_types] - translate reason column
       const hdrs = ['Employee', 'Why It Needs Review', 'Fields Changed'];
       const ws   = [2200, 5300, 2580];
       const rows = rq.top_items.slice(0, 10).map(item => {
         const [name, reason, fixTypes] = Array.isArray(item) ? item : [item.name, item.reason, item.fix_types];
         return [
-          String(name   || '—'),
+          String(name   || '-'),
           translateReason(String(reason   || '')),
-          String(fixTypes || '—').replace(/\|/g, ', '),
+          String(fixTypes || '-').replace(/\|/g, ', '),
         ];
       });
       elems.push(dataTable(hdrs, rows, ws));
@@ -774,14 +830,14 @@ function buildReviewQueue (data) {
 // ---------------------------------------------------------------------------
 function buildRejectedMatches (data) {
   const rm    = data.reject_matches || {};
-  const elems = [h1('7. Blocked Records — Possible Wrong-Person Matches'), spacer()];
+  const elems = [h1('7. Blocked Records - Possible Wrong-Person Matches'), spacer()];
 
   if ((rm.total || 0) === 0) {
     elems.push(callout('No records were blocked. All pairings appear to be correct person matches.', 'info'));
   } else {
     elems.push(body(
       `${Number(rm.total).toLocaleString()} records were blocked from corrections because the matching engine ` +
-      `detected they were likely wrong-person pairings — the system matched an employee to someone else in ` +
+      `detected they were likely wrong-person pairings - the system matched an employee to someone else in ` +
       `the other file. These records have been completely excluded from all correction files and must be ` +
       `investigated and re-matched manually.`
     ));
@@ -821,7 +877,7 @@ function buildSanityGate (data) {
   if (sg.metrics && sg.metrics.length > 0) {
     elems.push(dataTable(
       ['Metric', 'Value', 'Threshold', 'Status'],
-      sg.metrics.map((m) => [m.name, m.value, m.threshold || '—', m.passed ? '✓  PASS' : '✗  FAIL']),
+      sg.metrics.map((m) => [m.name, m.value, m.threshold || '-', m.passed ? '✓  PASS' : '✗  FAIL']),
       [3000, 2000, 2500, 2580],
     ));
     elems.push(spacer());
@@ -851,23 +907,23 @@ function buildActionPlan (data) {
     h1('9. Action Plan'),
     body('Recommended actions based on the findings in this report.'),
     spacer(),
-    h2('Immediate Actions — Before Load'),
+    h2('Immediate Actions - Before Load'),
     spacer(),
   ];
 
-  if (az > 0)  elems.push(bullet(`Fix ${Number(az).toLocaleString()} active employees who show $0 salary in the new system — this is a data extraction issue that must be resolved before payroll runs.`));
-  if (rm > 0)  elems.push(bullet(`Investigate ${Number(rm).toLocaleString()} blocked records — these appear to be wrong-person matches that need manual review and re-matching before the migration can complete.`));
-  if (rev > 0) elems.push(bullet(`Work through the review queue: ${Number(rev).toLocaleString()} records need a human to look at them and confirm they are correct. Some corrections were held and not applied automatically — these are in the held_corrections file and require manual approval before they can be loaded into the new system.`));
+  if (az > 0)  elems.push(bullet(`Fix ${Number(az).toLocaleString()} active employees who show $0 salary in the new system - this is a data extraction issue that must be resolved before payroll runs.`));
+  if (rm > 0)  elems.push(bullet(`Investigate ${Number(rm).toLocaleString()} blocked records - these appear to be wrong-person matches that need manual review and re-matching before the migration can complete.`));
+  if (rev > 0) elems.push(bullet(`Work through the review queue: ${Number(rev).toLocaleString()} records need a human to look at them and confirm they are correct. Some corrections were held and not applied automatically - these are in the held_corrections file and require manual approval before they can be loaded into the new system.`));
   if (!az && !rm && !rev) elems.push(bullet('All critical checks passed. The correction files are ready to load into the new system.'));
 
   elems.push(spacer());
-  elems.push(h2('Short-term Actions — Data Cleanup'));
+  elems.push(h2('Short-term Actions - Data Cleanup'));
   elems.push(spacer());
   elems.push(bullet('Re-run the reconciliation after source data corrections are applied to verify the fixes resolved the flagged issues.'));
-  if (rm > 0) elems.push(bullet('Review the matching configuration to reduce wrong-person pairings in future runs — particularly for records matched only on name and date of birth.'));
+  if (rm > 0) elems.push(bullet('Review the matching configuration to reduce wrong-person pairings in future runs - particularly for records matched only on name and date of birth.'));
 
   elems.push(spacer());
-  elems.push(h2('Strategic Recommendations — Next Run'));
+  elems.push(h2('Strategic Recommendations - Next Run'));
   elems.push(spacer());
   elems.push(bullet('Implement pre-migration data validation in the source system to eliminate $0 salary records.'));
   elems.push(bullet('Establish a scheduled reconciliation cadence to catch data drift between migration phases.'));

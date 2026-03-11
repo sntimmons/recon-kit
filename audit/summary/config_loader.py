@@ -1,5 +1,5 @@
 """
-config_loader.py — Load config/policy.yaml with safe defaults.
+config_loader.py - Load config/policy.yaml with safe defaults.
 
 Usage
 -----
@@ -23,7 +23,7 @@ _HERE = Path(__file__).resolve().parent   # audit/summary/
 ROOT  = _HERE.parents[1]                  # repo root
 
 # ---------------------------------------------------------------------------
-# Default confidence gating policy — mirrors confidence_policy.py constants.
+# Default confidence gating policy - mirrors confidence_policy.py constants.
 # Loaded by confidence_policy.py at import time; only used as fallback when
 # policy.yaml is absent or unreadable.
 # ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ def load_policy(path: Path | None = None) -> dict:
 
     if not path.exists():
         print(
-            f"[warn] policy.yaml not found at {path} — using internal defaults.",
+            f"[warn] policy.yaml not found at {path} - using internal defaults.",
             file=sys.stderr,
         )
         return _deep_merge({}, _DEFAULT_POLICY)
@@ -122,7 +122,7 @@ def load_policy(path: Path | None = None) -> dict:
         if not isinstance(data, dict):
             print(
                 f"[warn] policy.yaml is malformed (expected a mapping, got "
-                f"{type(data).__name__}) — using internal defaults.",
+                f"{type(data).__name__}) - using internal defaults.",
                 file=sys.stderr,
             )
             return _deep_merge({}, _DEFAULT_POLICY)
@@ -132,7 +132,7 @@ def load_policy(path: Path | None = None) -> dict:
 
     except ImportError:
         print(
-            "[warn] PyYAML is not installed — using internal defaults. "
+            "[warn] PyYAML is not installed - using internal defaults. "
             "Run: venv/Scripts/pip.exe install pyyaml",
             file=sys.stderr,
         )
@@ -140,7 +140,7 @@ def load_policy(path: Path | None = None) -> dict:
 
     except Exception as exc:
         print(
-            f"[warn] policy.yaml could not be read ({exc}) — using internal defaults.",
+            f"[warn] policy.yaml could not be read ({exc}) - using internal defaults.",
             file=sys.stderr,
         )
         return _deep_merge({}, _DEFAULT_POLICY)
@@ -170,9 +170,9 @@ def load_audit_config(policy: dict | None = None) -> dict:
     Return the dynamic audit configuration dict.
 
     Keys:
-        fields (list[str])              — extra field names (empty if extra_fields.enabled=False)
-        groups (dict[str, list[str]])   — named field groups for mismatch aggregation
-        gate   (dict)                   — extra_field_gate config: {enabled, min_confidence}
+        fields (list[str])              - extra field names (empty if extra_fields.enabled=False)
+        groups (dict[str, list[str]])   - named field groups for mismatch aggregation
+        gate   (dict)                   - extra_field_gate config: {enabled, min_confidence}
 
     The 'groups' map is used to compute mismatch_group_<name>=True when any field
     in the group has a mismatch.  Returns empty fields/groups when disabled.
@@ -211,8 +211,8 @@ def load_pii_config(policy: dict | None = None) -> dict:
     Return the PII minimization configuration dict.
 
     Keys:
-        include_dob_in_ui      (bool) — include old_dob/new_dob in ui_pairs.csv
-        include_dob_in_exports (bool) — include old_dob/new_dob in wide_compare/workbook
+        include_dob_in_ui      (bool) - include old_dob/new_dob in ui_pairs.csv
+        include_dob_in_exports (bool) - include old_dob/new_dob in wide_compare/workbook
 
     Safe default is True (do not suppress) so that this module is safe to
     import even without policy.yaml.  The real policy.yaml sets both to False.

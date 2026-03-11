@@ -1,17 +1,17 @@
 """
-run_sanity_gate.py — Run sanity checks and evaluate the sanity gate.
+run_sanity_gate.py - Run sanity checks and evaluate the sanity gate.
 
 Writes (to --out directory, default: audit/summary/):
-  sanity_results.json   — structured sanity check results from run_sanity_checks()
-  sanity_gate.json      — gate evaluation: passed, reasons, blocked_outputs, metrics
+  sanity_results.json   - structured sanity check results from run_sanity_checks()
+  sanity_gate.json      - gate evaluation: passed, reasons, blocked_outputs, metrics
 
 Also writes the three sanity CSVs (salary_buckets, hire_date_diff, suspicious_defaults)
 to the same output directory, because run_sanity_checks() is called internally.
 
 Exit codes:
-  0  — gate PASSED (or gate disabled in policy)
-  2  — DB missing or required columns absent (propagated from sanity_checks)
-  3  — gate FAILED (configurable via fail_exit_code in policy.yaml)
+  0  - gate PASSED (or gate disabled in policy)
+  2  - DB missing or required columns absent (propagated from sanity_checks)
+  3  - gate FAILED (configurable via fail_exit_code in policy.yaml)
 
 Run:
     venv/Scripts/python.exe audit/summary/run_sanity_gate.py [--db PATH] [--out PATH]
@@ -63,7 +63,7 @@ def _compute_approve_rate(db_path: Path) -> tuple[int, int, float, int]:
     Returns (approve_count, total, approve_rate, active_zero_approved).
 
     active_zero_approved: count of Active workers with new_salary == 0
-    that received an APPROVE action — meaning corrections WOULD be staged
+    that received an APPROVE action - meaning corrections WOULD be staged
     for them.  This is the critical-issues check for the new 3-part gate.
     Under current gating rules this is always 0 (salary_ratio == 0.0
     triggers Override 1 → REVIEW), but we compute it explicitly.

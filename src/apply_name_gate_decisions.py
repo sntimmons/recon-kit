@@ -5,7 +5,7 @@ Workflow
 --------
 1. Reviewer opens outputs/review_tier2_name_gate.csv (one row per gated pair).
 2. Reviewer adds a ``decision`` column and marks rows MATCH / YES / TRUE to approve.
-3. Run this script — approved rows are appended to matched_raw.csv.
+3. Run this script - approved rows are appended to matched_raw.csv.
 4. Re-run resolve_matched_raw.py to rebuild 1-to-1 pairs with updated counts.
 
 Column contract
@@ -138,7 +138,7 @@ def apply_decisions(
     print(f"[apply_decisions] added_rows          : {added_rows}")
 
     if added_rows == 0:
-        print("[apply_decisions] All approved rows already present — nothing written.")
+        print("[apply_decisions] All approved rows already present - nothing written.")
         return
 
     # ------------------------------------------------------------------

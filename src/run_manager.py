@@ -1,5 +1,5 @@
 """
-run_manager.py — Run folder management for recon-kit pipeline.
+run_manager.py - Run folder management for recon-kit pipeline.
 
 Public API
 ----------
@@ -228,7 +228,7 @@ def copy_artifacts_to_run(
     # ------------------------------------------------------------------
     receipts_src  = ROOT / "runs" / "meta" / "receipts"   # not real; receipts are in run_dirs
     # Receipts are written directly into run_paths["meta"]/"receipts" by step_receipts.py
-    # so they are already in the right place — no copy needed here.
+    # so they are already in the right place - no copy needed here.
 
     # ------------------------------------------------------------------
     # DIY exports

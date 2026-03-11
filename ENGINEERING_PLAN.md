@@ -1,4 +1,4 @@
-# Engineering Plan — recon-kit
+# Engineering Plan - recon-kit
 
 Generated: 2026-03-05
 Status: SSOT for pre-production hardening work.
@@ -19,9 +19,9 @@ fix is shipped. Before connecting a UI or running a real audit:
 
 ---
 
-## Section 1 — Fix Now (pre-real-audit blockers)
+## Section 1 - Fix Now (pre-real-audit blockers)
 
-### 1A  Workbook streaming fix — `build_workbook.py`
+### 1A  Workbook streaming fix - `build_workbook.py`
 
 **Problem:** `openpyxl` default write mode holds every cell object in memory. Writing
 six large sheets (23k + 14k + 14k + 14k + 15k + 43k rows) exhausts the heap and raises
@@ -30,7 +30,7 @@ six large sheets (23k + 14k + 14k + 14k + 15k + 43k rows) exhausts the heap and 
 **Fix:** Switch to `write_only=True` mode. `ws.append()` works unchanged; cells are
 streamed to a temp file and never held in memory simultaneously. Use `WriteOnlyCell` for
 bold header rows. Drop `freeze_panes`, `auto_filter`, and `column_dimensions` (not
-supported in write_only mode — these are cosmetic features).
+supported in write_only mode - these are cosmetic features).
 
 **Acceptance criteria:**
 - `smoke_check_workbook.py` passes all assertions without `MemoryError`
@@ -42,7 +42,7 @@ supported in write_only mode — these are cosmetic features).
 
 ---
 
-### 1B  Confidence thresholds into `policy.yaml` — `confidence_policy.py`, `config_loader.py`
+### 1B  Confidence thresholds into `policy.yaml` - `confidence_policy.py`, `config_loader.py`
 
 **Problem:** Two separate config files govern "policy":
 - `config/policy.yaml` controls the sanity gate
@@ -58,12 +58,12 @@ is absent.
 
 **Acceptance criteria:**
 - Changing `status_min_confidence` in `policy.yaml` from 0.98 to 0.90 changes gating output
-- Deleting `policy.yaml` falls back to existing hardcoded values — no crash
+- Deleting `policy.yaml` falls back to existing hardcoded values - no crash
 - `smoke_check_gating.py` still passes 5/5 with current thresholds unchanged
 
 ---
 
-### 1C  Strip `last4_ssn` from DB — `load_sqlite.py`
+### 1C  Strip `last4_ssn` from DB - `load_sqlite.py`
 
 **Problem:** `old_last4_ssn` and `new_last4_ssn` are written to `matched_raw.csv` and
 loaded into `audit.db`, flowing into `wide_compare.csv`, `ui_pairs.csv`, the workbook,
@@ -81,7 +81,7 @@ debugging but will not enter the DB or any downstream file.
 
 ---
 
-### 1D  CSV injection sanitization — `generate_corrections.py`
+### 1D  CSV injection sanitization - `generate_corrections.py`
 
 **Problem:** Correction CSVs are opened by end users in Excel / Google Sheets. If any
 source field value begins with `=`, `+`, `-`, or `@`, the spreadsheet interprets it as
@@ -97,7 +97,7 @@ formula character; Excel treats tab-prefixed cells as text.
 
 ---
 
-### 1E  Header sanitization — `load_sqlite.py`
+### 1E  Header sanitization - `load_sqlite.py`
 
 **Problem:** CSV column headers are interpolated directly into `CREATE TABLE` SQL. A
 header containing `"` breaks the SQL statement. Column names from `PRAGMA table_info`
@@ -114,7 +114,7 @@ names in the `CREATE VIEW` statement in `_create_views`.
 
 ---
 
-## Section 2 — Pre-UI Hardening
+## Section 2 - Pre-UI Hardening
 
 These items are required before any web front-end connects to the data:
 
@@ -129,7 +129,7 @@ These items are required before any web front-end connects to the data:
 
 ---
 
-## Section 3 — Tests to Add
+## Section 3 - Tests to Add
 
 ### T1  End-to-end integration test (wire into single command)
 
@@ -167,8 +167,8 @@ matched pair row, `hire_date` == `new_hire_date`, `worker_status` == `new_worker
 
 **Gap:** No test verifies that changing `policy.yaml` changes gating output.
 
-**Add:** Small in-memory test in `smoke_check_gating.py` that calls `classify_row` twice —
-once with default policy, once with a modified policy that lowers a threshold — and
+**Add:** Small in-memory test in `smoke_check_gating.py` that calls `classify_row` twice -
+once with default policy, once with a modified policy that lowers a threshold - and
 asserts different outcomes.
 
 ---
@@ -178,8 +178,8 @@ asserts different outcomes.
 **Gap:** No smoke tests for `mapping.py`, `matcher.py`, or `resolve_matched_raw.py`.
 
 **Add:**
-- `src/smoke_check_matcher.py` — 3 assertions: runs on test pack, matched count > 0, Q0 PASS
-- `src/smoke_check_resolver.py` — 3 assertions: runs on matched_raw, Q0 PASS after resolve, no blank entity key collisions
+- `src/smoke_check_matcher.py` - 3 assertions: runs on test pack, matched count > 0, Q0 PASS
+- `src/smoke_check_resolver.py` - 3 assertions: runs on matched_raw, Q0 PASS after resolve, no blank entity key collisions
 
 ---
 
@@ -187,12 +187,12 @@ asserts different outcomes.
 
 | Smoke check | Status | Gap |
 |---|---|---|
-| run_manager | 4/4 PASS | — |
-| pipeline_artifacts | 6/6 PASS | — |
+| run_manager | 4/4 PASS | - |
+| pipeline_artifacts | 6/6 PASS | - |
 | sanity_gate | 2/2 PASS | JSON file check requires prior gate run |
 | gating | 5/5 PASS | No live-reload test (T3) |
-| ui_pairs | 6/6 PASS | — |
-| exports | 4/4 PASS | — |
+| ui_pairs | 6/6 PASS | - |
+| exports | 4/4 PASS | - |
 | corrections | 8/8 PASS | No value correctness (T2) |
 | workbook | FAIL (OOM) | Blocked until 1A ships |
 | matcher | missing | T4 |

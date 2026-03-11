@@ -270,12 +270,12 @@ def main() -> None:
                 )
             else:
                 print(
-                    f"\n[finalized] {finalized.name} detected but IGNORED for audits — "
+                    f"\n[finalized] {finalized.name} detected but IGNORED for audits - "
                     f"missing required columns: {sorted(missing)}. "
                     "Audits Q2-Q5 already use SQLite matched_pairs (unaffected)."
                 )
 
-        print("\n[done] audit complete — results in audit/")
+        print("\n[done] audit complete - results in audit/")
 
     finally:
         con.close()

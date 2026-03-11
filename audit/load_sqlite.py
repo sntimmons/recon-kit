@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 _rk_work    = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
 
 DB_PATH     = (_rk_work / "audit" / "audit.db")         if _rk_work else (ROOT / "audit" / "audit.db")
-SCHEMA_PATH = ROOT / "audit" / "schema.sql"             # schema is static — always from repo
+SCHEMA_PATH = ROOT / "audit" / "schema.sql"             # schema is static - always from repo
 MAPPED_OLD  = (_rk_work / "outputs" / "mapped_old.csv")  if _rk_work else (ROOT / "outputs" / "mapped_old.csv")
 MAPPED_NEW  = (_rk_work / "outputs" / "mapped_new.csv")  if _rk_work else (ROOT / "outputs" / "mapped_new.csv")
 MATCHED_RAW = (_rk_work / "outputs" / "matched_raw.csv") if _rk_work else (ROOT / "outputs" / "matched_raw.csv")

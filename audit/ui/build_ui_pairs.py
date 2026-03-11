@@ -1,5 +1,5 @@
 """
-build_ui_pairs.py — Build a UI-ready consolidated dataset of all matched pairs.
+build_ui_pairs.py - Build a UI-ready consolidated dataset of all matched pairs.
 
 Reads the matched_pairs view from audit/audit.db, applies gating logic to
 every row, and writes one CSV with 1 row per pair_id containing identifiers,
@@ -60,7 +60,7 @@ _REQUIRED_COLS = [
     "old_location_state", "new_location_state",
 ]
 
-# Stable required output columns — ui_contract_version is ALWAYS first.
+# Stable required output columns - ui_contract_version is ALWAYS first.
 # Do not reorder these; extra_fields columns are appended after this list.
 _OUTPUT_COLS = [
     "ui_contract_version",
@@ -88,7 +88,7 @@ _OUTPUT_COLS = [
 
 
 def _priority_score(row: dict, fix_types: list[str], sal_d) -> int:
-    """Compute priority score — same rules as build_review_queue / build_diy_exports."""
+    """Compute priority score - same rules as build_review_queue / build_diy_exports."""
     score = 0
     if "status" in fix_types:
         score += 50
@@ -148,7 +148,7 @@ def _build_row(
     min_conf = min(min_confs) if min_confs else None
 
     out = {
-        # Contract version — always first
+        # Contract version - always first
         "ui_contract_version":    _CONTRACT_VERSION,
         # Identifiers
         "pair_id":                row.get("pair_id", ""),
@@ -193,7 +193,7 @@ def _build_row(
         "new_worker_type":        _opt(row, "new_worker_type", has_worker_type),
     }
 
-    # Extra fields — appended after stable required block
+    # Extra fields - appended after stable required block
     # Build field mismatch map for group computation below.
     field_mm: dict[str, bool] = {}
     for field in available_extra:
@@ -205,7 +205,7 @@ def _build_row(
         out[f"mm_{field}"]  = mm
         field_mm[field] = mm
 
-    # Group mismatch booleans — True if any field in the group has a mismatch.
+    # Group mismatch booleans - True if any field in the group has a mismatch.
     if extra_groups:
         for group_name, group_fields in extra_groups.items():
             out[f"mismatch_group_{group_name}"] = any(
@@ -274,7 +274,7 @@ def main(argv: list[str] | None = None) -> None:
         old_col = f"old_{field}"
         new_col = f"new_{field}"
         if old_col in _existing or new_col in _existing:
-            # Already in stable schema — no duplication needed
+            # Already in stable schema - no duplication needed
             continue
         if old_col in db_cols or new_col in db_cols:
             available_extra.append(field)

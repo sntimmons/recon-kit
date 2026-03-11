@@ -1,5 +1,5 @@
 """
-audit/schema_validator.py — Validate matched_pairs view schema before gating.
+audit/schema_validator.py - Validate matched_pairs view schema before gating.
 
 Exits with code 2 and a clear error if any required column is missing.
 Exits with code 0 when all required columns are present.

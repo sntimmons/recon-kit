@@ -1,5 +1,5 @@
 """
-single_audit.py — Run a single correction-type audit slice from an existing DB.
+single_audit.py - Run a single correction-type audit slice from an existing DB.
 
 Reads matched_pairs from audit.db, filters to rows with a mismatch of the
 requested type, applies gating, and writes a focused set of output files
@@ -23,11 +23,11 @@ Flags
 
 Outputs (in --out-dir)
 -----------------------
-    ui_pairs_<type>.csv      — 1 row/pair, same gating cols as ui_pairs.csv
-    review_queue_<type>.csv  — REVIEW rows only, with gating context
-    corrections_<type>.csv   — Workday-ready correction rows (APPROVE by default)
-    manifest_<type>.csv      — file summary with row counts
-    receipt.json             — run metadata (inputs, counts, gate summary)
+    ui_pairs_<type>.csv      - 1 row/pair, same gating cols as ui_pairs.csv
+    review_queue_<type>.csv  - REVIEW rows only, with gating context
+    corrections_<type>.csv   - Workday-ready correction rows (APPROVE by default)
+    manifest_<type>.csv      - file summary with row counts
+    receipt.json             - run metadata (inputs, counts, gate summary)
 """
 from __future__ import annotations
 

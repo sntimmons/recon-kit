@@ -220,7 +220,7 @@ def main() -> None:
         print(f"  {line}")
 
     # ------------------------------------------------------------------
-    # Gating summary — classify all rows and aggregate
+    # Gating summary - classify all rows and aggregate
     # ------------------------------------------------------------------
     _hdr("GATING SUMMARY BY FIX TYPE")
 

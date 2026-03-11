@@ -78,7 +78,7 @@ def _one_to_one_join(
     o_keyed = o[o["_k"].notna()].copy()
     n_keyed = n[n["_k"].notna()].copy()
 
-    # Discard keys that appear more than once on either side — ambiguous.
+    # Discard keys that appear more than once on either side - ambiguous.
     o_dup_keys = set(o_keyed.loc[o_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     n_dup_keys = set(n_keyed.loc[n_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     bad = o_dup_keys | n_dup_keys
@@ -124,7 +124,7 @@ def compute_confidence(row: dict) -> float:
         last4_match           * 0.2   (1.0 if old_last4_ssn == new_last4_ssn, else 0.0)
         location_state_match  * 0.1   (1.0 if old_location_state == new_location_state)
 
-    worker_id and recon_id are exact business/system ID matches — always 1.0.
+    worker_id and recon_id are exact business/system ID matches - always 1.0.
     """
     ms = str(row.get("match_source") or "").strip().lower()
     if ms in ("worker_id", "recon_id"):

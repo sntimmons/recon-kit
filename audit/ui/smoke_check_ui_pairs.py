@@ -1,5 +1,5 @@
 """
-smoke_check_ui_pairs.py — Verify ui_pairs.csv exists and has expected structure.
+smoke_check_ui_pairs.py - Verify ui_pairs.csv exists and has expected structure.
 
 Assertions
 ----------
@@ -10,7 +10,7 @@ Assertions
 5. Mismatch boolean columns contain only True/False values.
 6. ui_contract_version column is present and all sampled values equal 'v1'.
 
-Extra fields (mm_*, old_<field>, new_<field>) are optional — the check does
+Extra fields (mm_*, old_<field>, new_<field>) are optional - the check does
 NOT fail if they are absent, and does NOT fail if they are present.
 
 Exits 0 on pass, 2 on fail.
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> None:
         _fail(f"Assertion 3: missing required columns: {sorted(missing)}")
     _pass(f"Assertion 3: all {len(_REQUIRED_COLS)} required columns present.")
 
-    # Report optional extra fields found (informational only — not a failure)
+    # Report optional extra fields found (informational only - not a failure)
     mm_cols_found   = [c for c in df.columns if c.startswith("mm_")]
     extra_old_found = [c for c in df.columns if c.startswith("old_") and c not in cols]
     if mm_cols_found:
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> None:
             _fail(f"Assertion 5: non-boolean values in '{col}': {bad[:5]}")
     _pass("Assertion 5: mismatch boolean columns contain valid values.")
 
-    # Also validate any mm_<field> columns if present — same boolean rule
+    # Also validate any mm_<field> columns if present - same boolean rule
     for col in mm_cols_found:
         if col not in df.columns:
             continue

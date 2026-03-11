@@ -1,5 +1,5 @@
 """
-build_review_queue.py — Production-grade review queue builder.
+build_review_queue.py - Production-grade review queue builder.
 
 Reads matched_pairs from audit/audit.db, applies the gating engine to every row,
 and writes audit/summary/review_queue.csv containing only rows with at least one
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> None:
     total_in = len(mp)
     print(f"[build_review_queue] {total_in:,} matched pairs loaded.")
 
-    # Add confidence column if absent (will be blank for all rows — handled gracefully)
+    # Add confidence column if absent (will be blank for all rows - handled gracefully)
     if "confidence" not in mp.columns:
         mp["confidence"] = None
 
@@ -222,7 +222,7 @@ def main(argv: list[str] | None = None) -> None:
             out_rows.append(built)
 
     if not out_rows:
-        print("[build_review_queue] no mismatches found — empty review queue.")
+        print("[build_review_queue] no mismatches found - empty review queue.")
         pd.DataFrame(columns=[
             "pair_id", "match_source", "old_worker_id", "new_worker_id",
             "old_full_name_norm", "fix_types", "confidence", "action", "reason",

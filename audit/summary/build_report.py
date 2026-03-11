@@ -462,7 +462,7 @@ def _build_markdown(
         "- +50 if match_source is not `worker_id`",
         "- +40 if worker status changed",
         "- +30 if |salary delta| >= 5,000",
-        "- +20 if |salary delta| is 1,000–4,999",
+        "- +20 if |salary delta| is 1,000-4,999",
         "- +15 if hire date changed",
         "- +10 each for position / district / location_state change",
         "",
@@ -527,7 +527,7 @@ def _build_html(md_content: str, run_ts: str) -> str:
         if line.startswith("|"):
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
             if all(re.match(r"^-+$", c) for c in cells):
-                # separator row — already handled by opening table
+                # separator row - already handled by opening table
                 continue
             if not in_table:
                 html_lines.append('<table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;width:100%">')
@@ -636,7 +636,7 @@ def main() -> None:
     html_path.write_text(html, encoding="utf-8")
     print(f"  wrote: {html_path.relative_to(ROOT)}")
 
-    print(f"\n[build_report] done — outputs in audit/summary/")
+    print(f"\n[build_report] done - outputs in audit/summary/")
 
 
 if __name__ == "__main__":

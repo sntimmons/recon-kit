@@ -1,5 +1,5 @@
 """
-smoke_check_matcher.py — Quick sanity check for matcher.py outputs.
+smoke_check_matcher.py - Quick sanity check for matcher.py outputs.
 
 Assertions
 ----------
@@ -81,7 +81,7 @@ def main() -> None:
     print(f"  [PASS] Assertion 3: match_source distribution: {sources}")
 
     # ------------------------------------------------------------------
-    # Assertion 4: confidence column — worker_id rows have 1.0
+    # Assertion 4: confidence column - worker_id rows have 1.0
     # ------------------------------------------------------------------
     wid_rows = df[df["match_source"].str.strip().str.lower() == "worker_id"]
     if len(wid_rows) > 0:

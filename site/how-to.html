@@ -209,7 +209,7 @@
     }
 
     .bullet-list li::before {
-      content: '–';
+      content: '-';
       position: absolute;
       left: 0;
       color: var(--text-muted);
@@ -382,7 +382,7 @@
                 <tr><td>salary</td><td>Optional</td><td>Mismatch detection, correction output</td></tr>
                 <tr><td>worker_status</td><td>Optional</td><td>Status mismatch detection</td></tr>
                 <tr><td>position / job_title</td><td>Optional</td><td>Job/org mismatch output</td></tr>
-                <tr><td>recon_id / pk</td><td>Optional</td><td>Secondary ID matching (Tier 2–3)</td></tr>
+                <tr><td>recon_id / pk</td><td>Optional</td><td>Secondary ID matching (Tier 2-3)</td></tr>
               </tbody>
             </table>
           </div>
@@ -536,7 +536,7 @@
 
           <div class="doc-subsection">
             <h3>What gets audited</h3>
-            <p>The audit suite runs 15 query checks (Q0–Q15) across the matched pairs. These cover:</p>
+            <p>The audit suite runs 15 query checks (Q0-Q15) across the matched pairs. These cover:</p>
             <ul class="bullet-list">
               <li>Duplicate detection: are any worker IDs matched more than once?</li>
               <li>Orphaned records: legacy records with no new-system match</li>
@@ -614,7 +614,7 @@
           </div>
 
           <div class="callout callout--warn">
-            <strong>Before importing:</strong> Always do a spot-check on 10–20 rows from the APPROVE set before running a mass import. The correction files are designed to be safe, but no automated system replaces a final human sanity check.
+            <strong>Before importing:</strong> Always do a spot-check on 10-20 rows from the APPROVE set before running a mass import. The correction files are designed to be safe, but no automated system replaces a final human sanity check.
           </div>
         </div>
 

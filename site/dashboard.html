@@ -520,6 +520,116 @@
     /* Audit-mode stats (3-col) */
     .results-stats--audit { grid-template-columns: repeat(3, 1fr); }
 
+    /* =========================================================
+       RESULTS SUMMARY CARD (inline / demo-quality)
+    ========================================================= */
+    .summary-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .summary-card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .summary-card__title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .summary-card__gate {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      border-radius: 9999px;
+    }
+    .summary-card__gate--pass {
+      background: rgba(80,200,120,0.12);
+      color: var(--green);
+      border: 1px solid rgba(80,200,120,0.3);
+    }
+    .summary-card__gate--fail {
+      background: rgba(224,92,92,0.12);
+      color: var(--red, #e05c5c);
+      border: 1px solid rgba(224,92,92,0.3);
+    }
+    .summary-card__body {
+      padding: 0;
+    }
+    .summary-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 11px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-row--section-head {
+      background: var(--bg-3);
+      padding: 7px 20px;
+    }
+    .summary-row__label {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+    .summary-row__label--bold {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .summary-row__section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+    }
+    .summary-row__val {
+      font-size: 0.9rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .summary-row__val--green  { color: var(--green); }
+    .summary-row__val--yellow { color: var(--yellow); }
+    .summary-row__val--red    { color: var(--red, #e05c5c); }
+    .summary-row__val--muted  { color: var(--text-muted); font-weight: 500; }
+    .summary-gate-reasons {
+      padding: 10px 20px 14px;
+      background: rgba(224,92,92,0.04);
+      border-top: 1px solid rgba(224,92,92,0.15);
+    }
+    .summary-gate-reasons__title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--red, #e05c5c);
+      margin-bottom: 6px;
+    }
+    .summary-gate-reasons__list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .summary-gate-reasons__list li {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      padding: 2px 0;
+    }
+    .summary-gate-reasons__list li::before {
+      content: '- ';
+      color: var(--red, #e05c5c);
+    }
+
     .downloads-section {
       background: var(--bg-2);
       border: 1px solid var(--border);
@@ -838,6 +948,15 @@
           </div>
         </div>
 
+        <!-- Results Summary Card (recon mode only) -->
+        <div class="summary-card" id="summary-card" style="display:none;">
+          <div class="summary-card__header">
+            <div class="summary-card__title">Results Summary</div>
+            <div class="summary-card__gate" id="summary-gate-badge">PASS</div>
+          </div>
+          <div class="summary-card__body" id="summary-card-body"></div>
+        </div>
+
         <!-- Downloads -->
         <div class="downloads-section">
           <div class="downloads-header">
@@ -895,7 +1014,7 @@
   'use strict';
 
   // -----------------------------------------------------------------------
-  // CONFIG — change password here
+  // CONFIG - change password here
   // -----------------------------------------------------------------------
   var ACCESS_PASSWORD = 'recon2026';
   var API_BASE        = 'http://localhost:5001';
@@ -1121,7 +1240,7 @@
         }
       })
       .catch(function () {
-        // Network blip — keep polling
+        // Network blip - keep polling
       });
   }
 
@@ -1158,6 +1277,115 @@
     }
   }
 
+  // ---- Inline Results Summary Card ----
+  function _mkRow(labelText, valText, valClass, labelBold) {
+    var row   = document.createElement('div');
+    row.className = 'summary-row';
+    var lbl   = document.createElement('div');
+    lbl.className = 'summary-row__label' + (labelBold ? ' summary-row__label--bold' : '');
+    lbl.textContent = labelText;
+    var val   = document.createElement('div');
+    val.className = 'summary-row__val' + (valClass ? ' ' + valClass : '');
+    val.textContent = valText;
+    row.appendChild(lbl);
+    row.appendChild(val);
+    return row;
+  }
+
+  function _mkSectionHead(title) {
+    var row = document.createElement('div');
+    row.className = 'summary-row summary-row--section-head';
+    var t = document.createElement('div');
+    t.className = 'summary-row__section-title';
+    t.textContent = title;
+    row.appendChild(t);
+    return row;
+  }
+
+  function _buildSummaryCard(stats) {
+    var card  = document.getElementById('summary-card');
+    var body  = document.getElementById('summary-card-body');
+    var badge = document.getElementById('summary-gate-badge');
+    body.innerHTML = '';
+
+    var gatePassed  = stats.gate_passed !== false;
+    var gateLabel   = gatePassed ? 'GATE: PASS' : 'GATE: FAIL';
+    badge.textContent = gateLabel;
+    badge.className   = 'summary-card__gate ' +
+                        (gatePassed ? 'summary-card__gate--pass' : 'summary-card__gate--fail');
+
+    var total    = stats.total_matched || 0;
+    var approved = (stats.approve_count != null) ? stats.approve_count : Math.max(0, total - (stats.review_count || 0));
+    var review   = stats.review_count  || 0;
+    var blocked  = stats.reject_count  || 0;
+
+    // Records section
+    body.appendChild(_mkSectionHead('Records'));
+    body.appendChild(_mkRow('Total records compared',          total.toLocaleString(),    '',                        true));
+    body.appendChild(_mkRow('Auto-approved (ready to load)',   approved.toLocaleString(), 'summary-row__val--green',  true));
+    body.appendChild(_mkRow('Needs human review',              review.toLocaleString(),   review > 0 ? 'summary-row__val--yellow' : '', false));
+    if (blocked > 0) {
+      body.appendChild(_mkRow('Blocked (possible wrong-person)', blocked.toLocaleString(), 'summary-row__val--red', false));
+    } else {
+      body.appendChild(_mkRow('Blocked (possible wrong-person)', '0 - none detected',     'summary-row__val--muted', false));
+    }
+
+    // Corrections section (only if corrections exist)
+    var fc = stats.fix_counts || {};
+    var fcKeys = Object.keys(fc);
+    if (fcKeys.length > 0 || stats.total_corrections > 0) {
+      body.appendChild(_mkSectionHead('Corrections Staged'));
+      var fixLabels = {
+        'salary':    'Salary corrections',
+        'status':    'Status corrections',
+        'hire_date': 'Hire date corrections',
+        'job_org':   'Job / org corrections',
+      };
+      fcKeys.forEach(function(k) {
+        body.appendChild(_mkRow(fixLabels[k] || k, (fc[k] || 0).toLocaleString(), '', false));
+      });
+      body.appendChild(_mkRow('Total corrections', (stats.total_corrections || 0).toLocaleString(), '', true));
+    }
+
+    // Health gate section
+    body.appendChild(_mkSectionHead('Quality Checks'));
+    var detRate = stats.det_match_rate || (stats.det_match_rate_raw != null ? (stats.det_match_rate_raw * 100).toFixed(1) + '%' : null);
+    if (detRate) {
+      var detOk = (stats.det_match_rate_raw == null) || (stats.det_match_rate_raw >= 0.95);
+      body.appendChild(_mkRow('Deterministic match rate (need >= 95%)', detRate, detOk ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+    if (stats.approve_rate_pct) {
+      var arOk = parseFloat(stats.approve_rate_pct) >= 80;
+      body.appendChild(_mkRow('Auto-approve rate (need >= 80%)', stats.approve_rate_pct, arOk ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+    var az = stats.active_zero_approved;
+    if (az != null) {
+      body.appendChild(_mkRow('Active employees with $0 salary staged', az === 0 ? '0 - clean' : az.toLocaleString(), az === 0 ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+
+    // Gate failure reasons (if any)
+    var reasons = stats.gate_reasons || [];
+    if (!gatePassed && reasons.length > 0) {
+      var reasonsDiv = document.createElement('div');
+      reasonsDiv.className = 'summary-gate-reasons';
+      var rtitle = document.createElement('div');
+      rtitle.className = 'summary-gate-reasons__title';
+      rtitle.textContent = 'Gate failure reasons';
+      reasonsDiv.appendChild(rtitle);
+      var ul = document.createElement('ul');
+      ul.className = 'summary-gate-reasons__list';
+      reasons.forEach(function(r) {
+        var li = document.createElement('li');
+        li.textContent = r;
+        ul.appendChild(li);
+      });
+      reasonsDiv.appendChild(ul);
+      body.appendChild(reasonsDiv);
+    }
+
+    card.style.display = '';
+  }
+
   // ---- Results ----
   function showResults(job) {
     var panel = document.getElementById('results-panel');
@@ -1192,6 +1420,9 @@
       document.getElementById('results-headline').textContent = 'Your run is ready. Here is what we found.';
       document.getElementById('results-sub').textContent      = 'Download your outputs below. Correction files are Workday-ready.';
 
+      // Build inline results summary card
+      _buildSummaryCard(stats);
+
     } else {
       var s = job.stats || {};
       document.getElementById('recon-stats').style.display = 'none';
@@ -1211,7 +1442,7 @@
     var outputs = job.outputs || [];
 
     var FILE_LABELS = {
-      'audit_report.docx':              'Audit report — executive summary (Word)',
+      'audit_report.docx':              'Audit report - executive summary (Word)',
       'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
       'wide_compare.csv':               'Wide compare (all pairs, side-by-side)',
       'review_queue.csv':               'Review queue (records needing attention)',
@@ -1221,7 +1452,7 @@
       'corrections_job_org.csv':        'Job/org corrections',
       'corrections_manifest.csv':       'Full corrections manifest',
       'held_corrections.csv':           'Held corrections (REVIEW / rejected pairs)',
-      'audit_report.csv':               'Audit report — raw (CSV)',
+      'audit_report.csv':               'Audit report - raw (CSV)',
       'internal_audit_report.csv':      'Internal audit report (full)',
       'internal_audit_duplicates.csv':  'Duplicate records',
       'internal_audit_blanks.csv':      'Field completeness breakdown',
@@ -1266,6 +1497,7 @@
     document.getElementById('results-panel').style.display  = 'none';
     document.getElementById('progress-panel').style.display = 'none';
     document.getElementById('error-panel').style.display    = 'none';
+    document.getElementById('summary-card').style.display   = 'none';
   }
 
   function showError(msg) {
