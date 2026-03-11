@@ -195,6 +195,59 @@ def payrate_delta(row: dict) -> float | None:
     return new - old
 
 
+# ---------------------------------------------------------------------------
+# Payrate conversion detection (Task 2)
+# ---------------------------------------------------------------------------
+_PAYRATE_CONV_TOL = 0.02   # 2% tolerance band around the target ratio
+
+
+def _within_pct(ratio: float, target: float, tol: float = _PAYRATE_CONV_TOL) -> bool:
+    """True when abs(ratio - target) / target <= tol."""
+    if target == 0:
+        return False
+    return abs(ratio - target) / target <= tol
+
+
+def detect_payrate_conversion(row: dict) -> "str | None":
+    """
+    Detect whether a payrate difference is actually a known unit-conversion.
+
+    Checks (in priority order):
+      annual_to_hourly   : old_salary / new_payrate ~= 2080
+      hourly_to_annual   : new_salary / old_payrate ~= 2080
+      biweekly_to_annual : old_salary / new_payrate ~= 26
+      annual_to_biweekly : new_salary / old_payrate ~= 26
+
+    Returns a conversion_type string or None if no pattern matches.
+    """
+    old_sal = _parse_num(row.get("old_salary"))
+    new_sal = _parse_num(row.get("new_salary"))
+    old_pay = _parse_num(row.get("old_payrate"))
+    new_pay = _parse_num(row.get("new_payrate"))
+
+    # Annual → hourly: the old system stored an annual salary; the new stores hourly
+    if old_sal and new_pay and new_pay > 0:
+        if _within_pct(old_sal / new_pay, 2080):
+            return "annual_to_hourly"
+
+    # Hourly → annual: the old system stored hourly; the new stores annual salary
+    if new_sal and old_pay and old_pay > 0:
+        if _within_pct(new_sal / old_pay, 2080):
+            return "hourly_to_annual"
+
+    # Biweekly → annual (old biweekly rate * 26 = new annual salary)
+    if new_sal and old_pay and old_pay > 0:
+        if _within_pct(new_sal / old_pay, 26):
+            return "biweekly_to_annual"
+
+    # Annual → biweekly (old annual salary / 26 = new biweekly rate)
+    if old_sal and new_pay and new_pay > 0:
+        if _within_pct(old_sal / new_pay, 26):
+            return "annual_to_biweekly"
+
+    return None
+
+
 def infer_fix_types(row: dict) -> list[str]:
     """
     Detect which field groups differ between old and new.
@@ -380,6 +433,20 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
             per_fix["hire_date"]["pattern_applied"] = True
 
     # -------------------------------------------------------------------
+    # Override 6: payrate conversion detection
+    # Check before routing payrate to REVIEW - if old_salary/new_payrate
+    # or new_salary/old_payrate matches 2080 (annual<->hourly) or 26
+    # (annual<->biweekly), the change is a unit conversion, not a real
+    # discrepancy.  Auto-approve the payrate fix_type.
+    # -------------------------------------------------------------------
+    conversion_type: "str | None" = None
+    if "payrate" in per_fix:
+        conversion_type = detect_payrate_conversion(row)
+        if conversion_type is not None:
+            per_fix["payrate"]["action"] = "APPROVE"
+            per_fix["payrate"]["reason"] = f"payrate_conversion:{conversion_type}"
+
+    # -------------------------------------------------------------------
     # Override 4: REJECT_MATCH - wrong-person pairing signals (Fix 3)
     # (a) dob_name source with confidence < 0.75
     # (b) Any non-deterministic source with salary_ratio > 2.5
@@ -444,10 +511,11 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
         overall_reason = "all_fix_types_approved"
 
     return {
-        "fix_types": fix_types,
-        "action":    overall_action,
-        "reason":    overall_reason,
-        "per_fix":   per_fix,
+        "fix_types":       fix_types,
+        "action":          overall_action,
+        "reason":          overall_reason,
+        "per_fix":         per_fix,
+        "conversion_type": conversion_type,
     }
 
 

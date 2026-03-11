@@ -82,6 +82,7 @@ _WIDE_COLS = [
     "old_payrate", "new_payrate",
     # Computed helpers
     "salary_delta", "salary_ratio", "payrate_delta",
+    "conversion_type",
     "status_changed", "hire_date_changed", "job_org_changed",
     "hire_date_pattern",
     "needs_review", "suggested_action",
@@ -292,6 +293,7 @@ def main(argv: list[str] | None = None) -> None:
             "salary_delta":       sal_d,
             "salary_ratio":       sal_rat,
             "payrate_delta":      pay_d,
+            "conversion_type":    result.get("conversion_type") or "",
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
             "hire_date_changed":  not _str_eq(r.get("old_hire_date"), r.get("new_hire_date")),
             "job_org_changed":    "job_org" in fix_types,

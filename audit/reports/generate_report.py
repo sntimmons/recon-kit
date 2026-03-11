@@ -104,6 +104,15 @@ _REASON_MAP: dict[str, str] = {
         "Start date matches a bulk import date shared by many other employees - needs human review",
     "name_change_detected":
         "Last name differs between systems - needs human review to confirm same employee",
+    # Payrate conversion patterns (auto-approved)
+    "payrate_conversion:annual_to_hourly":
+        "Payrate auto-approved - old system stored annual salary; new system stores hourly rate (divided by 2,080 hours)",
+    "payrate_conversion:hourly_to_annual":
+        "Payrate auto-approved - old system stored hourly rate; new system stores annual salary (multiplied by 2,080 hours)",
+    "payrate_conversion:biweekly_to_annual":
+        "Payrate auto-approved - old system stored biweekly pay; new system stores annual salary (multiplied by 26 periods)",
+    "payrate_conversion:annual_to_biweekly":
+        "Payrate auto-approved - old system stored annual salary; new system stores biweekly pay (divided by 26 periods)",
 }
 
 _MATCH_SOURCE_MAP: dict[str, str] = {
@@ -613,8 +622,50 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     _data_table(doc, ["Change Type", "Count", "% of Total"], change_rows)
     doc.add_paragraph()
 
+    # Payrate conversion summary
+    _add_heading(doc, "4.1 Payrate Conversion Detection", 2)
+    pr_total = int(df["fix_types"].str.contains("payrate", na=False).sum()) if "fix_types" in df.columns else 0
+    if pr_total == 0:
+        doc.add_paragraph("No payrate differences detected in this run.")
+    elif "conversion_type" in df.columns:
+        conv_df = df[df["conversion_type"].fillna("").str.len() > 0].copy()
+        n_conv  = len(conv_df)
+        n_unconverted = pr_total - n_conv
+
+        if n_conv > 0:
+            conv_counts = conv_df["conversion_type"].value_counts()
+            _CONV_LABELS = {
+                "annual_to_hourly":   "Annual to hourly (old salary / 2080 = new payrate)",
+                "hourly_to_annual":   "Hourly to annual (old payrate x 2080 = new salary)",
+                "biweekly_to_annual": "Biweekly to annual (old payrate x 26 = new salary)",
+                "annual_to_biweekly": "Annual to biweekly (old salary / 26 = new payrate)",
+            }
+            rows = [[_CONV_LABELS.get(k, k), f"{v:,}"] for k, v in conv_counts.items()]
+            rows.append(["Auto-approved as unit conversions (total)", f"{n_conv:,}"])
+            if n_unconverted > 0:
+                rows.append(["Routed to REVIEW (no conversion pattern)", f"{n_unconverted:,}"])
+            _data_table(doc, ["Conversion Pattern", "Records"], rows)
+            doc.add_paragraph(
+                f"{n_conv:,} of {pr_total:,} payrate changes were identified as "
+                f"unit-conversion artefacts (salary stored in different pay-period bases "
+                f"across systems) and auto-approved. "
+                f"{'No additional payrate records required review.' if n_unconverted == 0 else f'{n_unconverted:,} payrate records without a matching conversion pattern were routed to the Review Queue.'}"
+            )
+        else:
+            doc.add_paragraph(
+                f"{pr_total:,} payrate changes were detected. None matched a known unit-conversion "
+                f"pattern (annual/hourly at 2080 hours or biweekly/annual at 26 periods). "
+                f"All have been routed to the Review Queue for human disposition."
+            )
+    else:
+        doc.add_paragraph(
+            f"{pr_total:,} payrate changes were detected. "
+            f"(conversion_type column not available - re-run exports to enable conversion detection)"
+        )
+    doc.add_paragraph()
+
     # Salary details
-    _add_heading(doc, "4.1 Salary Changes", 2)
+    _add_heading(doc, "4.2 Salary Changes", 2)
     if "salary_delta" in df.columns:
         sal_df_all = df[df["fix_types"].str.contains("salary", na=False)].copy()
 
@@ -664,7 +715,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     doc.add_paragraph()
 
     # Status changes
-    _add_heading(doc, "4.2 Status Changes", 2)
+    _add_heading(doc, "4.3 Status Changes", 2)
     if "old_worker_status" in df.columns and "new_worker_status" in df.columns:
         st_df = df[df["fix_types"].str.contains("status", na=False)].copy()
         if st_df.empty:
@@ -682,7 +733,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     doc.add_paragraph()
 
     # Hire date changes - plain-English summary (no technical pattern table)
-    _add_heading(doc, "4.3 Hire Date Changes", 2)
+    _add_heading(doc, "4.4 Hire Date Changes", 2)
     hd_df = df[df["fix_types"].str.contains("hire_date", na=False)].copy() \
         if "fix_types" in df.columns else pd.DataFrame()
     if hd_df.empty:
