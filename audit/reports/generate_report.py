@@ -102,6 +102,8 @@ _REASON_MAP: dict[str, str] = {
         "Status changed from active to terminated - needs human review",
     "hire_date_wave":
         "Start date matches a bulk import date shared by many other employees - needs human review",
+    "name_change_detected":
+        "Last name differs between systems - needs human review to confirm same employee",
 }
 
 _MATCH_SOURCE_MAP: dict[str, str] = {
@@ -205,6 +207,12 @@ def _translate_reason(reason: str) -> str:
     if _re.match(r"active_to_terminated", r_noprefix):
         return "Status changed from active to terminated - needs human review"
 
+    # name_change_detected (old_last -> new_last) - parametric form
+    m = _re.match(r"name_change_detected\s*\(([^)]+)\)", r_noprefix)
+    if m:
+        parts = m.group(1).strip()
+        return f"Last name changed ({parts}) - needs human review to confirm same employee"
+
     # Exact map lookups: try r_inner, r_noprefix, then full r
     for candidate in (r_inner, r_noprefix, r):
         if candidate in _REASON_MAP:
@@ -227,6 +235,28 @@ def _translate_reason(reason: str) -> str:
 def _translate_match_source(source: str) -> str:
     """Translate a match_source key to a plain-English label."""
     return _MATCH_SOURCE_MAP.get(str(source).strip().lower(), str(source))
+
+
+def _display_name(row: dict) -> str:
+    """Return 'First Last' display name from name components or full_name_norm fallback.
+
+    Priority:
+      1. first_name_norm + last_name_norm  (title-cased, clean)
+      2. old_full_name_norm                (title-cased)
+      3. pair_id                           (fallback)
+    """
+    first = str(row.get("old_first_name_norm") or "").strip()
+    last  = str(row.get("old_last_name_norm")  or "").strip()
+    if first and last:
+        # Title-case each component (handles hyphenated names gracefully)
+        parts = [w.capitalize() for w in first.split()]
+        lparts = [w.capitalize() for w in last.split()]
+        return " ".join(parts) + " " + " ".join(lparts)
+    # Fallback: use full_name_norm and title-case it
+    full = str(row.get("old_full_name_norm") or "").strip()
+    if full:
+        return " ".join(w.capitalize() for w in full.split())
+    return str(row.get("pair_id", "-"))
 
 
 # ---------------------------------------------------------------------------
@@ -737,8 +767,7 @@ def _section_review_queue(doc: Document, df: pd.DataFrame) -> None:
 
     rows_data = []
     for _, row in top_review.iterrows():
-        name     = str(row.get("old_full_name_norm", row.get("pair_id", "-"))) if has_name \
-                   else str(row.get("pair_id", "-"))
+        name     = _display_name(row.to_dict())  # "First Last" format
         reason   = _translate_reason(str(row.get("reason", ""))) if has_reason else "-"
         fix_typs = str(row.get("fix_types", "")).replace("|", ", ") if has_fix else "-"
         rows_data.append([name, reason, fix_typs])
@@ -990,8 +1019,20 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
         review_queue["total"] = int(len(rev_df))
         if "priority_score" in rev_df.columns:
             top = rev_df.sort_values("priority_score", ascending=False).head(20)
-            cols = [c for c in ["pair_id", "match_source", "fix_types", "priority_score", "reason"] if c in top.columns]
-            review_queue["top_items"] = [[str(row.get(c, "")) for c in cols] for _, row in top[cols].iterrows()]
+        else:
+            top = rev_df.head(20)
+        if len(top) > 0:
+            # top_items format: [display_name, reason, fix_types]
+            # display_name uses first/last components when available, falls back to full_name_norm
+            items = []
+            for _, row in top.iterrows():
+                row_dict = row.to_dict()
+                items.append([
+                    _display_name(row_dict),
+                    str(row_dict.get("reason", "")),
+                    str(row_dict.get("fix_types", "")),
+                ])
+            review_queue["top_items"] = items
         if "fix_types" in rev_df.columns:
             ft_c: dict = {}
             for _, row in rev_df.iterrows():

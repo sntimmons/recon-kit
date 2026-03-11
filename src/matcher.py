@@ -192,8 +192,15 @@ def main() -> None:
     report["matched_by_dob_name"] = int(len(m))
     all_matches.append(m)
 
-    # Tier 6: full_name_norm + hire_date
-    m, old, new = _one_to_one_join(old, new, ["full_name_norm", "hire_date"], "name_hire_date")
+    # Tier 6: last_name_norm + hire_date (more robust than full_name_norm + hire_date)
+    # Using last name as the join key catches cases where first name differs slightly
+    # between systems (John vs Johnny, Mary vs Marie).  First name similarity is
+    # captured in the confidence score via SequenceMatcher on full_name_norm.
+    # Falls back to full_name_norm + hire_date when last_name_norm is unavailable.
+    _t6_keys = (["last_name_norm", "hire_date"]
+                if "last_name_norm" in old.columns and "last_name_norm" in new.columns
+                else ["full_name_norm", "hire_date"])
+    m, old, new = _one_to_one_join(old, new, _t6_keys, "name_hire_date")
     report["matched_by_name_hire_date"] = int(len(m))
     all_matches.append(m)
 
@@ -213,6 +220,23 @@ def main() -> None:
 
         base["old_full_name_norm"] = matched.get("full_name_norm_old", pd.NA)
         base["new_full_name_norm"] = matched.get("full_name_norm_new", pd.NA)
+        # Name components (from mapping.py _build_name_components)
+        base["old_first_name_norm"] = matched.get("first_name_norm_old", pd.NA)
+        base["new_first_name_norm"] = matched.get("first_name_norm_new", pd.NA)
+        base["old_last_name_norm"]  = matched.get("last_name_norm_old",  pd.NA)
+        base["new_last_name_norm"]  = matched.get("last_name_norm_new",  pd.NA)
+        base["old_middle_name"]     = matched.get("middle_name_old", pd.NA)
+        base["new_middle_name"]     = matched.get("middle_name_new", pd.NA)
+        base["old_suffix"]          = matched.get("suffix_old", pd.NA)
+        base["new_suffix"]          = matched.get("suffix_new", pd.NA)
+        # name_change_detected: True when last names differ and both are present
+        def _name_changed(row: dict) -> bool:
+            old_ln = str(row.get("old_last_name_norm") or "").strip()
+            new_ln = str(row.get("new_last_name_norm") or "").strip()
+            return bool(old_ln and new_ln and old_ln != new_ln)
+        base["name_change_detected"] = [
+            _name_changed(r) for r in base.to_dict(orient="records")
+        ]
         base["old_dob"] = matched.get("dob_old", pd.NA)
         base["new_dob"] = matched.get("dob_new", pd.NA)
         base["old_hire_date"] = matched.get("hire_date_old", pd.NA)
@@ -259,7 +283,12 @@ def main() -> None:
         matched_raw = pd.DataFrame(columns=[
             "old_worker_id", "new_worker_id",
             "old_recon_id",  "new_recon_id",
-            "old_full_name_norm", "new_full_name_norm",
+            "old_full_name_norm",    "new_full_name_norm",
+            "old_first_name_norm",   "new_first_name_norm",
+            "old_last_name_norm",    "new_last_name_norm",
+            "old_middle_name",       "new_middle_name",
+            "old_suffix",            "new_suffix",
+            "name_change_detected",
             "old_dob",       "new_dob",
             "old_hire_date", "new_hire_date",
             "old_last4_ssn", "new_last4_ssn",

@@ -416,6 +416,20 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     if wave_flagged:
         review_reasons.append("hire_date_wave")
 
+    # Override 5: name_change_detected - last name differs between systems.
+    # Always routes to REVIEW so a human can confirm it is the same person
+    # (could be a legal name change, a marriage, a data-entry error, or truly
+    # a different employee).  Never blocks corrections, just adds to review reasons.
+    name_changed = bool(row.get("name_change_detected") is True
+                        or str(row.get("name_change_detected", "")).lower() in ("true", "1", "yes"))
+    if name_changed:
+        old_ln = str(row.get("old_last_name_norm") or "").strip()
+        new_ln = str(row.get("new_last_name_norm") or "").strip()
+        review_reasons.append(
+            f"name_change_detected ({old_ln} -> {new_ln})" if (old_ln and new_ln)
+            else "name_change_detected"
+        )
+
     if reject_reason:
         overall_action = "REJECT_MATCH"
         overall_reason = reject_reason

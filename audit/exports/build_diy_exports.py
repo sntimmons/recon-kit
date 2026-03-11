@@ -65,6 +65,12 @@ _WIDE_COLS = [
     "action", "reason", "fix_types", "summary", "match_explanation", "priority_score",
     # Side-by-side fields
     "old_full_name_norm", "new_full_name_norm",
+    # Name components (first/last/middle/suffix + name change flag)
+    "old_first_name_norm", "new_first_name_norm",
+    "old_last_name_norm",  "new_last_name_norm",
+    "old_middle_name",     "new_middle_name",
+    "old_suffix",          "new_suffix",
+    "name_change_detected",
     "old_worker_status", "new_worker_status",
     "old_worker_type", "new_worker_type",
     "old_hire_date", "new_hire_date",

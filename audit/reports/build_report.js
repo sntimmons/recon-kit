@@ -158,7 +158,14 @@ function translateReason (reason) {
     'pk_auto_approve':         'Matched on name, date of birth, and last-4 identifier - auto-approved',
     'active_to_terminated':    'Status changed from active to terminated - needs human review',
     'hire_date_wave':          'Start date matches a bulk import date shared by many other employees - needs human review',
+    'name_change_detected':    'Last name differs between systems - needs human review to confirm same employee',
   };
+
+  // name_change_detected (old_last -> new_last) parametric form
+  const ncM = rNoPrefix.match(/^name_change_detected\s*\(([^)]+)\)/);
+  if (ncM) {
+    return `Last name changed from "${ncM[1].trim()}" - needs human review to confirm same employee`;
+  }
 
   // Exact lookups on rInner, rNoPrefix, then full r
   for (const candidate of [rInner, rNoPrefix, r]) {
@@ -184,6 +191,17 @@ function translateMatchSource (source) {
     'recon_id':       'Exact reconciliation ID match',
   };
   return MAP[(source || '').trim().toLowerCase()] || String(source || '');
+}
+
+function displayName (row) {
+  // Returns 'First Last' title-cased from name components, or falls back to full_name_norm.
+  const first = (row.old_first_name_norm || '').trim();
+  const last  = (row.old_last_name_norm  || '').trim();
+  const toTitle = s => s.split(/\s+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+  if (first && last) return toTitle(first) + ' ' + toTitle(last);
+  const full = (row.old_full_name_norm || '').trim();
+  if (full) return toTitle(full);
+  return row.pair_id || '-';
 }
 
 // ---------------------------------------------------------------------------
