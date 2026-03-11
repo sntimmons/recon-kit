@@ -81,19 +81,35 @@ def evaluate_sanity_gate(results: dict, policy: dict) -> dict:
             reasons.append(f"{key} count {count:,} > {ct:,}")
 
     # -------------------------------------------------------------------
-    # Fix 6: Health-metric checks — pipeline-level quality thresholds.
-    # Configurable via sanity_gate.health_thresholds in policy.yaml.
-    # Defaults: det_rate >= 0.95, approve_rate >= 0.80, active_zero_salary == 0.
+    # Three-part health gate (redefined per user spec):
+    #   1. det_rate >= min_det_rate        (worker_id + pk / total)
+    #   2. approve_rate >= min_approve_rate (APPROVE / total)
+    #   3. active_zero_approved == 0       (active/$0 workers with APPROVE action)
+    #      — "active/$0 with corrections staged = 0"
+    #      — active_zero_approved is always 0 because salary_ratio override routes
+    #        all active/$0 workers to REVIEW before corrections can be staged.
+    #      Falls back to the legacy active_zero_salary count if active_zero_approved
+    #      is not present in health_metrics (older pipeline runs).
     # -------------------------------------------------------------------
     ht = sg.get("health_thresholds", {})
-    min_det_rate         = float(ht.get("min_det_rate",          0.95))
-    min_approve_rate     = float(ht.get("min_approve_rate",      0.80))
-    max_active_zero      = int(  ht.get("max_active_zero_salary", 0))
+    min_det_rate     = float(ht.get("min_det_rate",          0.95))
+    min_approve_rate = float(ht.get("min_approve_rate",      0.80))
+    max_active_zero  = int(  ht.get("max_active_zero_salary", 0))
 
-    hm             = results.get("health_metrics", {})
-    det_rate       = float(hm.get("det_rate",           0.0))
-    approve_rate   = float(hm.get("approve_rate",       -1.0))   # -1 = not computed
-    active_zero    = int(  hm.get("active_zero_salary", 0))
+    hm           = results.get("health_metrics", {})
+    det_rate     = float(hm.get("det_rate",           0.0))
+    approve_rate = float(hm.get("approve_rate",       -1.0))   # -1 = not computed
+    active_zero  = int(  hm.get("active_zero_salary", 0))
+
+    # active_zero_approved: active/$0 workers that received APPROVE action.
+    # Only populated by run_sanity_gate.py (not by older sanity_checks.py).
+    # Use it when available; fall back to legacy active_zero_salary otherwise.
+    if "active_zero_approved" in hm:
+        active_zero_check_val = int(hm["active_zero_approved"])
+        active_zero_label     = "active/$0 workers with corrections staged (APPROVE action)"
+    else:
+        active_zero_check_val = active_zero
+        active_zero_label     = "active workers with $0 salary detected"
 
     health_checks: dict[str, dict] = {}
 
@@ -128,16 +144,17 @@ def evaluate_sanity_gate(results: dict, policy: dict) -> dict:
             "passed":    True,   # don't fail if not computed
         }
 
-    # active_zero_salary
+    # Check 3: active_zero_approved (critical staged-corrections check)
     health_checks["active_zero_salary"] = {
-        "value":     active_zero,
-        "threshold": f"<= {max_active_zero}",
-        "passed":    active_zero <= max_active_zero,
+        "value":      active_zero,           # total active/$0 workers (informational)
+        "value_approved": active_zero_check_val,  # with APPROVE action (gate check)
+        "threshold":  f"corrections staged <= {max_active_zero}",
+        "passed":     active_zero_check_val <= max_active_zero,
     }
-    if active_zero > max_active_zero:
+    if active_zero_check_val > max_active_zero:
         reasons.append(
-            f"active_zero_salary {active_zero:,} > max {max_active_zero:,} "
-            f"(active workers with $0 salary detected)"
+            f"active_zero_approved {active_zero_check_val:,} > max {max_active_zero:,} "
+            f"({active_zero_label})"
         )
 
     passed = len(reasons) == 0

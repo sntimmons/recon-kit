@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re as _re
 import sqlite3
 import subprocess
 import sys
@@ -76,6 +77,90 @@ _ORANGE       = RGBColor(0xE2, 0x6B, 0x0A)   # caution
 _GREEN        = RGBColor(0x37, 0x86, 0x45)   # positive
 _GREY_LIGHT   = RGBColor(0xF2, 0xF2, 0xF2)   # alternating rows
 _WHITE        = RGBColor(0xFF, 0xFF, 0xFF)
+
+
+# ---------------------------------------------------------------------------
+# Plain-English translation of internal engine flags
+# ---------------------------------------------------------------------------
+
+_REASON_MAP: dict[str, str] = {
+    "hire_date:year_shift_with_other_mismatches":
+        "Start date changed by a full year, plus other fields also changed",
+    "hire_date:off_by_one_day_pattern":
+        "Start date off by one day (likely a system convention difference — auto-approved)",
+    "hire_date:year_shift_systematic":
+        "Start date changed by one year — appears to be a systematic pattern (auto-approved)",
+    "hire_date:off_by_one_year_systematic":
+        "Start date off by one year across many records — auto-approved as systematic",
+    "hire_date:off_by_one_year_pattern":
+        "Start date off by exactly one year (likely a system import convention — auto-approved)",
+    "worker_id_auto_approve":
+        "Exact ID match — auto-approved",
+    "pk_auto_approve":
+        "Matched on name, date of birth, and last-4 identifier — auto-approved",
+    "active_to_terminated":
+        "Status changed from active to terminated — needs human review",
+    "hire_date_wave":
+        "Start date matches a bulk import date shared by many other employees — needs human review",
+}
+
+_MATCH_SOURCE_MAP: dict[str, str] = {
+    "worker_id":      "Exact employee ID match",
+    "pk":             "Matched on name, date of birth, and last-4",
+    "last4_dob":      "Matched on last-4 SSN and date of birth",
+    "dob_name":       "Matched on name and date of birth (high-risk tier)",
+    "name_hire_date": "Matched on name and start date",
+    "recon_id":       "Exact reconciliation ID match",
+}
+
+
+def _translate_reason(reason: str) -> str:
+    """Translate an internal engine flag to a plain-English description."""
+    if not reason or str(reason).strip() in ("", "nan", "None"):
+        return "No reason recorded"
+    r = str(reason).strip()
+
+    # dob_name_low_confidence (0.600<0.75)  — extract confidence %
+    m = _re.match(r"dob_name_low_confidence\s*\(?([\d.]+)", r)
+    if m:
+        try:
+            pct = int(round(float(m.group(1)) * 100))
+        except ValueError:
+            pct = 0
+        return f"Matched on name and date of birth only — confidence too low to trust ({pct}%)"
+
+    # salary_ratio_extreme (2.0000 outside [0.85, 1.15])  — extract ratio
+    m = _re.match(r"salary_ratio_extreme\s*\(?([\d.]+)", r)
+    if m:
+        try:
+            ratio = float(m.group(1))
+        except ValueError:
+            ratio = 2.0
+        if ratio > 1.5:
+            return "Salary more than doubled between systems — needs human review"
+        if ratio < 0.5:
+            return "Salary dropped by more than half between systems — needs human review"
+        return "Salary changed significantly between systems — needs human review"
+
+    # Exact match
+    if r in _REASON_MAP:
+        return _REASON_MAP[r]
+    # Prefix match
+    for key, val in _REASON_MAP.items():
+        if r.startswith(key):
+            return val
+
+    # Generic fallback: humanise snake_case
+    return (r.replace("hire_date:", "start date: ")
+             .replace("_", " ")
+             .replace("  ", " ")
+             .strip()
+             .capitalize())
+
+
+def _translate_match_source(source: str) -> str:
+    """Translate a match_source key to a plain-English label."""
+    return _MATCH_SOURCE_MAP.get(str(source).strip().lower(), str(source))
 
 
 # ---------------------------------------------------------------------------
@@ -212,55 +297,75 @@ def _load_data(db_path: Path, wide_path: Path) -> pd.DataFrame:
 def _section_executive_summary(doc: Document, df: pd.DataFrame) -> None:
     _add_heading(doc, "1. Executive Summary", 1)
 
-    total          = len(df)
-    n_approve      = int((df["action"] == "APPROVE").sum())  if "action" in df.columns else 0
-    n_review       = int((df["action"] == "REVIEW").sum())   if "action" in df.columns else 0
-    n_reject       = int((df["action"] == "REJECT_MATCH").sum()) if "action" in df.columns else 0
-    approve_pct    = f"{n_approve/total*100:.1f}%" if total > 0 else "—"
-    review_pct     = f"{n_review/total*100:.1f}%"  if total > 0 else "—"
-    reject_pct     = f"{n_reject/total*100:.1f}%"  if total > 0 else "—"
+    total     = len(df)
+    n_approve = int((df["action"] == "APPROVE").sum())     if "action" in df.columns else 0
+    n_review  = int((df["action"] == "REVIEW").sum())      if "action" in df.columns else 0
+    n_reject  = int((df["action"] == "REJECT_MATCH").sum()) if "action" in df.columns else 0
 
-    n_with_changes = int((df["fix_types"].fillna("") != "").sum()) if "fix_types" in df.columns else 0
-    n_clean        = total - n_with_changes
-
-    doc.add_paragraph(
-        f"This report summarises the results of the Data Whisperer reconciliation run "
-        f"completed on {datetime.now().strftime('%B %d, %Y')}. A total of "
-        f"{total:,} matched employee pairs were evaluated across all match sources."
-    )
-
-    _kv_table(doc, [
-        ("Total matched pairs",   f"{total:,}"),
-        ("Auto-approved (APPROVE)",   f"{n_approve:,}  ({approve_pct})"),
-        ("Requires review (REVIEW)",  f"{n_review:,}  ({review_pct})"),
-        ("Rejected — wrong person",   f"{n_reject:,}  ({reject_pct})"),
-        ("Pairs with field changes",  f"{n_with_changes:,}"),
-        ("Clean pairs (no changes)",  f"{n_clean:,}"),
-        ("Report generated",         datetime.now().strftime("%Y-%m-%d %H:%M")),
-    ])
-    doc.add_paragraph()
-
-    if n_reject > 0:
-        _callout(doc,
-            f"{n_reject:,} pairs were flagged as REJECT_MATCH (likely wrong-person pairings). "
-            f"These must not receive any automated corrections.",
-            level="critical"
-        )
-
+    # Active/$0 count
     active_zero = 0
     if "new_worker_status" in df.columns and "new_salary" in df.columns:
-        active_mask = df["new_worker_status"].fillna("").str.strip().str.lower() == "active"
-        new_sal_num = pd.to_numeric(
-            df["new_salary"].astype(str).str.replace(",","").str.replace("$",""),
-            errors="coerce"
+        _am = df["new_worker_status"].fillna("").str.strip().str.lower() == "active"
+        _sn = pd.to_numeric(
+            df["new_salary"].astype(str).str.replace(",", "").str.replace("$", ""),
+            errors="coerce",
         )
-        active_zero = int((active_mask & (new_sal_num.isna() | (new_sal_num == 0))).sum())
+        active_zero = int((_am & (_sn.isna() | (_sn == 0))).sum())
+
+    # -----------------------------------------------------------------------
+    # Plain-language opening — readable by non-HR managers in 60 seconds
+    # -----------------------------------------------------------------------
+    doc.add_paragraph(
+        f"We compared {total:,} employee records between the source system and the new "
+        f"system. Here is what we found:"
+    )
+
+    bullets = [
+        f"{n_approve:,} records look correct and are ready to load — no action needed.",
+        f"{n_review:,} records need a human to review them before they go in.",
+    ]
+    if n_reject > 0:
+        bullets.append(
+            f"{n_reject:,} records were flagged as possible wrong-person matches "
+            f"and blocked entirely."
+        )
+    if active_zero > 0:
+        bullets.append(
+            f"{active_zero:,} employees are showing $0 salary in the new system — "
+            f"this needs to be fixed before anyone gets paid."
+        )
+
+    for b in bullets:
+        p = doc.add_paragraph(style="List Bullet")
+        p.add_run(b)
+
+    doc.add_paragraph()
+
+    # -----------------------------------------------------------------------
+    # What happens next
+    # -----------------------------------------------------------------------
+    _add_heading(doc, "What happens next", 2)
+    doc.add_paragraph(
+        f"The correction files attached to this report are ready to load into the new system "
+        f"for all {n_approve:,} auto-approved records. Before loading, a reviewer must work "
+        f"through the {n_review:,} records in the review queue and confirm each one. "
+        f"Once the review queue is cleared, a final corrections run can be executed."
+    )
 
     if active_zero > 0:
         _callout(doc,
-            f"CRITICAL: {active_zero:,} active employees have $0 or missing salary in the "
-            f"source data. Salary corrections for these records have been blocked.",
-            level="critical"
+            f"Action required before payroll: {active_zero:,} active employees have $0 salary "
+            f"in the new system. Salary corrections for these records are blocked until the "
+            f"source data is corrected.",
+            level="critical",
+        )
+
+    if n_reject > 0:
+        _callout(doc,
+            f"{n_reject:,} employee records were blocked from corrections entirely — these appear "
+            f"to be wrong-person matches and need manual investigation. Do not load corrections "
+            f"for these records.",
+            level="warning",
         )
 
 
@@ -367,24 +472,24 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
         doc.add_paragraph("(Hire date / reason columns not available)")
     doc.add_paragraph()
 
-    # REJECT_MATCH
-    _add_heading(doc, "3.3 Rejected Match Pairings (REJECT_MATCH)", 2)
+    # Blocked records (REJECT_MATCH)
+    _add_heading(doc, "3.3 Blocked Records — Possible Wrong-Person Matches", 2)
     if "action" in df.columns:
         rej_df = df[df["action"] == "REJECT_MATCH"]
         if rej_df.empty:
-            p = doc.add_paragraph("No REJECT_MATCH records detected. ")
+            p = doc.add_paragraph("No blocked records detected. All pairings appear valid. ")
             p.runs[0].font.color.rgb = _GREEN
         else:
             _callout(doc,
-                f"{len(rej_df):,} pairs were identified as likely wrong-person pairings "
-                f"and flagged REJECT_MATCH. No automated corrections will be applied.",
-                level="critical"
+                f"{len(rej_df):,} pairs were blocked — the matching engine detected these are "
+                f"likely wrong-person pairings. No corrections will be applied to these records.",
+                level="critical",
             )
             if "reason" in rej_df.columns:
                 rej_reasons = rej_df["reason"].value_counts().head(5)
                 _data_table(doc,
-                    ["Rejection Reason", "Count"],
-                    [[str(r), f"{c:,}"] for r, c in rej_reasons.items()]
+                    ["Why They Were Blocked", "Count"],
+                    [[_translate_reason(str(r)), f"{c:,}"] for r, c in rej_reasons.items()]
                 )
     doc.add_paragraph()
 
@@ -480,21 +585,54 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
             )
     doc.add_paragraph()
 
-    # Hire date changes
+    # Hire date changes — plain-English summary (no technical pattern table)
     _add_heading(doc, "4.3 Hire Date Changes", 2)
-    hd_df = df[df["fix_types"].str.contains("hire_date", na=False)].copy() if "fix_types" in df.columns else pd.DataFrame()
+    hd_df = df[df["fix_types"].str.contains("hire_date", na=False)].copy() \
+        if "fix_types" in df.columns else pd.DataFrame()
     if hd_df.empty:
-        doc.add_paragraph("No hire date changes detected.")
+        doc.add_paragraph("No hire date differences detected.")
     else:
-        # Pattern breakdown
-        if "hire_date_pattern" in hd_df.columns:
-            pat_counts = hd_df["hire_date_pattern"].fillna("").replace("", "none").value_counts().head(8)
-            _data_table(doc,
-                ["Pattern Applied", "Count"],
-                [[str(p), f"{c:,}"] for p, c in pat_counts.items()]
+        n_total = len(hd_df)
+
+        # Categorise by pattern
+        n_auto_approved = 0
+        n_year_review   = 0
+        n_systematic    = 0
+        reason_col = "hire_date_pattern" if "hire_date_pattern" in hd_df.columns else \
+                     "reason"            if "reason"            in hd_df.columns else None
+        if reason_col:
+            vals = hd_df[reason_col].fillna("")
+            n_auto_approved = int(vals.str.contains("off_by_one_day", na=False).sum())
+            n_year_review   = int(vals.str.contains("year_shift_with_other", na=False).sum())
+            n_systematic    = int(
+                vals.str.contains("year_shift_systematic|off_by_one_year_systematic", na=False).sum()
             )
+
+        n_other = max(0, n_total - n_auto_approved - n_year_review - n_systematic)
+
+        parts: list[str] = []
+        if n_auto_approved > 0:
+            parts.append(
+                f"{n_auto_approved:,} were automatically approved because they matched known "
+                f"system conversion patterns (such as off-by-one-day differences)"
+            )
+        if n_year_review > 0:
+            parts.append(
+                f"{n_year_review:,} had a full year shift combined with other changes "
+                f"and were sent to review"
+            )
+        if n_systematic > 0:
+            parts.append(
+                f"{n_systematic:,} appear to be a systematic date format difference "
+                f"and were auto-approved"
+            )
+        if n_other > 0:
+            parts.append(f"{n_other:,} had other hire date differences flagged for review")
+
+        if parts:
+            doc.add_paragraph(f"Of {n_total:,} hire date differences found: " + "; ".join(parts) + ".")
         else:
-            doc.add_paragraph(f"Total hire date changes: {len(hd_df):,}")
+            doc.add_paragraph(f"A total of {n_total:,} records had hire date differences.")
     doc.add_paragraph()
 
 
@@ -505,46 +643,67 @@ def _section_review_queue(doc: Document, df: pd.DataFrame) -> None:
         doc.add_paragraph("(action column not available)")
         return
 
-    review_df = df[df["action"] == "REVIEW"].copy()
+    review_df    = df[df["action"] == "REVIEW"].copy()
     total_review = len(review_df)
 
     doc.add_paragraph(
-        f"A total of {total_review:,} matched pairs require human review before any "
-        f"corrections can be applied. The table below shows the top priority items by "
-        f"fix type."
+        f"A total of {total_review:,} records need a human reviewer to look at them before "
+        f"corrections can be applied. The table below shows the 10 highest-priority items."
     )
 
     if total_review == 0:
-        _callout(doc, "No pairs require human review. All approved records are ready for corrections.", level="ok")
+        _callout(doc,
+            "No records require human review. All approved records are ready to load.",
+            level="ok",
+        )
         return
 
-    # Top 20 by priority score
+    # Sort by priority if available, otherwise take first 10
     if "priority_score" in review_df.columns:
-        top_review = (
-            review_df
-            .sort_values("priority_score", ascending=False)
-            .head(20)
-        )
-        cols = [c for c in ["pair_id","match_source","fix_types","priority_score","reason"] if c in top_review.columns]
-        if cols:
-            _data_table(doc, cols, top_review[cols].values.tolist())
+        top_review = review_df.sort_values("priority_score", ascending=False).head(10)
     else:
-        # No priority score — show by fix_type
-        if "fix_types" in review_df.columns:
-            ft_counts = {}
-            for _, row in review_df.iterrows():
-                for ft in str(row["fix_types"]).split("|"):
-                    if ft:
-                        ft_counts[ft] = ft_counts.get(ft, 0) + 1
-            _data_table(doc,
-                ["Fix Type", "Review Count"],
-                [[ft, f"{c:,}"] for ft, c in sorted(ft_counts.items(), key=lambda x: -x[1])]
-            )
+        top_review = review_df.head(10)
+
+    # Build plain-English table: Employee Name | Why It Needs Review | Fields Changed
+    has_reason = "reason"    in top_review.columns
+    has_fix    = "fix_types" in top_review.columns
+    has_name   = "old_full_name_norm" in top_review.columns
+
+    rows_data = []
+    for _, row in top_review.iterrows():
+        name     = str(row.get("old_full_name_norm", row.get("pair_id", "—"))) if has_name \
+                   else str(row.get("pair_id", "—"))
+        reason   = _translate_reason(str(row.get("reason", ""))) if has_reason else "—"
+        fix_typs = str(row.get("fix_types", "")).replace("|", ", ") if has_fix else "—"
+        rows_data.append([name, reason, fix_typs])
+
+    _data_table(doc, ["Employee", "Why It Needs Review", "Fields Changed"], rows_data)
+
+    if total_review > 10:
+        doc.add_paragraph(
+            f"Showing 10 of {total_review:,} total review items. "
+            f"See the review_queue.csv file for the complete list."
+        )
+
+    # Summary by change type
+    if has_fix and len(review_df) > 0:
+        doc.add_paragraph()
+        _add_heading(doc, "Review Queue by Change Type", 2)
+        ft_counts: dict[str, int] = {}
+        for _, row in review_df.iterrows():
+            for ft in str(row.get("fix_types", "")).split("|"):
+                ft = ft.strip()
+                if ft:
+                    ft_counts[ft] = ft_counts.get(ft, 0) + 1
+        _data_table(doc,
+            ["Change Type", "Records Needing Review"],
+            [[ft, f"{c:,}"] for ft, c in sorted(ft_counts.items(), key=lambda x: -x[1])],
+        )
     doc.add_paragraph()
 
 
 def _section_rejected_matches(doc: Document, df: pd.DataFrame) -> None:
-    _add_heading(doc, "6. Rejected Match Pairings", 1)
+    _add_heading(doc, "6. Blocked Records — Possible Wrong-Person Matches", 1)
 
     if "action" not in df.columns:
         doc.add_paragraph("(action column not available)")
@@ -553,20 +712,30 @@ def _section_rejected_matches(doc: Document, df: pd.DataFrame) -> None:
     rej_df = df[df["action"] == "REJECT_MATCH"].copy()
 
     if rej_df.empty:
-        _callout(doc, "No REJECT_MATCH records detected. All pairings appear valid.", level="ok")
+        _callout(doc,
+            "No records were blocked. All pairings appear to be correct person matches.",
+            level="ok",
+        )
         return
 
     doc.add_paragraph(
-        f"{len(rej_df):,} pairs were flagged as REJECT_MATCH — likely wrong-person pairings "
-        f"where automated matching selected an incorrect employee. These records have been "
-        f"completely excluded from all correction pipelines and require manual investigation."
+        f"{len(rej_df):,} records were blocked from corrections because the matching engine "
+        f"detected they were likely wrong-person pairings — the system matched an employee "
+        f"to someone else in the other file. These records have been completely excluded "
+        f"from all correction files and must be investigated and re-matched manually."
+    )
+    doc.add_paragraph(
+        "The most common reason for a block is a name-and-date-of-birth-only match where the "
+        "confidence score fell below the minimum acceptable threshold. These low-confidence "
+        "matches carry a real risk of applying salary, status, or hire-date changes to the "
+        "wrong person."
     )
 
     if "match_source" in rej_df.columns:
         src_counts = rej_df["match_source"].value_counts()
         _data_table(doc,
-            ["Match Source", "REJECT_MATCH Count"],
-            [[str(s), f"{c:,}"] for s, c in src_counts.items()]
+            ["How They Were Originally Matched", "Count Blocked"],
+            [[_translate_match_source(str(s)), f"{c:,}"] for s, c in src_counts.items()],
         )
     doc.add_paragraph()
 
@@ -574,48 +743,58 @@ def _section_rejected_matches(doc: Document, df: pd.DataFrame) -> None:
 def _section_recommendations(doc: Document, df: pd.DataFrame) -> None:
     _add_heading(doc, "7. Recommendations", 1)
 
-    total   = len(df)
-    n_rev   = int((df["action"] == "REVIEW").sum())   if "action" in df.columns else 0
-    n_rej   = int((df["action"] == "REJECT_MATCH").sum()) if "action" in df.columns else 0
+    total        = len(df)
+    n_rev        = int((df["action"] == "REVIEW").sum())      if "action" in df.columns else 0
+    n_rej        = int((df["action"] == "REJECT_MATCH").sum()) if "action" in df.columns else 0
     approve_rate = (total - n_rev - n_rej) / total if total > 0 else 0.0
 
-    rec_items = []
+    active_zero_count = 0
+    if "new_worker_status" in df.columns and "new_salary" in df.columns:
+        am = df["new_worker_status"].fillna("").str.strip().str.lower() == "active"
+        sn = pd.to_numeric(
+            df["new_salary"].astype(str).str.replace(",", "").str.replace("$", ""),
+            errors="coerce",
+        )
+        active_zero_count = int((am & (sn.isna() | (sn == 0))).sum())
+
+    rec_items: list[str] = []
+
+    if active_zero_count > 0:
+        rec_items.append(
+            f"Fix {active_zero_count:,} active employees who show $0 salary in the new system. "
+            f"This is a data extraction issue — these employees had salary data in the old system "
+            f"that did not transfer correctly. Salary corrections for these records are blocked "
+            f"until the underlying data problem is resolved."
+        )
 
     if n_rej > 0:
         rec_items.append(
-            f"Investigate {n_rej:,} REJECT_MATCH pairs. These likely represent wrong-person "
-            f"pairings introduced by fuzzy matching on insufficient keys. Consider tightening "
-            f"the minimum confidence threshold for dob_name sources in policy.yaml."
+            f"Investigate {n_rej:,} blocked records. These appear to be wrong-person matches "
+            f"where the engine paired an employee with the wrong record in the other file. "
+            f"Each one needs to be manually reviewed and either re-matched or excluded from "
+            f"the migration entirely."
         )
 
     if n_rev > 0:
         rec_items.append(
-            f"Clear the review queue of {n_rev:,} pairs before re-running the corrections "
-            f"pipeline. The held_corrections.csv file contains all deferred corrections."
+            f"Work through the review queue before running corrections. {n_rev:,} records need "
+            f"a reviewer to look at them and confirm they are correct. Some corrections were "
+            f"held and not applied automatically — these are in the held_corrections file and "
+            f"require manual review and approval before they can be loaded into the new system."
         )
 
     if approve_rate < 0.80:
         rec_items.append(
-            f"Auto-approval rate is {approve_rate:.1%}, below the recommended 80% threshold. "
-            f"Review confidence thresholds in policy.yaml or investigate data source quality."
+            f"The auto-approval rate is {approve_rate:.1%}, which is below the recommended "
+            f"80% target. This means more records than expected need human review. Check whether "
+            f"the source data extract is complete and whether any fields are missing or malformed."
         )
-
-    if "fix_types" in df.columns:
-        active_zero_count = 0
-        if "new_worker_status" in df.columns and "new_salary" in df.columns:
-            am = df["new_worker_status"].fillna("").str.strip().str.lower() == "active"
-            sn = pd.to_numeric(df["new_salary"].astype(str).str.replace(",","").str.replace("$",""), errors="coerce")
-            active_zero_count = int((am & (sn.isna() | (sn == 0))).sum())
-        if active_zero_count > 0:
-            rec_items.append(
-                f"Resolve {active_zero_count:,} active employees with $0 salary before re-running. "
-                f"These indicate a data extraction failure in the source system."
-            )
 
     if not rec_items:
         rec_items.append(
-            "All data quality checks passed. The corrections pipeline can proceed. "
-            "Review and apply the corrections in audit/corrections/out/ to the target HRIS."
+            "All data quality checks passed. The correction files are ready to load into the "
+            "new system. Review and apply the corrections in the output folder to complete "
+            "the migration."
         )
 
     for item in rec_items:

@@ -207,12 +207,28 @@ def _parse_run_stats(run_dir: Path) -> dict:
         except Exception:
             pass
 
-    # Gate status from sanity_gate.json
+    # Gate status + health metrics from sanity_gate.json
     gate_file = run_dir / "sanity_gate.json"
     if gate_file.exists():
         try:
             gate = json.loads(gate_file.read_text(encoding="utf-8"))
             stats["gate_passed"] = gate.get("passed", True)
+            # Extract det_match_rate for the DET. MATCH RATE dashboard card
+            hc     = gate.get("health_checks", {})
+            dr_val = hc.get("det_rate", {}).get("value")
+            if dr_val is not None:
+                stats["det_match_rate"] = f"{float(dr_val) * 100:.1f}%"
+        except Exception:
+            pass
+
+    # Approve count for AUTO-APPROVED dashboard card (sanity_results.json health_metrics)
+    results_file = run_dir / "sanity_results.json"
+    if results_file.exists():
+        try:
+            rdata = json.loads(results_file.read_text(encoding="utf-8"))
+            hm    = rdata.get("health_metrics", {})
+            if "approve_count" in hm:
+                stats["approve_count"] = int(hm["approve_count"])
         except Exception:
             pass
 

@@ -806,7 +806,7 @@
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--green" id="stat-matched">0</div>
-            <div class="results-stat__label">Matched</div>
+            <div class="results-stat__label">AUTO-APPROVED</div>
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--yellow" id="stat-review">0</div>
@@ -814,7 +814,7 @@
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--accent" id="stat-rate">0%</div>
-            <div class="results-stat__label">Match Rate</div>
+            <div class="results-stat__label">DET. MATCH RATE</div>
           </div>
           <div class="results-stat">
             <div class="results-stat__val" id="stat-gate" style="font-size:1.1rem;">PASS</div>
@@ -1164,18 +1164,23 @@
     panel.style.display = 'block';
 
     if (currentMode === 'recon') {
-      var stats = job.stats || {};
-      var total   = stats.total_matched || 0;
-      var review  = stats.review_count  || 0;
-      var matched = total;
-      var rate    = total > 0 ? ((matched - review) / matched * 100).toFixed(1) + '%' : 'N/A';
-      var gate    = stats.gate_passed === false ? 'FAIL' : 'PASS';
-      var gateCol = gate === 'FAIL' ? 'results-stat__val--red' : 'results-stat__val--green';
+      var stats    = job.stats || {};
+      var total    = stats.total_matched || 0;
+      var review   = stats.review_count  || 0;
+      // AUTO-APPROVED: use approve_count from sanity gate if available,
+      // otherwise fall back to total minus review queue
+      var approved = (stats.approve_count != null) ? stats.approve_count : (total - review);
+      // DET. MATCH RATE: use det_match_rate from sanity gate (worker_id + pk / total)
+      // if available, otherwise compute approve rate as a fallback
+      var rate     = stats.det_match_rate ||
+                     (total > 0 ? ((approved / total) * 100).toFixed(1) + '%' : 'N/A');
+      var gate     = stats.gate_passed === false ? 'FAIL' : 'PASS';
+      var gateCol  = gate === 'FAIL' ? 'results-stat__val--red' : 'results-stat__val--green';
 
       document.getElementById('recon-stats').style.display = '';
       document.getElementById('audit-stats').style.display = 'none';
       document.getElementById('stat-total').textContent   = total.toLocaleString();
-      document.getElementById('stat-matched').textContent = (total - review).toLocaleString();
+      document.getElementById('stat-matched').textContent = approved.toLocaleString();
       document.getElementById('stat-review').textContent  = review.toLocaleString();
       document.getElementById('stat-rate').textContent    = rate;
 

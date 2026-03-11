@@ -43,10 +43,30 @@ DB_PATH  = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / 
 OUT_DIR  = _HERE
 
 
-def _compute_approve_rate(db_path: Path) -> tuple[int, int, float]:
+def _parse_salary(val) -> float | None:
+    """Parse a salary value that may be a string with commas or $ signs."""
+    if val is None:
+        return None
+    s = str(val).strip().replace(",", "").replace("$", "")
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _compute_approve_rate(db_path: Path) -> tuple[int, int, float, int]:
     """
-    Run classify_all on every matched pair and return (approve_count, total, approve_rate).
-    Used by Fix 6 to populate health_metrics["approve_rate"] before gate evaluation.
+    Run classify_all on every matched pair.
+
+    Returns (approve_count, total, approve_rate, active_zero_approved).
+
+    active_zero_approved: count of Active workers with new_salary == 0
+    that received an APPROVE action — meaning corrections WOULD be staged
+    for them.  This is the critical-issues check for the new 3-part gate.
+    Under current gating rules this is always 0 (salary_ratio == 0.0
+    triggers Override 1 → REVIEW), but we compute it explicitly.
     """
     con = sqlite3.connect(str(db_path))
     try:
@@ -55,20 +75,29 @@ def _compute_approve_rate(db_path: Path) -> tuple[int, int, float]:
         con.close()
 
     if mp.empty:
-        return 0, 0, 0.0
+        return 0, 0, 0.0, 0
 
     if "confidence" not in mp.columns:
         mp["confidence"] = None
 
-    all_rows   = mp.to_dict(orient="records")
-    wave_dates = detect_wave_dates(all_rows)
-    total      = len(all_rows)
-    n_approve  = sum(
-        1 for r in all_rows
-        if classify_all(r, wave_dates=wave_dates)["action"] == "APPROVE"
-    )
+    all_rows            = mp.to_dict(orient="records")
+    wave_dates          = detect_wave_dates(all_rows)
+    total               = len(all_rows)
+    n_approve           = 0
+    active_zero_approved = 0
+
+    for r in all_rows:
+        result = classify_all(r, wave_dates=wave_dates)
+        if result["action"] == "APPROVE":
+            n_approve += 1
+            # Check: is this an active employee with $0 salary?
+            status = str(r.get("new_worker_status", "") or "").strip().lower()
+            sal    = _parse_salary(r.get("new_salary"))
+            if status == "active" and (sal is None or sal == 0.0):
+                active_zero_approved += 1
+
     rate = round(n_approve / total, 6) if total > 0 else 0.0
-    return n_approve, total, rate
+    return n_approve, total, rate, active_zero_approved
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -91,15 +120,17 @@ def main(argv: list[str] | None = None) -> None:
     # run_sanity_checks exits 2 on missing DB / missing columns
     results = run_sanity_checks(db_path=db_path, out_dir=out_dir)
 
-    # Fix 6: Compute approve_rate (requires a full gating pass over all pairs).
-    # Populate it into results["health_metrics"] before the gate evaluates.
-    print("[run_sanity_gate] computing approve_rate (gating pass) ...")
-    n_approve, total_pairs, approve_rate = _compute_approve_rate(db_path)
+    # Fix 6 / 3-part gate: Compute approve_rate + active_zero_approved
+    # (requires a full gating pass over all pairs).
+    print("[run_sanity_gate] computing approve_rate + active_zero_approved (gating pass) ...")
+    n_approve, total_pairs, approve_rate, active_zero_approved = _compute_approve_rate(db_path)
     if "health_metrics" not in results:
         results["health_metrics"] = {}
-    results["health_metrics"]["approve_count"] = n_approve
-    results["health_metrics"]["approve_rate"]  = approve_rate
-    print(f"  approve_rate: {approve_rate:.4f}  ({n_approve:,}/{total_pairs:,} APPROVE)")
+    results["health_metrics"]["approve_count"]         = n_approve
+    results["health_metrics"]["approve_rate"]          = approve_rate
+    results["health_metrics"]["active_zero_approved"]  = active_zero_approved
+    print(f"  approve_rate:          {approve_rate:.4f}  ({n_approve:,}/{total_pairs:,} APPROVE)")
+    print(f"  active_zero_approved:  {active_zero_approved:,}  (active/$0 with APPROVE action)")
 
     out_dir.mkdir(parents=True, exist_ok=True)
 

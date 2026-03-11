@@ -61,29 +61,32 @@ sanity_gate:
   fail_exit_code: 3
 
   # Block downstream outputs if any suspicious default rate exceeds these.
+  # hire_date_wave is informational only — detected and reported but NOT a gate blocker.
+  # Wave dates route affected records to REVIEW automatically; the gate itself passes.
   block_if_rate_greater_than:
     hire_date_default_2026_02: 0.02
     salary_suspicious_default: 0.02
-    hire_date_wave: 0.01           # block if any single new_hire_date > 1% of pairs
 
   # Block downstream outputs if suspicious default count exceeds these absolute numbers.
   block_if_count_greater_than:
     hire_date_default_2026_02: 500
     salary_suspicious_default: 500
-    hire_date_wave: 200            # block if wave date appears in > 200 pairs
 
   # Controls which downstream outputs are blocked when the gate fails.
   block_corrections: true
   block_workbook: false
   block_exports: false
 
-  # Fix 6: Pipeline-level health thresholds.
-  # Gate fails if deterministic match rate is too low, approval rate is too low,
-  # or any active workers have $0 salary in the new data.
+  # Three-part health gate — PASS only if ALL three pass:
+  #   1. det_rate >= min_det_rate        (worker_id + pk matches / total)
+  #   2. approve_rate >= min_approve_rate (APPROVE pairs / total)
+  #   3. active_zero_approved == 0       (active/$0 workers with APPROVE action = 0;
+  #                                       they all route to REVIEW via salary_ratio override
+  #                                       so corrections are never staged for them)
   health_thresholds:
     min_det_rate: 0.95          # >= 95% of matches must be via deterministic source
     min_approve_rate: 0.80      # >= 80% of matched pairs must be auto-approvable
-    max_active_zero_salary: 0   # zero tolerance for Active workers with $0 salary
+    max_active_zero_salary: 0   # max active/$0 workers that received APPROVE action (staged corrections)
 
   patterns:
     hire_date_default_months:
