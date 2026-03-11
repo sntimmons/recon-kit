@@ -246,6 +246,17 @@ def _translate_match_source(source: str) -> str:
     return _MATCH_SOURCE_MAP.get(str(source).strip().lower(), str(source))
 
 
+def _fmt_salary(val) -> str:
+    """Format a salary value as $150,000 (integer, no decimals)."""
+    if val is None or (isinstance(val, float) and val != val):  # NaN check
+        return ""
+    try:
+        f = float(str(val).strip().replace(",", "").replace("$", ""))
+        return f"${f:,.0f}"
+    except (ValueError, TypeError):
+        return str(val) if val else ""
+
+
 def _display_name(row: dict) -> str:
     """Return 'First Last' display name from name components or full_name_norm fallback.
 
@@ -545,10 +556,13 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
                 "Salary corrections for these records have been blocked from the corrections pipeline.",
                 level="critical"
             )
-            sample_cols = [c for c in ["pair_id","old_full_name_norm","old_salary","new_salary"] if c in az_df.columns]
+            sample_cols = [c for c in ["old_full_name_norm", "old_salary", "new_salary"] if c in az_df.columns]
             if sample_cols:
-                sample = az_df[sample_cols].head(10)
-                _data_table(doc, sample_cols, sample.values.tolist())
+                sample = az_df[sample_cols].head(10).copy()
+                for sal_col in ("old_salary", "new_salary"):
+                    if sal_col in sample.columns:
+                        sample[sal_col] = sample[sal_col].apply(_fmt_salary)
+                _data_table(doc, ["Employee", "Old Salary", "New Salary"][:len(sample_cols)], sample.values.tolist())
     else:
         doc.add_paragraph("(Status/salary columns not available for this check)")
     doc.add_paragraph()
@@ -1048,8 +1062,12 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
     active_zero_sample: list = []
     if active_zero_count > 0:
         az_df = df[az_mask]
-        sample_cols = [c for c in ["pair_id", "old_full_name_norm", "old_salary", "new_salary"] if c in az_df.columns]
-        for _, row in az_df[sample_cols].head(10).iterrows():
+        sample_cols = [c for c in ["old_full_name_norm", "old_salary", "new_salary"] if c in az_df.columns]
+        az_sample_df = az_df[sample_cols].head(10).copy()
+        for sal_col in ("old_salary", "new_salary"):
+            if sal_col in az_sample_df.columns:
+                az_sample_df[sal_col] = az_sample_df[sal_col].apply(_fmt_salary)
+        for _, row in az_sample_df.iterrows():
             active_zero_sample.append([str(row.get(c, "")) for c in sample_cols])
 
     # Salary stats (Active/$0 excluded)

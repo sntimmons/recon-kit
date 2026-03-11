@@ -393,12 +393,11 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         # 7. Optional: sanity gate - write JSON to per-run summary dir
         if options.get("sanity_gate", True):
             _set_step(run_id, "sanity_gate")
-            rc, _ = _run_cmd(
-                [str(PYTHON), "audit/summary/run_sanity_gate.py",
-                 "--db",  str(run_db),
-                 "--out", str(run_summary)],
-                HERE, run_id, env=run_env,
-            )
+            gate_cmd = [str(PYTHON), "audit/summary/run_sanity_gate.py",
+                        "--db",  str(run_db),
+                        "--out", str(run_summary),
+                        "--min-approve-rate", str(options.get("min_approve_rate", 0.75))]
+            rc, _ = _run_cmd(gate_cmd, HERE, run_id, env=run_env)
             _finish_step(run_id, "sanity_gate", "done" if rc == 0 else "warn")
 
         # 8. Optional: generate corrections - pass per-run DB and output dir
@@ -631,17 +630,29 @@ def api_run_recon():
     raw_sn = request.form.get("sheet_name", "0").strip()
     sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
 
+    # min_approve_rate: per-run sanity gate threshold override (default 0.75)
+    raw_mar = request.form.get("min_approve_rate", "0.75").strip()
+    try:
+        min_approve_rate: float = float(raw_mar)
+        # Accept percentages like "75" as well as decimals like "0.75"
+        if min_approve_rate > 1.0:
+            min_approve_rate = min_approve_rate / 100.0
+        min_approve_rate = max(0.0, min(1.0, min_approve_rate))
+    except (ValueError, TypeError):
+        min_approve_rate = 0.75
+
     # Optional compensation bands file
     bands_file = request.files.get("bands_file")
 
     options = {
-        "sanity_gate":  request.form.get("sanity_gate", "true").lower() == "true",
-        "corrections":  request.form.get("corrections", "true").lower() == "true",
-        "workbook":     request.form.get("workbook",    "true").lower() == "true",
-        "old_ext":      old_ext,
-        "new_ext":      new_ext,
-        "sheet_name":   sheet_name,
-        "has_bands":    bands_file is not None,
+        "sanity_gate":      request.form.get("sanity_gate", "true").lower() == "true",
+        "corrections":      request.form.get("corrections", "true").lower() == "true",
+        "workbook":         request.form.get("workbook",    "true").lower() == "true",
+        "old_ext":          old_ext,
+        "new_ext":          new_ext,
+        "sheet_name":       sheet_name,
+        "min_approve_rate": min_approve_rate,
+        "has_bands":        bands_file is not None,
     }
 
     run_id  = _make_run_id()

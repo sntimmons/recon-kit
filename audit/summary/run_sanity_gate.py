@@ -14,7 +14,7 @@ Exit codes:
   3  - gate FAILED (configurable via fail_exit_code in policy.yaml)
 
 Run:
-    venv/Scripts/python.exe audit/summary/run_sanity_gate.py [--db PATH] [--out PATH]
+    venv/Scripts/python.exe audit/summary/run_sanity_gate.py [--db PATH] [--out PATH] [--min-approve-rate 0.75]
 """
 from __future__ import annotations
 
@@ -112,6 +112,10 @@ def main(argv: list[str] | None = None) -> None:
         "--out", default=None, metavar="PATH",
         help=f"Output directory for JSON and CSV files (default: {OUT_DIR}).",
     )
+    parser.add_argument(
+        "--min-approve-rate", default=None, type=float, metavar="RATE",
+        help="Override sanity_gate.health_thresholds.min_approve_rate from policy.yaml (e.g. 0.75).",
+    )
     args = parser.parse_args(argv)
 
     db_path = Path(args.db)  if args.db  else DB_PATH
@@ -142,6 +146,12 @@ def main(argv: list[str] | None = None) -> None:
 
     # Evaluate gate
     policy = load_policy()
+    # Per-run override: --min-approve-rate takes precedence over policy.yaml
+    if args.min_approve_rate is not None:
+        rate_override = max(0.0, min(1.0, args.min_approve_rate))
+        policy.setdefault("sanity_gate", {}).setdefault("health_thresholds", {})
+        policy["sanity_gate"]["health_thresholds"]["min_approve_rate"] = rate_override
+        print(f"[run_sanity_gate] min_approve_rate overridden to {rate_override:.4f} (from --min-approve-rate CLI arg)")
     gate   = evaluate_sanity_gate(results, policy)
 
     # Write sanity_gate.json
