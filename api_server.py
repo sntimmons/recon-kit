@@ -481,6 +481,25 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         # 13. Promote sub-dir outputs to run_dir root for easy download
         _promote_run_outputs(run_dir)
 
+        # 14. Build immutable audit trail log
+        _set_step(run_id, "audit_trail")
+        # Find the actual old/new input files (may be .csv or .xlsx)
+        _old_inputs = list(run_dir.glob("old_input.*"))
+        _new_inputs = list(run_dir.glob("new_input.*"))
+        _old_arg = ["--old", str(_old_inputs[0])] if _old_inputs else []
+        _new_arg = ["--new", str(_new_inputs[0])] if _new_inputs else []
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/summary/build_audit_trail.py",
+             "--run-id", run_id,
+             "--wide",   str(run_dir / "wide_compare.csv"),
+             "--gate",   str(run_dir / "sanity_gate.json"),
+             "--out",    str(run_dir / "audit_trail.json"),
+             *_old_arg,
+             *_new_arg],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "audit_trail", "done" if rc == 0 else "warn")
+
         # Parse stats
         stats = _parse_run_stats(run_dir)
 
