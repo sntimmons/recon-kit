@@ -478,6 +478,16 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
 
+        # 12.5 PDF version of audit report
+        _set_step(run_id, "audit_pdf")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/generate_pdf.py",
+             "--docx", str(run_dir / "audit_report.docx"),
+             "--out",  str(run_dir / "audit_report.pdf")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "audit_pdf", "done" if rc == 0 else "warn")  # non-fatal
+
         # 13. Promote sub-dir outputs to run_dir root for easy download
         _promote_run_outputs(run_dir)
 
@@ -752,6 +762,7 @@ def api_download(run_id: str, filename: str):
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         ".csv":  "text/csv",
         ".json": "application/json",
+        ".pdf":  "application/pdf",
     }
     ext      = os.path.splitext(filename)[1].lower()
     mimetype = _MIME.get(ext)
