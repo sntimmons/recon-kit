@@ -598,6 +598,55 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
                 )
     doc.add_paragraph()
 
+    # Compensation band validation (optional - only shown when bands file was provided)
+    _add_heading(doc, "3.4 Compensation Band Validation", 2)
+    if "comp_band_status" not in df.columns or df["comp_band_status"].fillna("").str.strip().eq("").all():
+        doc.add_paragraph(
+            "No compensation band file was provided for this run. "
+            "To enable band validation, upload a compensation_bands.csv alongside the source files."
+        )
+    else:
+        total        = len(df)
+        n_below      = int((df["comp_band_status"] == "below_band_min").sum())
+        n_above      = int((df["comp_band_status"] == "above_band_max").sum())
+        n_within     = int((df["comp_band_status"] == "within_band").sum())
+        n_no_band    = int((df["comp_band_status"] == "no_band_found").sum())
+        n_outlier    = n_below + n_above
+
+        _kv_table(doc, [
+            ("Employees within band",                   f"{n_within:,}"),
+            ("Below band minimum",                      f"{n_below:,}"),
+            ("Above band maximum",                      f"{n_above:,}"),
+            ("No matching band found",                  f"{n_no_band:,}"),
+            ("Total with band data",                    f"{total - n_no_band:,}"),
+        ])
+        doc.add_paragraph()
+
+        if n_outlier == 0:
+            p = doc.add_paragraph(
+                f"All {n_within:,} employees with a matched compensation band are within the "
+                f"defined salary range. No compensation band outliers detected."
+            )
+            p.runs[0].font.color.rgb = _GREEN
+        else:
+            _callout(doc,
+                f"{n_outlier:,} employee{'s are' if n_outlier != 1 else ' is'} outside the "
+                f"defined compensation band "
+                f"({n_below:,} below minimum, {n_above:,} above maximum). "
+                f"These records have been routed to the Review Queue.",
+                level="warning",
+            )
+            # Show a sample of outliers
+            outlier_df = df[df["comp_band_status"].isin(["below_band_min", "above_band_max"])]
+            show_cols  = [c for c in [
+                "pair_id", "old_full_name_norm", "new_position",
+                "new_salary", "comp_band_min", "comp_band_max", "comp_band_status",
+            ] if c in outlier_df.columns]
+            if show_cols:
+                sample = outlier_df[show_cols].head(10)
+                _data_table(doc, show_cols, sample.fillna("").astype(str).values.tolist())
+    doc.add_paragraph()
+
 
 def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     _add_heading(doc, "4. Field Change Analysis", 1)

@@ -86,6 +86,8 @@ _WIDE_COLS = [
     "status_changed", "hire_date_changed", "job_org_changed",
     "hire_date_pattern",
     "needs_review", "suggested_action",
+    # Compensation band validation (optional - populated when bands file provided)
+    "comp_band_status", "comp_band_min", "comp_band_mid", "comp_band_max", "comp_band_match",
 ]
 
 # Set of column names already in the stable schema - used to prevent duplication
@@ -303,6 +305,12 @@ def main(argv: list[str] | None = None) -> None:
                                   if "hire_date" in fix_types else "",
             "needs_review":       action == "REVIEW",
             "suggested_action":   action,
+            # Comp band - populated by comp_band_validator.py if bands file provided
+            "comp_band_status":   "",
+            "comp_band_min":      "",
+            "comp_band_mid":      "",
+            "comp_band_max":      "",
+            "comp_band_match":    "",
         }
 
         # Append extra field triplets + compute per-field mismatch for groups.

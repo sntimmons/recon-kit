@@ -827,6 +827,17 @@
         </div>
       </div>
 
+      <!-- Optional: compensation bands upload (recon mode only) -->
+      <div id="upload-bands" style="margin-top:12px;">
+        <div class="upload-zone upload-zone--optional" id="zone-bands" style="border-style:dashed;opacity:0.8;">
+          <input type="file" accept=".csv,.xlsx" id="file-bands" onchange="fileSelected(this, 'bands')">
+          <div class="upload-icon" style="font-size:20px;">&#127919;</div>
+          <div class="upload-zone__label">Compensation Bands <span style="font-weight:400;color:var(--text-muted)">(optional)</span></div>
+          <div class="upload-zone__sub">compensation_bands.csv with job_title, band_min, band_max. Skip if not applicable.</div>
+          <div class="upload-zone__file" id="fname-bands"></div>
+        </div>
+      </div>
+
       <div id="upload-audit" style="display:none;">
         <div class="upload-grid-1">
           <div class="upload-zone" id="zone-audit">
@@ -1182,6 +1193,7 @@
       formData.append('sanity_gate', document.getElementById('opt-sanity').checked ? 'true' : 'false');
       formData.append('workbook',    document.getElementById('opt-workbook').checked ? 'true' : 'false');
       formData.append('sheet_name',  (document.getElementById('opt-sheet-name').value || '0').trim());
+      if (uploadedFiles.bands) formData.append('bands_file', uploadedFiles.bands);
     } else {
       endpoint = API_BASE + '/api/run/audit';
       formData.append('audit_file', uploadedFiles.audit);
@@ -1220,8 +1232,9 @@
     corrections:   'Generating correction files',
     workbook:      'Building Excel workbook',
     exports:       'Exporting wide compare / DIY data',
+    comp_bands:    'Validating compensation bands',
     review_queue:  'Building review queue',
-    audit_report:  'Generating executive audit report (.docx)',
+    audit_report:  'Generating executive audit report (.docx / .pdf)',
   };
 
   function startPolling(runId) {
@@ -1452,9 +1465,12 @@
 
     var FILE_LABELS = {
       'audit_report.docx':              'Audit report - executive summary (Word)',
+      'audit_report.pdf':               'Audit report (PDF) - locked for compliance',
+      'audit_trail.json':               'Audit trail (JSON) - compliance log',
       'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
       'wide_compare.csv':               'Wide compare (all pairs, side-by-side)',
       'review_queue.csv':               'Review queue (records needing attention)',
+      'review_queue_summary.csv':       'Review queue - department summary',
       'corrections_salary.csv':         'Salary corrections (Workday format)',
       'corrections_status.csv':         'Status corrections',
       'corrections_hire_date.csv':      'Hire date corrections',

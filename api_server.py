@@ -135,8 +135,11 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
         "audit_report.docx",
+        "audit_report.pdf",
+        "audit_trail.json",
         "wide_compare.csv",
         "review_queue.csv",
+        "review_queue_summary.csv",
         "corrections_salary.csv",
         "corrections_status.csv",
         "corrections_hire_date.csv",
@@ -412,6 +415,18 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "exports", "done" if rc == 0 else "warn")
 
+        # 9.5 Optional: compensation band validation
+        bands_path_str = options.get("bands_path")
+        if bands_path_str and Path(bands_path_str).exists():
+            _set_step(run_id, "comp_bands")
+            rc, _ = _run_cmd(
+                [str(PYTHON), "audit/summary/comp_band_validator.py",
+                 "--wide",  str(run_dir / "wide_compare.csv"),
+                 "--bands", bands_path_str],
+                HERE, run_id, env=run_env,
+            )
+            _finish_step(run_id, "comp_bands", "done" if rc == 0 else "warn")
+
         # 10. Optional: Excel workbook - reads wide_compare.csv from run_dir
         if options.get("workbook", True):
             _set_step(run_id, "workbook")
@@ -570,13 +585,17 @@ def api_run_recon():
     raw_sn = request.form.get("sheet_name", "0").strip()
     sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
 
+    # Optional compensation bands file
+    bands_file = request.files.get("bands_file")
+
     options = {
-        "sanity_gate": request.form.get("sanity_gate", "true").lower() == "true",
-        "corrections": request.form.get("corrections", "true").lower() == "true",
-        "workbook":    request.form.get("workbook",    "true").lower() == "true",
-        "old_ext":     old_ext,
-        "new_ext":     new_ext,
-        "sheet_name":  sheet_name,
+        "sanity_gate":  request.form.get("sanity_gate", "true").lower() == "true",
+        "corrections":  request.form.get("corrections", "true").lower() == "true",
+        "workbook":     request.form.get("workbook",    "true").lower() == "true",
+        "old_ext":      old_ext,
+        "new_ext":      new_ext,
+        "sheet_name":   sheet_name,
+        "has_bands":    bands_file is not None,
     }
 
     run_id  = _make_run_id()
@@ -587,6 +606,12 @@ def api_run_recon():
     new_path = run_dir / f"new_input{new_ext}"
     old_file.save(str(old_path))
     new_file.save(str(new_path))
+
+    if bands_file:
+        bands_ext  = _safe_ext(bands_file.filename) or ".csv"
+        bands_path = run_dir / f"compensation_bands{bands_ext}"
+        bands_file.save(str(bands_path))
+        options["bands_path"] = str(bands_path)
 
     with _jobs_lock:
         _jobs[run_id] = {
