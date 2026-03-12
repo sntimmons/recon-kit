@@ -138,6 +138,8 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "audit_report.pdf",
         "audit_trail.json",
         "wide_compare.csv",
+        "unmatched_old.csv",
+        "unmatched_new.csv",
         "review_queue.csv",
         "review_queue_summary.csv",
         "corrections_salary.csv",
@@ -553,6 +555,9 @@ def _promote_run_outputs(run_dir: Path) -> None:
         run_corr    / "held_corrections.csv":          run_dir / "held_corrections.csv",
         # matched_raw (informational - not required for downloads but useful)
         run_outputs / "matched_raw.csv":               run_dir / "matched_raw.csv",
+        # unmatched records (records with no counterpart in the other system)
+        run_outputs / "unmatched_old.csv":             run_dir / "unmatched_old.csv",
+        run_outputs / "unmatched_new.csv":             run_dir / "unmatched_new.csv",
     }
     for src, dst in flat_map.items():
         if src.exists() and not dst.exists():

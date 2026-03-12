@@ -303,6 +303,24 @@ def main() -> None:
         ])
 
     matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
+
+    # Add unmatched_reason: "no_id" if worker_id is blank/null, "no_match_found" otherwise.
+    old = old.copy()
+    if "worker_id" in old.columns:
+        old["unmatched_reason"] = old["worker_id"].apply(
+            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
+        )
+    else:
+        old["unmatched_reason"] = "no_match_found"
+
+    new = new.copy()
+    if "worker_id" in new.columns:
+        new["unmatched_reason"] = new["worker_id"].apply(
+            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
+        )
+    else:
+        new["unmatched_reason"] = "no_match_found"
+
     old.to_csv(OUT / "unmatched_old.csv", index=False)
     new.to_csv(OUT / "unmatched_new.csv", index=False)
 

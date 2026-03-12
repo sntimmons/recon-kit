@@ -161,7 +161,7 @@ def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
     return df[mask_status & mask_zero].copy()
 
 
-def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str) -> None:
+def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str, unmatched_old: int = 0, unmatched_new: int = 0) -> None:
     """Write the Summary sheet as a key-value table (write_only compatible)."""
 
     def _kv(label: str = "", value="", bold: bool = False, font=None) -> None:
@@ -189,6 +189,11 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str)
         _kv("  REVIEW",  n_review)
         if n_reject_match:
             _kv("  REJECT_MATCH", n_reject_match)
+    _kv()
+
+    _kv("UNMATCHED RECORDS", "", bold=True)
+    _kv("  Unmatched old system records", unmatched_old)
+    _kv("  Unmatched new system records", unmatched_new)
     _kv()
 
     if "match_source" in all_df.columns:
@@ -540,13 +545,34 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  Extra_Field_Mismatches : {len(extra_mismatch_df):,}  (mm_ cols: {mm_cols})")
 
     # ------------------------------------------------------------------
+    # Unmatched record counts (from matcher outputs)
+    # ------------------------------------------------------------------
+    _run_outs = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
+    unmatched_old_count = 0
+    unmatched_new_count = 0
+    _uo_p = _run_outs / "unmatched_old.csv"
+    _un_p = _run_outs / "unmatched_new.csv"
+    if _uo_p.exists():
+        try:
+            with _uo_p.open(encoding="utf-8") as _f:
+                unmatched_old_count = max(0, sum(1 for _ in _f) - 1)
+        except Exception:
+            pass
+    if _un_p.exists():
+        try:
+            with _un_p.open(encoding="utf-8") as _f:
+                unmatched_new_count = max(0, sum(1 for _ in _f) - 1)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # Build workbook (write_only streaming - no MemoryError on large sets)
     # ------------------------------------------------------------------
     print(f"\n[build_workbook] writing workbook (streaming mode) ...")
     wb = Workbook(write_only=True)
 
     ws_sum = wb.create_sheet("Summary")
-    _write_summary_sheet(ws_sum, all_df, db_path, wide_src)
+    _write_summary_sheet(ws_sum, all_df, db_path, wide_src, unmatched_old_count, unmatched_new_count)
     print(f"  wrote: Summary")
 
     data_sheets = [
