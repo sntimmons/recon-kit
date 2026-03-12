@@ -70,6 +70,7 @@ _BUILTIN_ALIASES: Dict[str, str] = {
     "seniority_date":         "hire_date",
     # ── position ────────────────────────────────────────────────────────────
     "job_title":              "position",
+    "position_title":         "position",
     "job_profile":            "position",
     "title":                  "position",
     "job_code":               "position",
