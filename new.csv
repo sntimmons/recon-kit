@@ -1,0 +1,310 @@
+Employee_ID,Preferred_First_Name,Legal_Last_Name,Full_Legal_Name,Date_of_Birth,Social_Security_Number,Original_Hire_Date,Job_Profile,Business_Unit,Work_Location_Name,Employment_Status,Time_Type,Annual_Base_Pay,Hourly_Pay_Rate,Cost_Center_Code,Gender_Identity,Ethnicity_Code,Manager_Employee_ID,Termination_Date,FTE_Percent,Workday_System_ID,Supervisory_Org
+EMP10183,Emma,Long,Emma Long,1958-09-25,836-66-9951,2022-01-17,Surgical Technician,Cardiology,"San Antonio, TX",Active,Contract,59000,28.3654,CC-2002,M,,EMP10005,,0.0,WD-335861,SO-CAR-123
+EMP10052,William,Lee,William Lee,1976-07-08,665-19-3564,2008-11-24,Registered Nurse,BILLING,"Austin, TX",Active,Full-Time,68000,32.6923,,F,,EMP10043,,1.0,WD-475271,SO-BIL-130
+EMP10147,Kathleen,Gray,Kathleen Gray,1993-01-18,488-39-5055,2016-12-06,Lab Technician,Oncology,"Fort Worth, TX",Active,Part-Time,56000,26.9231,,M,Non-Hispanic,EMP10026,,0.5,WD-346184,SO-ONC-589
+EMP10245,Michael,Martin,Michael Martin,1967-04-29,450-62-8496,2009-06-29,Cardiac Technician,Pediatrics,"Dallas, TX",Active,Full-Time,65000,31.25,CC-1003,M,Non-Hispanic,EMP10003,,1.0,WD-299429,SO-PED-858
+EMP10261,Sarah,Murphy,Sarah Murphy,1956-08-05,513-62-1587,2007-04-21,Facilities Manager,Nursing Dept,"Dallas, TX",Active,Contract,$0.00,0,CC-1005,,Hispanic,EMP10013,,0.0,WD-900530,SO-NUR-950
+EMP10159,Donald,Harris,Donald Harris,1977-08-24,462-44-7502,2023-04-15,Radiology Technician,Laboratory Dept,"Austin, TX",Active,Contract,6200.0,2.9808,CC-1004,M,Non-Hispanic,EMP10005,,0.0,WD-130641,SO-LAB-264
+EMP10121,Jerry,Kelly,Jerry Kelly,,315-83-7825,2019-08-10,Marketing Coordinator,Nursing,"Austin, TX",Active,Full-Time,66000,31.7308,CC-1005,F,,EMP10043,,1.0,WD-315815,SO-NUR-652
+EMP10192,Stephanie,Lopez,Stephanie Lopez,1964-03-10,420-57-5902,2007-04-26,Cardiologist,Oncology,"Austin, TX",Active,Full-Time,400000,192.3077,CC-1003,F,,EMP10046,,1.0,WD-469221,SO-ONC-720
+EMP10285,Mark,Alvarez,Mark Alvarez,1994-02-15,960-56-3200,2011-03-17,Systems Administrator,Compliance,"Austin, TX",Active,Full-Time,94000,45.1923,CC-2002,,,EMP10011,,1.0,WD-133679,SO-COM-718
+EMP10182,Christina,Lewis,Christina Lewis,,381-38-9808,2005-09-25,Financial Analyst,Billing,"Austin, TX",Active,Full-Time,66000,31.7308,CC-1002,M,Hispanic,EMP10023,,1.0,WD-566740,SO-BIL-476
+EMP10205,Raymond,Carter,Raymond Carter,1982-08-03,310-77-4902,2026-02-01,Office Manager,Radiology,"Austin, TX",Active,Full-Time,24660.71,11.8561,CC-1004,,,EMP10044,,1.0,WD-497201,SO-RAD-681
+EMP10299,Lisa,Diaz,Lisa Diaz,1977-10-03,975-78-7939,2010-11-11,Director of Nursing,Legal,"Fort Worth, TX",Inactive,Full-Time,144000,69.2308,CC-1004,F,Hispanic,EMP10050,,1.0,WD-864118,SO-LEG-723
+EMP10165,Lisa,Carter,Lisa Carter,,498-50-6909,2021-08-04,Emergency Physician,Nursing,"Fort Worth, TX",Active,Full-Time,274000,131.7308,CC-1002,F,,EMP10011,,1.0,WD-704941,SO-NUR-854
+EMP10013,Christine,Lewis,Christine Lewis,1955-08-24,824-90-1964,2006-08-05,HR Manager,Radiology,"Houston, TX",Active,Full-Time,74000,35.5769,CC-2002,F,Hispanic,EMP10008,,1.0,WD-889256,SO-RAD-824
+EMP10047,Jason,Myers,Jason Myers,1984-09-04,819-68-5438,2011-11-23,Accountant,Human Resources,"Dallas, TX",Active,Full-Time,0,0,CC-1003,F,,EMP10047,,1.0,WD-311037,SO-HUM-904
+EMP10130,Michelle,Castillo,Michelle Castillo,1957-05-23,585-43-4728,2026-02-01,Nurse Practitioner,Pediatrics,"Dallas, TX",Active,Full-Time,126000,60.5769,CC-1001,,Non-Hispanic,EMP10007,,1.0,WD-396983,SO-PED-484
+10226,Benjamin,Kim,Benjamin Kim,1998-02-03,199-13-4390,2009-06-24,Oncologist,IT,"Dallas, TX",Active,Full-Time,$0.00,0,CC-2001,F,,10042,,1.0,WD-232250,SO-IT-259
+EMP10042,Barbara,Ramos,Barbara Ramos,1976-10-14,813-48-2983,2007-04-15,Director of Nursing,Pharmacy,"Dallas, TX",Active,Full-Time,123000,59.1346,CC-1006,M,,EMP10031,,1.0,WD-368735,SO-PHA-463
+EMP10178,Betty,Campbell-Carter,Betty Campbell-Carter,1984-03-30,568-24-5298,2009-06-03,Physical Therapist,Administration,"Dallas, TX",Active,Full-Time,82000,39.4231,CC-1006,M,,EMP10039,,1.0,WD-159067,SO-ADM-198
+EMP10091,Amanda,Lewis,Amanda Lewis,1984-11-17,272-19-9363,2022-06-23,Paralegal,Security Dept,"San Antonio, TX",Active,Full-Time,54000,25.9615,CC-1003,F,,EMP10009,,1.0,WD-578472,SO-SEC-455
+EMP10408,Diane,Garcia,Diane Garcia,1960-02-13,258-23-5762,2024-12-26,HR Analyst,Facilities,"San Antonio, TX",Active,Full-Time,73000,35.0962,CC-1003,,,,,1.0,WD-995304,SO-FAC-174
+EMP10041,Jerry,Mitchell,Jerry Mitchell,1970-01-20,721-24-3683,2018-08-03,Accountant,Marketing,"Houston, TX",Active,Full-Time,54000,25.9615,CC-2001,F,Non-Hispanic,EMP10012,,1.0,WD-724086,SO-MAR-830
+EMP10248,Stephanie,Cook,Stephanie Cook,1982-06-18,166-15-5885,2008-09-30,,Security,"Houston, TX",Inactive,Full-Time,75000,36.0577,CC-1003,M,,EMP10022,,1.0,WD-993884,SO-SEC-325
+EMP10163,Frank,Castillo,Frank Castillo,1962-01-13,863-54-1879,2016-03-26,Emergency Physician,Human Resources,"Dallas, TX",Active,Full-Time,365000,175.4808,CC-2001,M,,EMP10040,,1.0,WD-558188,SO-HUM-927
+EMP10064,Timothy,Green,Timothy Green,1998-10-11,136-89-2121,2017-02-19,HR Analyst,IT,"San Antonio, TX",Active,Full-Time,111539.19,53.6246,CC-1002,M,,EMP10010,,1.0,WD-188109,SO-IT-402
+EMP10168,Barbara,Campbell,Barbara Campbell,1977-07-31,838-90-9123,2010-07-14,Chief Information Officer,Surgery,"Austin, TX",Active,Full-Time,251000,120.6731,CC-2001,M,Hispanic,EMP10024,,1.0,WD-624112,SO-SUR-796
+EMP10197,Rebecca,Hernandez,Rebecca Hernandez,1968-09-12,185-49-2294,2011-03-24,Billing Specialist,Oncology,"Houston, TX",Active,Full-Time,42000,20.1923,CC-1002,M,Non-Hispanic,EMP10027,,1.0,WD-734330,SO-ONC-267
+EMP10256,Amy,Turner,Amy Turner,1969-12-18,235-99-1960,2007-07-16,Oncologist,Physical Therapy,"Austin, TX",Active,Full-Time,327000,157.2115,CC-1003,,,EMP10049,,1.0,WD-999910,SO-PHY-870
+EMP10079,Samuel,Brown,Samuel Brown,1960-06-16,967-61-7984,2015-09-29,Emergency Physician,Billing,"Dallas, TX",Active,Full-Time,"$379,000.00",182.2115,CC-1003,M,,EMP10017,,1.0,WD-715467,SO-BIL-123
+EMP10018,Amy,Cook,Amy Cook,1969-02-14,620-20-4044,2006-04-11,Radiologist,Human Resources,"Dallas, TX",Active,Part-Time,0,0,CC-1004,,Hispanic,EMP10002,,0.5,WD-108840,SO-HUM-227
+EMP10924,Andrew,Phillips,Andrew Phillips,1991-09-12,965-89-6138,2024-10-22,Cardiologist,Pharmacy,"Austin, TX",Active,Full-Time,416000,200.0,CC-1002,F,Hispanic,,,1.0,WD-571955,SO-PHA-369
+EMP10074,Julie,Cooper,Julie Cooper,1992-08-07,860-29-7797,2018-03-05,Emergency Physician,Legal,"Dallas, TX",Terminated,Full-Time,378000,181.7308,CC-1006,F,,EMP10028,2020-06-30,1.0,WD-256532,SO-LEG-986
+EMP11139,Charles,Murphy,Charles Murphy,1983-05-22,103-67-3059,2024-02-26,Office Manager,Security,"San Antonio, TX",Active,Full-Time,54000,25.9615,CC-1002,M,,,,1.0,WD-881931,SO-SEC-292
+EMP10175,Ryan,Clark,Ryan Clark,1998-04-29,587-22-8178,2012-10-24,Pharmacy Technician,Emergency Dept,"Fort Worth, TX",Active,Full-Time,45000,21.6346,CC-1001,M,Non-Hispanic,EMP10006,,1.0,WD-929714,SO-EME-694
+EMP11049,Daniel,Peterson,Daniel Peterson,1969-08-04,390-99-2625,2024-09-14,Administrative Assistant,Physical Therapy,"Houston, TX",Active,Full-Time,44000,21.1538,CC-1002,M,Non-Hispanic,,,1.0,WD-117224,SO-PHY-731
+EMP10290,Jessica,Price,Jessica Price,1979-07-15,859-43-9918,2023-09-23,Director of Nursing,Laboratory,"Dallas, TX",Active,Full-Time,131000,62.9808,CC-1002,,,EMP10024,,1.0,WD-524778,SO-LAB-947
+EMP10227,Kimberly,Lopez,Kimberly Lopez,1989-10-07,479-58-7052,2026-02-01,Pediatrician,Radiology,"Fort Worth, TX",Active,Full-Time,238000,114.4231,CC-1005,,,EMP10009,,1.0,WD-550536,SO-RAD-711
+EMP10015,Victoria,Baker,Victoria Baker,1964-10-20,296-34-9786,2010-07-30,Pharmacy Technician,Physical Therapy Dept,"Austin, TX",Active,Full-Time,40000,19.2308,,F,Hispanic,EMP10006,,1.0,WD-281965,SO-PHY-523
+EMP10265,Christine,Cook,Christine Cook,1967-01-29,104-77-1795,2016-03-10,Facilities Manager,Marketing,"Austin, TX",Terminated,Full-Time,"$69,000.00",33.1731,CC-1003,,,EMP10046,,1.0,WD-636391,SO-MAR-956
+EMP10189,Ryan,Williams,Ryan Williams,1966-02-23,551-68-1011,2008-07-18,Pharmacist,Oncology Dept,"Fort Worth, TX",Leave,Part-Time,123000,59.1346,CC-1005,M,Non-Hispanic,EMP10023,,0.5,WD-784343,SO-ONC-265
+EMP10295,Kimberly,Perez,Kimberly Perez,1985-09-28,710-85-2127,2026-02-01,HR Manager,Laboratory,"Austin, TX",Active,Full-Time,95000,45.6731,CC-2001,F,Hispanic,EMP10006,,1.0,WD-509617,SO-LAB-843
+EMP10187,Kelly,Scott,Kelly Scott,1988-02-10,599-51-1040,2015-03-14,Radiology Technician,Billing,"Houston, TX",Active,Full-Time,74000,35.5769,CC-2001,F,,EMP10013,,1.0,WD-928446,SO-BIL-767
+EMP10077,Charles,Taylor,Charles Taylor,1977-06-27,278-24-1422,2022-11-29,Cardiologist,Pharmacy,"San Antonio, TX",Active,Full-Time,304000,146.1538,,M,,EMP10047,,1.0,WD-245699,SO-PHA-691
+EMP10075,George,Gonzalez,George Gonzalez,1987-12-15,760-55-1992,2018-03-19,Executive Assistant,Surgery,"Dallas, TX",Terminated,Full-Time,0,0,CC-1002,F,Non-Hispanic,EMP10040,2021-07-23,1.0,WD-591507,SO-SUR-839
+EMP10101,Michelle,Stewart,Michelle Stewart,1972-05-28,794-83-8218,2013-04-02,Lab Technician,Laboratory,"Dallas, TX",Terminated,Full-Time,69247.72,33.2922,,M,,EMP10041,2016-12-11,1.0,WD-900681,SO-LAB-111
+EMP10000,Hannah,Anderson,Hannah Anderson,,381-41-4657,2021-08-19,Cardiologist,Cardiology,"Dallas, TX",Active,Full-Time,493000,237.0192,CC-1002,F,,,,1.0,WD-811572,SO-CAR-273
+EMP10096,Stephanie,Evans,Stephanie Evans,1985-05-10,712-16-6482,2026-02-01,Radiologist,Cardiology,"Dallas, TX",Active,Full-Time,286000,137.5,CC-1003,M,,EMP10037,,1.0,WD-903774,SO-CAR-898
+10119,Linda,Thomas,Linda Thomas,1968-09-23,268-30-6286,2010-10-28,HR Manager,Security,"Fort Worth, TX",Active,Full-Time,93000,44.7115,CC-1005,F,Non-Hispanic,10019,,1.0,WD-565280,SO-SEC-856
+EMP10010,Margaret,Martin,Margaret Martin,1988-07-18,265-79-9689,2022-02-07,Registered Nurse,Administration,"Austin, TX",Active,Part-Time,75000,36.0577,CC-1005,F,,,,0.5,WD-468488,SO-ADM-962
+EMP10092,Steven,Sanchez,Steven Sanchez,1970-07-26,256-93-2234,2026-02-01,Pediatrician,Compliance,"Austin, TX",Active,Full-Time,262000,125.9615,CC-2002,,Non-Hispanic,EMP10040,,1.0,WD-283633,SO-COM-525
+EMP10185,Jonathan,Scott,Jonathan Scott,1970-02-08,820-47-5740,2012-04-05,Director of Nursing,Security,"Dallas, TX",Active,Full-Time,138000,66.3462,CC-2001,M,,EMP10041,,1.0,WD-848440,SO-SEC-982
+EMP10046,Jacob,Chavez,Jacob Chavez,1999-01-13,911-12-2524,2026-02-01,Financial Analyst,Laboratory,"San Antonio, TX",Active,Full-Time,67000,32.2115,CC-2002,,Hispanic,EMP10022,,1.0,WD-251624,SO-LAB-158
+EMP10266,Thomas,Wilson,Thomas Wilson,1989-10-03,714-87-6273,2018-10-01,Billing Specialist,Physical Therapy,"San Antonio, TX",Active,Contract,64426.13,30.9741,CC-1005,F,,EMP10008,,0.0,WD-817663,SO-PHY-493
+EMP10122,Rebecca,Hill,Rebecca Hill,1995-09-09,805-17-3589,2006-08-21,Pharmacy Technician,Compliance,"Austin, TX",Active,Full-Time,49000,23.5577,CC-1006,M,Non-Hispanic,EMP10022,,1.0,WD-333249,SO-COM-722
+EMP10016,Michael,Wood,Michael Wood,1956-04-28,871-40-3724,2007-02-04,,Compliance,"San Antonio, TX",Active,Part-Time,"$61,000.00",29.3269,CC-1003,F,,EMP10024,,0.5,WD-780627,SO-COM-766
+EMP10109,Jacob,Allen,Jacob Allen,1958-04-14,762-34-5687,2021-11-23,Help Desk Technician,Administration,"Fort Worth, TX",Leave,Full-Time,42000,20.1923,CC-2001,F,,EMP10021,,1.0,WD-473897,SO-ADM-431
+EMP10127,Cynthia,Ross,Cynthia Ross,1980-02-04,738-97-2946,2023-07-06,Cardiologist,Laboratory Dept,"Houston, TX",Active,Full-Time,325000,156.25,CC-1006,F,,EMP10038,,1.0,WD-517589,SO-LAB-486
+10070,Carol,Myers,Carol Myers,1992-04-11,305-26-9837,2008-12-09,Software Engineer,Security Dept,"Fort Worth, TX",Active,Full-Time,120000,57.6923,CC-2002,M,Non-Hispanic,10021,,1.0,WD-338804,SO-SEC-200
+EMP10232,Richard,Torres,Richard Torres,,370-59-8955,2015-03-21,Director of Nursing,Compliance,"Houston, TX",Active,Full-Time,160000,76.9231,CC-2001,M,,EMP10021,,1.0,WD-253311,SO-COM-536
+EMP10279,Robert,Roberts,Robert Roberts,1965-08-12,106-92-2036,2016-12-30,Chief Financial Officer,Emergency,"Houston, TX",Active,Full-Time,186000,89.4231,CC-1005,,,EMP10018,,1.0,WD-409012,SO-EME-571
+EMP10112,Hannah,Davis,Hannah Davis,1961-09-24,752-61-6952,2020-01-21,Billing Specialist,Nursing,"Austin, TX",Active,Full-Time,40000,19.2308,CC-2002,M,,EMP10004,,1.0,WD-991777,SO-NUR-682
+EMP10222,Jessica,Castillo,Jessica Castillo,1955-02-11,495-66-7875,2006-01-30,Oncologist,Compliance,"Dallas, TX",Active,Full-Time,409000,196.6346,CC-2002,,Non-Hispanic,EMP10048,,1.0,WD-843670,SO-COM-303
+EMP10259,Samuel,Roberts,Samuel Roberts,1968-05-03,946-81-1894,2023-10-28,Registered Nurse,Pediatrics,"Austin, TX",Active,Full-Time,76000,36.5385,CC-1002,F,,EMP10015,,1.0,WD-547107,SO-PED-351
+EMP10960,Larry,Watson,Larry Watson,1999-08-20,988-21-9174,2024-02-26,Registered Nurse,IT,"Houston, TX",Active,Full-Time,60000,28.8462,CC-2002,M,,,,1.0,WD-409967,SO-IT-265
+10173,Virginia,Rivera,Virginia Rivera,1969-12-03,727-15-7547,2021-05-06,Systems Administrator,Physical Therapy,"Dallas, TX",Active,Full-Time,91000,43.75,,F,,10025,,1.0,WD-511341,SO-PHY-445
+EMP10174,Kathleen,Foster,Kathleen Foster,1999-11-25,453-13-8909,2026-02-01,Emergency Physician,Physical Therapy,"Dallas, TX",Active,Part-Time,242297.64,116.4893,CC-1003,M,,EMP10021,,0.5,WD-830203,SO-PHY-299
+EMP10240,Shirley,James,Shirley James,1988-07-28,762-86-5631,2017-08-05,Accountant,Cardiology Dept,"Austin, TX",Active,Contract,72000,34.6154,CC-1006,M,,EMP10041,,0.0,WD-786141,SO-CAR-937
+EMP10463,Charles,Brooks,Charles Brooks,1974-02-24,927-56-8046,2024-06-19,Charge Nurse,Laboratory,"San Antonio, TX",Active,Full-Time,100000,48.0769,CC-1004,M,,,,1.0,WD-124057,SO-LAB-876
+EMP10110,Betty,Murp,Betty Murp,1999-08-20,916-76-5369,2013-03-29,Radiology Technician,Physical Therapy Dept,"Dallas, TX",Active,Contract,74000,35.5769,CC-1003,,,EMP10020,,0.0,WD-330787,SO-PHY-167
+EMP10268,Daniel,Cook,Daniel Cook,1983-12-03,218-55-8870,2020-12-07,Chief Financial Officer,Physical Therapy,"Fort Worth, TX",Active,Full-Time,255000,122.5962,CC-1001,,,EMP10001,,1.0,WD-145452,SO-PHY-719
+EMP10005,Nancy,Morgan,Nancy Morgan,1976-12-17,573-58-5422,2008-08-31,Paralegal,Facilities,"San Antonio, TX",Active,Full-Time,73000,35.0962,CC-1001,F,,,,1.0,WD-119527,SO-FAC-375
+EMP10283,Stephen,Martinez,Stephen Martinez,1981-01-28,168-42-2608,2020-01-25,Surgeon,Marketing,"Austin, TX",Terminated,Full-Time,54000.0,25.9615,CC-1004,M,,EMP10039,2021-06-15,1.0,WD-291285,SO-MAR-581
+EMP10106,Brandon,Rivera,Brandon Rivera,1976-07-31,526-33-2402,2017-10-19,Compliance Officer,Emergency Dept,"Houston, TX",Active,Full-Time,82000,39.4231,CC-2001,M,,EMP10047,,1.0,WD-201295,SO-EME-916
+EMP10236,Ryan,Miller,Ryan Miller,1987-05-01,303-45-7035,2020-10-21,Lab Technician,Laboratory,"Dallas, TX",Active,Full-Time,62000,29.8077,CC-2002,,,EMP10011,,1.0,WD-551839,SO-LAB-289
+EMP10217,Gary,Jones,Gary Jones,1963-02-05,338-87-4584,2005-04-06,Senior Registered Nurse,Compliance,"Houston, TX",Leave,Full-Time,92000,44.2308,,M,Non-Hispanic,EMP10011,,1.0,WD-106177,SO-COM-730
+EMP10162,Anthony,Ramos,Anthony Ramos,1967-12-08,940-60-2260,2026-02-01,Accountant,Marketing,"San Antonio, TX",Active,Full-Time,55000,26.4423,CC-1006,F,Non-Hispanic,EMP10008,,1.0,WD-495323,SO-MAR-834
+EMP11057,Mark,Roberts,Mark Roberts,1996-06-21,647-69-2787,2024-11-03,Help Desk Technician,Billing,"Houston, TX",Active,Full-Time,55000,26.4423,CC-1003,M,,,,1.0,WD-905533,SO-BIL-543
+EMP10281,Victoria,Chavez,Victoria Chavez,1988-06-22,666-81-3316,2005-04-02,Emergency Technician,NURSING,"Dallas, TX",Active,Part-Time,41000,19.7115,CC-1005,F,Non-Hispanic,EMP10047,,0.5,WD-489739,SO-NUR-155
+EMP10093,Katherine ,Adams,Katherine  Adams,1983-05-13,550-18-8682,2026-02-01,Pharmacy Technician,Finance,"Houston, TX",Active,Full-Time,45000,21.6346,CC-2002,F,,EMP10003,,1.0,WD-696236,SO-FIN-197
+EMP10149,Dennis,Jimenez,Dennis Jimenez,1960-01-24,615-47-4836,2008-02-22,Director of Nursing,Marketing Dept,"Houston, TX",Active,Part-Time,141000,67.7885,CC-1004,F,,EMP10017,,0.5,WD-107614,SO-MAR-484
+EMP10083,Michelle,Rivera,Michelle Rivera,1964-04-17,619-37-3535,2017-12-18,Senior Lab Technician,Cardiology,"Houston, TX",Terminated,Full-Time,67000,32.2115,,,,EMP10027,,1.0,WD-308665,SO-CAR-171
+EMP10118,Edward,Kelly,Edward Kelly,1961-08-13,424-92-2215,2007-10-24,Pharmacy Technician,Security,"Houston, TX",Active,Full-Time,50000,24.0385,CC-1003,F,,EMP10032,,1.0,WD-622952,SO-SEC-403
+EMP10085,Rebecca,Rodriguez,Rebecca Rodriguez,1967-09-23,748-13-2503,2021-08-15,Compliance Officer,Laboratory,"Dallas, TX",Active,Full-Time,77000,37.0192,CC-1005,M,Hispanic,EMP10038,,1.0,WD-216123,SO-LAB-232
+EMP10153,Matthew,Patel,Matthew Patel,1965-07-11,872-71-4974,2021-10-01,Chief Information Officer,Laboratory,"San Antonio, TX",Active,Full-Time,197000,94.7115,CC-2001,F,Hispanic,EMP10041,,1.0,WD-887941,SO-LAB-934
+EMP10131,Matthew,Williams,Matthew Williams,,528-29-7765,2026-02-01,Surgical Technician,Security,"Austin, TX",Active,Full-Time,58000,27.8846,CC-1001,F,Hispanic,EMP10013,,1.0,WD-298837,SO-SEC-104
+EMP10164,Paul,Edwards,Paul Edwards,1999-01-06,464-80-7150,2026-02-01,Pharmacist,Marketing,"Dallas, TX",Active,Full-Time,122000,58.6538,CC-1004,M,,EMP10017,,1.0,WD-720967,SO-MAR-292
+EMP10058,Paul,Peterson,Paul Peterson,1966-10-03,548-99-8941,2026-02-01,Emergency Technician,Legal,"San Antonio, TX",Active,Full-Time,41000,19.7115,CC-1001,,,EMP10005,,1.0,WD-767044,SO-LEG-350
+EMP10061,Gary,Martin,Gary Martin,1995-01-23,595-54-6446,2026-02-01,Facilities Manager,Facilities,"Dallas, TX",Active,Full-Time,80000,38.4615,CC-1004,F,Hispanic,EMP10024,,1.0,WD-887623,SO-FAC-621
+EMP10114,Kenneth,Wood,Kenneth Wood,1980-01-02,216-13-4048,2010-08-07,Physical Therapist,Laboratory,"Dallas, TX",Active,Full-Time,82000,39.4231,CC-2002,F,Hispanic,EMP10018,,1.0,WD-992919,SO-LAB-782
+EMP10275,Sandra,Long,Sandra Long,1997-08-08,943-93-1144,2017-08-04,Emergency Technician,Billing,"San Antonio, TX",Active,Full-Time,0,0,CC-1004,M,Non-Hispanic,EMP10020,,1.0,WD-449663,SO-BIL-241
+EMP10195,Donald,Murphy,Donald Murphy,1989-08-14,346-73-2163,2026-02-01,Compliance Officer,Nursing,"Houston, TX",Terminated,Full-Time,99000,47.5962,CC-2001,M,Hispanic,EMP10043,2009-06-30,1.0,WD-187298,SO-NUR-360
+EMP10201,Jerry,Wilson,Jerry Wilson,1965-05-07,858-75-1042,2010-02-15,Charge Nurse,Nursing,"San Antonio, TX",Active,Full-Time,108000,51.9231,CC-1003,F,,EMP10035,,1.0,WD-652049,SO-NUR-845
+EMP10143,Linda,Peterson,Linda Peterson,2000-05-07,686-78-3455,2009-07-15,Oncologist,Security Dept,"Austin, TX",Active,Full-Time,0,0,,M,Hispanic,EMP10028,,1.0,WD-830140,SO-SEC-527
+EMP10081,Edward,Baker,Edward Baker,1995-09-08,525-22-6120,2013-12-11,Pharmacist,Finance,"Houston, TX",Terminated,Full-Time,0,0,CC-2002,M,,EMP10005,2015-06-19,1.0,WD-660453,SO-FIN-495
+EMP10080,Katherine,Brooks,Katherine Brooks,1984-03-04,711-77-5831,2013-07-18,Cardiac Technician,Legal,"Dallas, TX",Active,Full-Time,62000,29.8077,CC-1004,F,,EMP10014,,1.0,WD-937965,SO-LEG-717
+EMP10203,Jennifer,Phillips,Jennifer Phillips,1961-03-08,986-46-6090,2015-06-08,IT Manager,Facilities Dept,"Austin, TX",Active,Full-Time,96000,46.1538,,,,EMP10029,,1.0,WD-433443,SO-FAC-869
+EMP10054,Frank,Hill,Frank Hill,1991-02-10,612-79-9090,2011-02-09,Pharmacy Technician,Legal,"Houston, TX",Active,Full-Time,"$38,000.00",18.2692,CC-1005,M,,EMP10014,,1.0,WD-681440,SO-LEG-351
+EMP10128,Shirley,Phillips,Shirley Phillips,1999-11-12,146-14-3245,2005-11-26,Systems Administrator,Compliance,"Austin, TX",Active,Part-Time,91000,43.75,CC-1003,M,Hispanic,EMP10020,,0.5,WD-959416,SO-COM-912
+EMP10218,Carol,Davis,Carol Davis,1956-12-19,700-28-2817,2008-04-25,Compliance Officer,Pharmacy Dept,"Dallas, TX",Active,Part-Time,"$98,000.00",47.1154,CC-2001,,,EMP10021,,0.5,WD-857526,SO-PHA-290
+EMP10158,J.,Peterson,J. Peterson,1991-11-26,117-77-5501,2005-04-08,Security Guard,Nursing,"Dallas, TX",Active,Part-Time,35000,16.8269,CC-1002,M,Hispanic,EMP10009,,0.5,WD-794830,SO-NUR-653
+EMP10193,San,Watson,San Watson,1968-07-31,730-97-8248,2013-03-27,Surgical Technician,Cardiology,"Austin, TX",Active,Full-Time,48000,23.0769,CC-2001,M,,EMP10020,,1.0,WD-973073,SO-CAR-320
+10023,Emily,Garcia,Emily Garcia,1955-04-27,889-26-5291,2026-02-01,Oncologist,Billing,"Dallas, TX",Active,Full-Time,494000,237.5,CC-1003,,,10023,,1.0,WD-284055,SO-BIL-166
+EMP10260,Kevin,Scott,Kevin Scott,,328-80-7203,2016-05-15,Executive Assistant,Emergency,"Austin, TX",Active,Full-Time,58000,27.8846,CC-1002,F,,EMP10020,,1.0,WD-886897,SO-EME-927
+EMP10026,Julie,Wilson,Julie Wilson,1989-04-27,979-70-4644,2005-11-14,Surgeon,Billing,"Houston, TX",Active,Full-Time,564000,271.1538,CC-1004,F,,EMP10042,,1.0,WD-658829,SO-BIL-729
+EMP10055,Gregory,Kelly,Gregory Kelly,1956-11-10,788-44-1659,2022-02-25,Pediatrician,Security,"Austin, TX",Active,Full-Time,242000,116.3462,,F,,EMP10030,,1.0,WD-810360,SO-SEC-240
+EMP10151,Jonathan,Stewart,Jonathan Stewart,1976-08-14,407-28-8586,2010-01-21,Nurse Practitioner,Physical Therapy,"Austin, TX",Active,Full-Time,122000,58.6538,CC-1006,M,,EMP10023,,1.0,WD-797385,SO-PHY-508
+EMP10139,Amanda,Nguyen,Amanda Nguyen,1972-04-30,725-91-7643,2008-12-08,Pharmacist,Administration,"Dallas, TX",Active,Full-Time,144000,69.2308,CC-1003,F,,EMP10015,,1.0,WD-543489,SO-ADM-269
+EMP10617,Margaret,Phillips,Margaret Phillips,1984-06-28,819-70-2873,2024-02-11,Systems Administrator,Compliance,"Austin, TX",Active,Full-Time,85000,40.8654,CC-2002,M,Hispanic,,,1.0,WD-263306,SO-COM-581
+EMP10111,Jessica,Hernandez,Jessica Hernandez,1984-06-02,402-49-8305,2019-10-29,Chief Information Officer,PEDIATRICS,"Austin, TX",Active,Full-Time,226000,108.6538,CC-1006,,,EMP10017,,1.0,WD-531066,SO-PED-408
+EMP10102,Deborah,Peterson,Deborah Peterson,1964-03-15,966-76-3042,2020-12-15,Financial Analyst,Pediatrics,"Fort Worth, TX",Active,Full-Time,63000,30.2885,,M,,EMP10028,,1.0,WD-807835,SO-PED-645
+EMP10264,Brandon,Sanchez,Brandon Sanchez,1971-10-29,972-60-4532,2008-09-16,Lab Technician,Administration,"Dallas, TX",Active,Full-Time,51000,24.5192,CC-1002,F,,EMP10042,,1.0,WD-669928,SO-ADM-808
+EMP10040,Lauren,Wood,Lauren Wood,1958-08-12,131-41-4266,2021-12-01,Senior Registered Nurse,Oncology,"San Antonio, TX",Active,Full-Time,95000,45.6731,CC-1004,F,Non-Hispanic,EMP10016,,1.0,WD-456113,SO-ONC-766
+EMP10137,Jack,Castillo,Jack Castillo,1958-05-07,527-32-1595,2008-12-05,Executive Assistant,Pediatrics,"Fort Worth, TX",Active,Full-Time,66000,31.7308,CC-1002,M,,EMP10029,,1.0,WD-359433,SO-PED-716
+10202,Joyce,Patel,Joyce Patel,1992-08-15,429-41-7819,2010-01-14,IT Manager,Emergency Dept,"Houston, TX",Leave,Full-Time,108000,51.9231,CC-1001,F,,10033,,1.0,WD-699951,SO-EME-986
+EMP10097,Raymond,Jackson,Raymond Jackson,1986-05-20,771-99-7421,2011-12-17,Cardiologist,Emergency,"Fort Worth, TX",Active,Full-Time,456000,219.2308,CC-1006,F,Non-Hispanic,EMP10044,,1.0,WD-176751,SO-EME-754
+EMP10048,Amy,Scott,Amy Scott,1980-05-22,952-34-5853,2007-04-04,HR Manager,Pediatrics,"Fort Worth, TX",Active,Full-Time,94000,45.1923,CC-1005,M,,EMP10035,,1.0,WD-826048,SO-PED-439
+EMP10012,Jason,Ramirez,Jason Ramirez,1974-01-17,419-61-7118,2026-02-01,Pharmacy Technician,Billing,"Dallas, TX",Active,Full-Time,52000,25.0,CC-1001,,Hispanic,EMP10014,,1.0,WD-321092,SO-BIL-725
+EMP10179,Daniel,Gray,Daniel Gray,1981-09-07,704-20-3194,2017-10-13,IT Manager,Human Resources Dept,"Fort Worth, TX",Active,Full-Time,98000,47.1154,CC-1003,,,EMP10026,,1.0,WD-454928,SO-HUM-707
+EMP10216,Donald,Ramos,Donald Ramos,1983-07-13,855-99-6878,2021-01-31,Chief Financial Officer,Pharmacy,"Austin, TX",Leave,Full-Time,184000,88.4615,CC-2002,,,EMP10011,,1.0,WD-328026,SO-PHA-412
+EMP10136,Richard,Mendoza,Richard Mendoza,1967-05-02,663-30-7666,2005-02-12,Senior Lab Technician,Surgery,"Fort Worth, TX",Active,Full-Time,76000,36.5385,CC-1002,,,EMP10034,,1.0,WD-129628,SO-SUR-814
+EMP10037,Kelly,Patel,Kelly Patel,1974-10-14,324-44-8140,2015-12-14,Physical Therapist,Laboratory Dept,"Houston, TX",Active,Full-Time,66000,31.7308,CC-1003,F,,EMP10039,,1.0,WD-157450,SO-LAB-408
+EMP10289,Mark,Ross-Myers,Mark Ross-Myers,1998-10-01,164-43-7052,2010-03-15,HR Manager,Surgery,"Houston, TX",Active,Part-Time,73000,35.0962,CC-1001,M,Non-Hispanic,EMP10020,,0.5,WD-882233,SO-SUR-672
+EMP10129,Christopher,Gomez,Christopher Gomez,1981-11-05,444-74-9351,2018-04-26,Security Guard,Marketing,"Fort Worth, TX",Active,Full-Time,38000,18.2692,CC-1006,M,,EMP10037,,1.0,WD-414815,SO-MAR-709
+EMP10253,James,Johnson,James Johnson,1962-12-26,955-83-9095,2007-06-24,Cardiac Technician,Security Dept,"Dallas, TX",Active,Full-Time,58000,27.8846,CC-1005,F,,EMP10018,,1.0,WD-865960,SO-SEC-386
+EMP10145,Jas,Hall,Jas Hall,1960-09-20,161-18-8734,2017-02-19,Charge Nurse,Physical Therapy Dept,"Austin, TX",Active,Full-Time,109784.8,52.7812,CC-2001,M,,EMP10028,,1.0,WD-896041,SO-PHY-296
+EMP10011,Donald,Reed,Donald Reed,1962-01-24,849-72-2133,2026-02-01,Security Guard,Oncology,"Austin, TX",Active,Part-Time,43000,20.6731,CC-1003,M,Hispanic,EMP10038,,0.5,WD-173332,SO-ONC-407
+EMP10255,Samuel,Perez,Samuel Perez,1984-06-26,548-89-5395,2013-01-07,Radiology Technician,Administration,"Austin, TX",Leave,Full-Time,62000,29.8077,CC-2002,M,,EMP10044,,1.0,WD-733698,SO-ADM-664
+EMP10038,Jonathan,Brown,Jonathan Brown,1990-05-08,677-94-1444,2018-04-11,Radiology Technician,Physical Therapy Dept,"Austin, TX",Active,Full-Time,71000,34.1346,,F,,EMP10013,,1.0,WD-154738,SO-PHY-401
+EMP10089,Melissa,Martinez,Melissa Martinez,1990-08-16,143-65-1307,2021-08-23,Lab Technician,Administration,"Dallas, TX",Active,Full-Time,"$48,000.00",23.0769,CC-2001,M,,EMP10025,,1.0,WD-614807,SO-ADM-571
+EMP10272,Daniel,Mendoza,Daniel Mendoza,1961-09-06,277-75-2955,2026-02-01,Administrative Assistant,Physical Therapy,"Fort Worth, TX",Active,Full-Time,36000,17.3077,CC-1005,M,,EMP10029,,1.0,WD-218661,SO-PHY-691
+EMP10152,Susan,Morgan,Susan Morgan,1972-02-02,374-58-1647,2004-02-28,Radiologist,MARKETING,"San Antonio, TX",Active,Full-Time,249000,119.7115,CC-1006,M,,EMP10013,,1.0,WD-521326,SO-MAR-842
+EMP10031,Justin,Cox,Justin Cox,1983-11-29,552-66-4501,2015-06-08,Billing Specialist,Pediatrics,"Dallas, TX",Active,Full-Time,51000,24.5192,CC-1006,M,,EMP10043,,1.0,WD-445217,SO-PED-418
+EMP10100,Christopher,White,Christopher White,1969-11-07,548-15-7731,2021-03-05,Software Engineer,Human Resources,"Austin, TX",Active,Full-Time,129000,62.0192,CC-2002,F,Hispanic,EMP10015,,1.0,WD-269205,SO-HUM-274
+EMP10059,Mark,Anderson,Mark Anderson,1996-05-25,763-29-9165,2007-08-21,Financial Analyst,Finance,"Dallas, TX",Active,Contract,77000,37.0192,CC-1004,F,Hispanic,EMP10009,,0.0,WD-255783,SO-FIN-435
+10235,Christopher,Rodriguez,Christopher Rodriguez,1982-11-29,618-61-3222,2020-11-30,Compliance Officer,Marketing,"Houston, TX",Active,Part-Time,99000,47.5962,CC-1004,M,,10002,,0.5,WD-100561,SO-MAR-153
+EMP10140,James,King,James King,1989-05-30,557-44-6400,2026-02-01,Accountant,Marketing,"Houston, TX",Active,Full-Time,69000,33.1731,CC-1004,M,Non-Hispanic,EMP10007,,1.0,WD-501382,SO-MAR-700
+EMP10141,Kathleen,Flores,Kathleen Flores,1969-04-30,802-74-6095,2014-02-04,Emergency Technician,Pharmacy,"San Antonio, TX",Active,Full-Time,50000,24.0385,CC-1003,F,Non-Hispanic,EMP10038,,1.0,WD-767083,SO-PHA-686
+EMP10252,Jessica,Murphy,Jessica Murphy,1972-10-27,304-43-9571,2018-08-29,Surgeon,Physical Therapy,"Fort Worth, TX",Active,Full-Time,444000,213.4615,CC-1004,F,,EMP10015,,1.0,WD-409220,SO-PHY-432
+EMP10664,David,Scott,David Scott,1987-08-06,584-42-8242,2024-06-03,Radiologist,Billing,"Dallas, TX",Active,Full-Time,247000,118.75,CC-1002,,,,,1.0,WD-141515,SO-BIL-472
+EMP10234,Kelly,Cruz,Kelly Cruz,1983-10-15,846-63-2462,2011-01-17,Surgeon,Surgery,"Dallas, TX",Inactive,Full-Time,466000,224.0385,CC-1006,M,Hispanic,EMP10050,,1.0,WD-481237,SO-SUR-387
+EMP10212,Diane,Diaz,Diane Diaz,1970-07-03,319-33-5505,2026-02-01,Finance Manager,Oncology,"Houston, TX",Active,Full-Time,109000,52.4038,CC-1005,F,,EMP10035,,1.0,WD-874879,SO-ONC-777
+EMP10191,Barbara,Taylor,Barbara Taylor,1975-04-17,796-66-1152,2016-08-26,Registered Nurse,ADMINISTRATION,"Dallas, TX",Leave,Full-Time,78000,37.5,CC-1003,F,,EMP10014,,1.0,WD-920827,SO-ADM-400
+EMP10271,Diane,Green,Diane Green,1959-10-29,861-42-4327,2005-04-17,Marketing Coordinator,Human Resources,"Houston, TX",Active,Full-Time,60000,28.8462,CC-1004,F,,EMP10028,,1.0,WD-253709,SO-HUM-427
+10142,Deborah,Turner,Deborah Turner,1997-03-29,650-95-4578,2021-12-27,HR Analyst,Legal,"Dallas, TX",Active,Full-Time,72000,34.6154,CC-1006,M,Hispanic,10007,,1.0,WD-517302,SO-LEG-815
+EMP10246,J.,Edwards,J. Edwards,1979-07-16,879-31-3595,2009-09-12,Physical Therapist,Emergency,"Austin, TX",Active,Full-Time,91000,43.75,CC-2001,F,,EMP10024,,1.0,WD-887195,SO-EME-621
+EMP10002,Emily,Martin,Emily Martin,1974-04-26,444-23-2519,2021-02-15,Administrative Assistant,Pharmacy,"Houston, TX",Active,Full-Time,38000,18.2692,CC-2002,,,,,1.0,WD-249380,SO-PHA-522
+EMP10231,Ron,Peterson,Ron Peterson,1984-04-04,632-68-1202,2011-03-13,Marketing Coordinator,Security,"Dallas, TX",Active,Full-Time,64000,30.7692,CC-1002,M,Hispanic,EMP10049,,1.0,WD-996398,SO-SEC-705
+EMP10278,Kevin,Jones,Kevin Jones,,155-32-5127,2006-08-24,Facilities Manager,MARKETING,"San Antonio, TX",Active,Full-Time,22873.52,10.9969,CC-2002,F,,EMP10020,,1.0,WD-240082,SO-MAR-212
+EMP10298,Emma,Evans,Emma Evans,1978-02-16,105-10-9561,2006-12-11,Emergency Technician,Nursing Dept,"Dallas, TX",Active,Full-Time,57000,27.4038,CC-1006,F,,EMP10006,,1.0,WD-326122,SO-NUR-926
+EMP10280,Christina ,Cruz,Christina  Cruz,1989-03-21,941-94-1504,2013-11-11,Senior Lab Technician,Facilities,"San Antonio, TX",Active,Full-Time,65000,31.25,,F,,EMP10043,,1.0,WD-244495,SO-FAC-220
+10258,Brenda,Foster,Brenda Foster,1975-02-04,994-53-9504,2021-01-09,Compliance Officer,Legal,"Dallas, TX",Terminated,Full-Time,93000,44.7115,CC-2002,M,Non-Hispanic,10043,,1.0,WD-395744,SO-LEG-121
+EMP10009,Dennis,Wright,Dennis Wright,1985-07-08,400-65-3591,2026-02-01,Lab Technician,Finance,"Austin, TX",Active,Full-Time,45000,21.6346,CC-1005,,Hispanic,,,1.0,WD-275512,SO-FIN-100
+EMP10297,Jennifer,Hughes,Jennifer Hughes,1993-06-26,921-71-7246,2010-02-22,Help Desk Technician,Marketing,"Dallas, TX",Active,Full-Time,59000,28.3654,CC-1004,M,,EMP10038,,1.0,WD-139225,SO-MAR-397
+EMP10049,Donna,Hughes,Donna Hughes,1966-04-30,989-72-2680,2019-04-23,Registered Nurse,IT,"Austin, TX",Active,Full-Time,74000,35.5769,CC-1001,M,,EMP10007,,1.0,WD-209940,SO-IT-565
+EMP10239,Alexander,Chavez,Alexander Chavez,1979-09-15,485-54-8520,2014-07-04,HR Coordinator,Billing,"Fort Worth, TX",Active,Full-Time,47000,22.5962,CC-2001,,,EMP10000,,1.0,WD-211532,SO-BIL-233
+EMP10213,A.,Davis,A. Davis,1962-11-14,492-27-7868,2011-04-11,Surgeon,Security,"San Antonio, TX",Inactive,Full-Time,518000,249.0385,CC-1001,F,Non-Hispanic,EMP10022,,1.0,WD-807287,SO-SEC-882
+EMP10186,Thomas,Hughes,Thomas Hughes,1966-11-27,249-51-5055,2010-08-08,Executive Assistant,ONCOLOGY,"Fort Worth, TX",Active,Full-Time,66000,31.7308,CC-1002,M,,EMP10032,,1.0,WD-662473,SO-ONC-902
+10045,Melissa,King,Melissa King,1985-07-14,710-99-5526,2011-04-10,Facilities Manager,Security,"San Antonio, TX",Active,Full-Time,55000,26.4423,CC-2002,,,10044,,1.0,WD-592331,SO-SEC-416
+EMP10124,Sharon,Young,Sharon Young,1969-04-30,435-83-6123,2023-04-01,Surgeon,Pediatrics,"Austin, TX",Leave,Full-Time,550000,264.4231,CC-1005,F,,EMP10005,,1.0,WD-971598,SO-PED-914
+EMP10086,William,Miller,William Miller,1968-12-16,872-89-1815,2026-02-01,Radiology Technician,Billing Dept,"Dallas, TX",Active,Full-Time,59000,28.3654,CC-1005,F,Hispanic,EMP10007,,1.0,WD-316509,SO-BIL-233
+EMP10207,Kenneth,Gomez,Kenneth Gomez,1984-04-08,563-44-4827,2012-02-19,Radiologist,Oncology,"Dallas, TX",Active,Full-Time,209655.37,100.7959,CC-2002,M,,EMP10007,,1.0,WD-339876,SO-ONC-412
+EMP10115,Frank,Morales,Frank Morales,1972-12-16,238-19-8406,2007-10-02,Pediatrician,Billing,"Dallas, TX",Active,Contract,274000,131.7308,CC-1006,M,Non-Hispanic,EMP10004,,0.0,WD-771709,SO-BIL-859
+EMP10181,Mary,Morales,Mary Morales,1967-04-01,934-59-9281,2007-08-10,Physical Therapist,Compliance,"Dallas, TX",Active,Full-Time,78000,37.5,CC-1003,M,Hispanic,EMP10001,,1.0,WD-803317,SO-COM-774
+EMP10184,Jeffrey,Thomas,Jeffrey Thomas,1976-04-04,930-85-6744,2007-09-17,Marketing Coordinator,Physical Therapy,"Austin, TX",Active,Full-Time,66000,31.7308,CC-1004,M,Hispanic,EMP10022,,1.0,WD-502611,SO-PHY-595
+EMP10225,Stephen,Castillo,Stephen Castillo,1978-10-19,388-48-4891,2019-10-26,Emergency Physician,Laboratory,"Austin, TX",Terminated,Full-Time,263000,126.4423,CC-2001,M,,EMP10042,,1.0,WD-626236,SO-LAB-843
+EMP10133,Dorothy,Scott,Dorothy Scott,1981-10-12,404-46-4396,2010-01-17,Physical Therapist,Compliance,"Houston, TX",Active,Part-Time,75000,36.0577,CC-1005,M,,EMP10036,,0.5,WD-230524,SO-COM-494
+EMP10019,Katherine,Hernandez,Katherine Hernandez,1992-08-11,697-82-9565,2019-09-30,IT Manager,Surgery,"Houston, TX",Active,Full-Time,107000,51.4423,,F,,EMP10048,,1.0,WD-394790,SO-SUR-796
+EMP10113,Donald,Jimenez,Donald Jimenez,1987-11-12,492-82-1530,2013-02-14,Chief Information Officer,Billing,"Houston, TX",Active,Full-Time,190000,91.3462,CC-1003,,,EMP10025,,1.0,WD-810830,SO-BIL-889
+10198,Victoria,Walker,Victoria Walker,1960-03-12,188-65-2900,2010-06-26,Lab Technician,Radiology,"Fort Worth, TX",Active,Full-Time,65000,31.25,,M,,10045,,1.0,WD-732928,SO-RAD-353
+EMP10134,Gregory,Cooper,Gregory Cooper,1989-01-23,938-54-3399,2013-11-07,Financial Analyst,IT,"Dallas, TX",Active,Full-Time,61000,29.3269,CC-1005,F,,EMP10012,,1.0,WD-888086,SO-IT-839
+EMP10263,Raymond,Lewis,Raymond Lewis,1955-03-13,463-91-5783,2012-08-28,Facilities Manager,Pharmacy,"Dallas, TX",Active,Full-Time,72000,34.6154,CC-1003,F,,EMP10016,,1.0,WD-312149,SO-PHA-242
+EMP10254,Kimberly,Reyes,Kimberly Reyes,1959-06-30,932-32-1646,2007-03-29,Financial Analyst,Administration,"Dallas, TX",Active,Full-Time,72000,34.6154,CC-1001,M,,EMP10042,,1.0,WD-918427,SO-ADM-697
+EMP10057,Steven,Adams,Steven Adams,1965-05-26,513-75-1018,2022-04-30,Security Guard,Physical Therapy,"Houston, TX",Active,Full-Time,38000,18.2692,,F,,EMP10013,,1.0,WD-251448,SO-PHY-233
+EMP10099,Lisa,Martinez,Lisa Martinez,1981-07-15,907-22-9317,2023-12-10,Security Guard,Security,"Houston, TX",Active,Part-Time,44000,21.1538,CC-1003,,,EMP10009,,0.5,WD-186558,SO-SEC-661
+EMP10135,Jonathan,Wright,Jonathan Wright,1979-05-15,211-88-4920,2008-01-30,HR Analyst,Security,"San Antonio, TX",Inactive,Full-Time,52000,25.0,CC-2001,M,Non-Hispanic,EMP10030,,1.0,WD-544638,SO-SEC-853
+EMP10020,Barbara,Johnson,Barbara Johnson,1996-02-12,676-22-2200,2018-12-07,Security Guard,Security,"Fort Worth, TX",Active,Full-Time,33000,15.8654,CC-1002,F,,EMP10018,,1.0,WD-331890,SO-SEC-339
+EMP10595,Sharon,Hughes,Sharon Hughes,1969-11-25,795-83-1235,2024-10-13,Surgical Technician,Surgery,"Austin, TX",Active,Full-Time,56000,26.9231,CC-1006,M,,,,1.0,WD-421876,SO-SUR-614
+EMP10050,David,Phillips,David Phillips,1999-02-12,690-90-1878,2026-02-01,Cardiac Technician,Marketing,"Fort Worth, TX",Active,Full-Time,60000,28.8462,CC-2001,,Hispanic,EMP10050,,1.0,WD-826894,SO-MAR-335
+EMP10073,Carolyn,Evans,Carolyn Evans,1965-06-20,146-14-5986,2026-02-01,Physical Therapist I,Cardiology,"San Antonio, TX",Leave,Full-Time,69000,33.1731,CC-2002,M,Non-Hispanic,EMP10047,,1.0,WD-525468,SO-CAR-941
+EMP10078,Sharon,Ortiz,Sharon Ortiz,1965-03-13,165-70-8344,2021-09-22,Software Engineer,Marketing,"Dallas, TX",Active,Full-Time,119000,57.2115,CC-1001,,,EMP10029,,1.0,WD-336444,SO-MAR-529
+EMP10284,Matthew,Green,Matthew Green,1998-08-03,436-88-6008,2015-02-09,Chief Financial Officer,Marketing,"Houston, TX",Active,Contract,200000,96.1538,CC-1003,M,,EMP10015,,0.0,WD-453723,SO-MAR-554
+EMP10029,Jonathan,Mendoza,Jonathan Mendoza,1972-09-04,541-18-6409,2013-03-03,Marketing Coordinator,Cardiology Dept,"Fort Worth, TX",Active,Full-Time,55000,26.4423,CC-1006,F,Non-Hispanic,EMP10018,,1.0,WD-149246,SO-CAR-384
+EMP10033,Dorothy,Jackson,Dorothy Jackson,,981-23-7965,2021-11-04,HR Manager,Security,"Austin, TX",Active,Full-Time,82000,39.4231,CC-1002,F,,EMP10029,,1.0,WD-457356,SO-SEC-952
+EMP10161,Brenda,Garcia,Brenda Garcia,1975-08-12,988-98-8790,2009-09-28,Finance Manager,Emergency,"Fort Worth, TX",Active,Full-Time,83000,39.9038,CC-1001,F,,EMP10001,,1.0,WD-825388,SO-EME-440
+EMP10126,Jessica,Parker,Jessica Parker,1967-01-06,844-56-7606,2010-12-06,Software Engineer,Laboratory,"Houston, TX",Active,Full-Time,88000,42.3077,CC-1005,M,,EMP10032,,1.0,WD-766478,SO-LAB-306
+EMP10030,Stephen,Taylor,Stephen Taylor,1972-03-18,780-58-3851,2013-06-07,Marketing Coordinator,IT,"Dallas, TX",Active,Full-Time,64000,30.7692,CC-1005,F,,EMP10050,,1.0,WD-946906,SO-IT-125
+EMP10273,Alexander,Martin,Alexander Martin,1958-08-01,430-86-1833,2026-02-01,Paralegal,IT,"Austin, TX",Active,Full-Time,70000,33.6538,CC-1002,M,Hispanic,EMP10014,,1.0,WD-904819,SO-IT-494
+EMP10007,Dorothy,Myers,Dorothy Myers,1978-07-28,698-64-7543,2021-10-03,Software Engineer,Oncology,"Austin, TX",Active,Full-Time,99000,47.5962,CC-1002,F,Non-Hispanic,,,1.0,WD-920910,SO-ONC-245
+EMP10172,Cynthia,Kim-Hughes,Cynthia Kim-Hughes,1997-12-29,510-78-9300,2018-01-22,Office Manager,Radiology,"Houston, TX",Active,Full-Time,63000,30.2885,CC-1002,M,,EMP10042,,1.0,WD-998397,SO-RAD-599
+EMP10006,Kenneth,Phillips,Kenneth Phillips,1979-01-08,316-82-6155,2006-06-27,Surgical Technician,Compliance Dept,"Dallas, TX",Active,Full-Time,66000,31.7308,CC-1003,M,,,,1.0,WD-783200,SO-COM-904
+EMP10238,Gregory,Clark,Gregory Clark,1979-02-21,519-75-1328,2019-08-13,Registered Nurse,Oncology,"Austin, TX",Active,Full-Time,71000,34.1346,CC-1005,,,EMP10045,,1.0,WD-717518,SO-ONC-641
+EMP10039,Ryan,Adams,Ryan Adams,,488-45-7906,2022-01-27,HR Coordinator,Compliance,"Houston, TX",Inactive,Full-Time,43000,20.6731,CC-1006,F,Non-Hispanic,EMP10004,,1.0,WD-791770,SO-COM-738
+EMP10022,Kelly ,Peterson,Kelly  Peterson,1968-12-11,388-87-4450,2011-02-10,Systems Administrator,Finance Dept,"Austin, TX",Active,Part-Time,72000,34.6154,CC-1001,M,Non-Hispanic,EMP10027,,0.5,WD-624629,SO-FIN-605
+10076,Robert,Miller,Robert Miller,1984-12-02,228-82-4362,2010-06-19,Radiologist,Surgery Dept,"San Antonio, TX",Active,Full-Time,345000,165.8654,CC-1003,,,10017,,1.0,WD-549622,SO-SUR-888
+EMP10287,Jerry,Ramos,Jerry Ramos,1975-02-01,664-43-9904,2005-10-28,Security Guard,Oncology,"Houston, TX",Active,Part-Time,38000,18.2692,CC-1005,F,,EMP10032,,0.5,WD-576364,SO-ONC-667
+EMP10177,Laura,Gomez,Laura Gomez,1957-08-14,728-35-8365,2021-07-16,Chief Financial Officer,Laboratory,"Houston, TX",Active,Full-Time,236000,113.4615,CC-1002,,,EMP10034,,1.0,WD-997729,SO-LAB-689
+EMP10249,Dennis,Harris,Dennis Harris,1969-10-16,513-12-4742,2023-03-19,HR Manager,Surgery Dept,"Houston, TX",Active,Full-Time,79000,37.9808,CC-1006,M,,EMP10040,,1.0,WD-659484,SO-SUR-343
+EMP10052,William,Lee,William Lee,1976-07-08,665-19-3564,2008-11-24,Registered Nurse,BILLING,"Austin, TX",Active,Full-Time,68000,32.6923,,F,,EMP10043,,1.0,WD-475271,SO-BIL-130
+EMP10103,Brian,Brown,Brian Brown,1992-03-22,505-74-7126,2006-03-13,HR Analyst,Emergency,"Houston, TX",Active,Full-Time,63000,30.2885,CC-1002,M,,EMP10008,,1.0,WD-851210,SO-EME-775
+EMP10219,Joshua,Adams,Joshua Adams,1967-03-30,849-65-8982,2008-07-14,IT Manager,Facilities,"Houston, TX",Active,Full-Time,101000,48.5577,CC-1003,F,,EMP10046,,1.0,WD-261177,SO-FAC-520
+EMP10194,Karen,Young,Karen Young,1979-11-06,186-41-5668,2019-06-17,Senior Registered Nurse,IT,"San Antonio, TX",Active,Full-Time,103000,49.5192,CC-2001,M,Non-Hispanic,EMP10003,,1.0,WD-752542,SO-IT-532
+EMP10068,Melissa,Kelly,Melissa Kelly,1981-07-18,402-12-7484,2020-09-07,Finance Manager,Marketing,"Houston, TX",Active,Full-Time,81000,38.9423,CC-1005,F,Hispanic,EMP10022,,1.0,WD-125918,SO-MAR-283
+EMP10296,Daniel,Stewart,Daniel Stewart,1958-07-03,644-74-2925,2026-02-01,Radiology Technician,Oncology,"Houston, TX",Active,Full-Time,66000,31.7308,CC-2001,,,EMP10023,,1.0,WD-628040,SO-ONC-203
+EMP10053,Ashley,King,Ashley King,1972-09-30,217-79-4683,2015-07-15,Cardiac Technician,Oncology,"Dallas, TX",Active,Full-Time,64000,30.7692,CC-1005,F,,EMP10029,,1.0,WD-131127,SO-ONC-303
+EMP10082,Laura,Gonzalez,Laura Gonzalez,1988-06-06,233-81-1982,2023-03-18,Chief Financial Officer,Facilities,"Houston, TX",Active,Full-Time,254000,122.1154,CC-2001,M,,EMP10038,,1.0,WD-197770,SO-FAC-275
+EMP10060,Stephanie,Harris,Stephanie Harris,2000-08-06,239-18-5526,2021-09-27,Office Manager I,Security,"Fort Worth, TX",Active,Full-Time,56000,26.9231,CC-1005,,Hispanic,EMP10042,,1.0,WD-612743,SO-SEC-314
+EMP10176,Gregory,Perez,Gregory Perez,1976-11-18,278-80-3623,2016-07-29,Systems Administrator,Physical Therapy,"Austin, TX",Active,Full-Time,50288.84,24.1773,CC-1003,F,Non-Hispanic,EMP10042,,1.0,WD-405221,SO-PHY-248
+EMP10065,Frank,Hill,Frank Hill,1957-08-06,432-17-5806,2006-01-12,Help Desk Technician,Physical Therapy Dept,"Austin, TX",Inactive,Full-Time,52000,25.0,CC-1003,F,,EMP10005,,1.0,WD-452713,SO-PHY-536
+EMP10051,Katherine,Lewis,Katherine Lewis,1989-02-15,553-48-8025,2015-02-08,Accountant,Legal,"Houston, TX",Active,Full-Time,69000,33.1731,CC-1004,F,,EMP10042,,1.0,WD-946485,SO-LEG-857
+EMP10098,Jack,Mendoza,Jack Mendoza,1963-05-21,786-64-9331,2018-09-05,Software Engineer,Pharmacy,"Fort Worth, TX",Active,Full-Time,86000,41.3462,,F,,EMP10008,,1.0,WD-362779,SO-PHA-217
+EMP10270,Melissa,Edwards,Melissa Edwards,1964-03-12,988-96-4675,2026-02-01,Facilities Manager I,Human Resources,"Fort Worth, TX",Active,Full-Time,53987.31,25.9554,CC-2001,F,,EMP10050,,1.0,WD-950100,SO-HUM-828
+EMP10257,Melissa,Ward,Melissa Ward,1957-08-02,958-26-8914,2026-02-01,Physical Therapist,Physical Therapy,"Austin, TX",Active,Full-Time,69000,33.1731,CC-1006,M,Non-Hispanic,EMP10043,,1.0,WD-602275,SO-PHY-195
+EMP10037,Kelly,Patel,Kelly Patel,1974-10-14,324-44-8140,2015-12-14,Physical Therapist,Laboratory Dept,"Houston, TX",Active,Full-Time,66000,31.7308,CC-1003,F,,EMP10039,,1.0,WD-157450,SO-LAB-408
+EMP10125,Ronald,Cook,Ronald Cook,1996-01-08,320-84-6781,2026-02-01,Nurse Practitioner,IT Dept,"Austin, TX",Active,Full-Time,98000,47.1154,CC-2002,M,Hispanic,EMP10000,,1.0,WD-426592,SO-IT -268
+EMP10035,Donald,Scott,Donald Scott,1994-06-18,830-46-4841,2006-09-27,Finance Manager,Administration Dept,"Dallas, TX",Active,Full-Time,102000,49.0385,,F,,EMP10026,,1.0,WD-428497,SO-ADM-968
+EMP10196,Christina,Stewart,Christina Stewart,1961-07-19,701-18-1225,2005-05-17,HR Coordinator,Radiology,"Houston, TX",Terminated,Full-Time,47000,22.5962,CC-1005,,,EMP10027,2010-04-23,1.0,WD-382486,SO-RAD-748
+EMP10199,Karen,Hughes,Karen Hughes,1956-01-07,608-54-9568,2008-09-04,Compliance Officer,Finance,"Austin, TX",Active,Full-Time,9600.0,4.6154,CC-1005,M,,EMP10021,,1.0,WD-193296,SO-FIN-471
+EMP10241,Joyce,Wood,Joyce Wood,1981-10-21,253-76-4937,2009-03-24,Nurse Practitioner,Administration,"Austin, TX",Active,Full-Time,121000,58.1731,CC-1005,M,,EMP10025,,1.0,WD-459554,SO-ADM-408
+EMP10104,John,Torres,John Torres,1997-05-21,951-27-8685,2020-08-12,Pharmacy Technician,Emergency,"Houston, TX",Active,Full-Time,35000,16.8269,,M,,EMP10015,,1.0,WD-909930,SO-EME-486
+EMP10155,Stephen,Howard,Stephen Howard,1992-06-18,256-35-6404,2010-08-16,Chief Information Officer,Marketing,"San Antonio, TX",Active,Full-Time,66981.48,32.2026,CC-1006,M,,EMP10046,,1.0,WD-465254,SO-MAR-538
+EMP10021,Christopher,Cruz,Christopher Cruz,1982-02-20,926-93-9666,2018-09-20,Registered Nurse,Facilities Dept,"Fort Worth, TX",Active,Full-Time,"$77,000.00",37.0192,CC-1003,M,,EMP10006,,1.0,WD-838247,SO-FAC-823
+EMP10148,Brandon,Foster,Brandon Foster,1956-05-27,311-18-2653,2010-05-26,Director of Information Officer,Billing Dept,"Houston, TX",Active,Full-Time,174000,83.6538,CC-2002,F,Hispanic,EMP10013,,1.0,WD-107577,SO-BIL-781
+EMP10262,Carolyn,Bennett,Carolyn Bennett,1995-12-06,472-16-4652,2012-08-24,Radiology Technician,Facilities,"Austin, TX",Active,Full-Time,56000,26.9231,CC-2002,M,,EMP10048,,1.0,WD-930892,SO-FAC-109
+EMP10167,Anna,Young,Anna Young,1970-03-19,489-31-3274,2021-05-16,Finance Manager,Finance,"Austin, TX",Active,Full-Time,100000,48.0769,CC-1005,F,,EMP10030,,1.0,WD-514515,SO-FIN-109
+EMP10288,Shirley,Lopez,Shirley Lopez,1990-08-06,614-11-4913,2013-02-28,Marketing Coordinator,Pediatrics,"Austin, TX",Active,Full-Time,67000,32.2115,CC-1003,F,,EMP10002,,1.0,WD-264417,SO-PED-378
+EMP10042,Barbara,Ramos,Barbara Ramos,1976-10-14,813-48-2983,2007-04-15,Director of Nursing,Pharmacy,"Dallas, TX",Active,Full-Time,123000,59.1346,CC-1006,M,,EMP10031,,1.0,WD-368735,SO-PHA-463
+EMP10160,Carolyn,Wood,Carolyn Wood,1957-11-04,515-58-7179,2007-02-05,Facilities Manager,Radiology,"Houston, TX",Active,Full-Time,0,0,CC-2001,M,Hispanic,EMP10006,,1.0,WD-599439,SO-RAD-786
+EMP10206,Deborah,Collins,Deborah Collins,1962-08-14,197-74-3187,2018-01-10,Paralegal,Laboratory,"Dallas, TX",Terminated,Full-Time,55314.96,26.5937,CC-1003,F,,EMP10016,,1.0,WD-560282,SO-LAB-462
+EMP10251,Anthony,Ruiz,Anthony Ruiz,1955-11-01,530-94-2654,2026-02-01,Compliance Officer,Legal,"Austin, TX",Active,Part-Time,79000,37.9808,CC-1002,M,,EMP10050,,0.5,WD-440327,SO-LEG-185
+EMP10291,Mark,Gutierrez,Mark Gutierrez,1991-05-30,936-54-8976,2026-02-01,Senior Lab Technician,Nursing,"Austin, TX",Active,Full-Time,80000,38.4615,CC-1005,F,,EMP10011,,1.0,WD-209471,SO-NUR-179
+EMP10120,Brandon,Morgan,Brandon Morgan,1963-05-20,756-31-3526,2015-04-26,Oncologist,LEGAL,"Houston, TX",Active,Full-Time,473000,227.4038,CC-1001,M,,EMP10041,,1.0,WD-535047,SO-LEG-763
+EMP10007,Dorothy,Myers,Dorothy Myers,1978-07-28,698-64-7543,2021-10-03,Software Engineer,Oncology,"Austin, TX",Active,Full-Time,99000,47.5962,CC-1002,F,Non-Hispanic,,,1.0,WD-920910,SO-ONC-245
+EMP10243,B.,Nguyen,B. Nguyen,1963-10-04,231-43-3999,2026-02-01,Systems Administrator,Emergency,"San Antonio, TX",Leave,Full-Time,86000,41.3462,CC-1005,F,,EMP10023,,1.0,WD-557311,SO-EME-169
+EMP10025,Kelly,Martin,Kelly Martin,1976-03-28,919-32-7755,2008-08-24,Senior Registered Nurse,Administration,"Dallas, TX",Active,Full-Time,81000,38.9423,CC-1004,M,,EMP10050,,1.0,WD-648489,SO-ADM-846
+EMP10056,Brian,Evans,Brian Evans,1984-11-25,786-23-3634,2010-03-16,Accountant,Compliance,"Fort Worth, TX",Active,Full-Time,78000,37.5,CC-1001,F,,EMP10020,,1.0,WD-279683,SO-COM-639
+EMP10088,Sandra,Foster,Sandra Foster,1967-04-24,361-47-6375,2022-02-21,Emergency Technician,Compliance,"Dallas, TX",Active,Full-Time,40000,19.2308,,,Hispanic,EMP10042,,1.0,WD-249623,SO-COM-556
+EMP10043,Jessica,Parker,Jessica Parker,1987-06-30,948-68-3506,2026-02-01,Pharmacist,Security,"Fort Worth, TX",Active,Part-Time,153649.07,73.8697,CC-2002,F,,EMP10046,,0.5,WD-557019,SO-SEC-625
+EMP10150,Linda,Bailey,Linda Bailey,1970-09-17,795-64-9120,2019-01-16,Nurse Practitioner I,Laboratory,"Houston, TX",Active,Full-Time,118000,56.7308,CC-1005,F,,EMP10048,,1.0,WD-550314,SO-LAB-444
+EMP10223,Diane,Lewis,Diane Lewis,1969-08-04,175-14-5831,2026-02-01,Senior Registered Nurse,Finance,"Dallas, TX",Active,Full-Time,85000,40.8654,CC-2001,F,Non-Hispanic,EMP10004,,1.0,WD-133141,SO-FIN-264
+EMP10072,Gregory,King,Gregory King,1989-03-08,753-57-2775,2023-06-13,Chief Information Officer,Nursing,"Houston, TX",Active,Full-Time,"$101,000.00",48.5577,CC-1002,F,Non-Hispanic,EMP10019,,1.0,WD-875758,SO-NUR-656
+EMP10244,Kimberly,Howard,Kimberly Howard,1981-05-19,971-25-8709,2015-05-28,Nurse Practitioner,Compliance,"San Antonio, TX",Active,Full-Time,100000,48.0769,CC-2001,,,EMP10026,,1.0,WD-387465,SO-COM-813
+EMP10169,Kevin,Cruz,Kevin Cruz,1985-01-11,935-93-3230,2014-08-29,Accountant,Legal,"San Antonio, TX",Active,Full-Time,61000,29.3269,CC-2001,M,,EMP10047,,1.0,WD-837114,SO-LEG-135
+EMP11201,Julie,Parker,Julie Parker,1986-10-27,711-35-2274,2024-12-19,Administrative Assistant,Facilities,"Dallas, TX",Active,Full-Time,35000,16.8269,CC-1006,M,,,,1.0,WD-257817,SO-FAC-569
+EMP10028,Jessica,Kim,Jessica Kim,1993-12-26,846-50-8149,2012-10-02,Chief Information Officer,Cardiology,"Dallas, TX",Active,Full-Time,237000,113.9423,CC-1001,F,,EMP10033,,1.0,WD-643471,SO-CAR-577
+EMP10470,Diane,Diaz,Diane Diaz,1979-03-18,380-61-2338,2024-05-21,Pediatrician,Oncology,"Austin, TX",Active,Full-Time,191000,91.8269,CC-2002,F,Hispanic,,,1.0,WD-324505,SO-ONC-785
+EMP10277,Richard,Perez,Richard Perez,1955-08-29,167-36-4492,2026-02-01,Pharmacist,Surgery,"Dallas, TX",Active,Part-Time,117000,56.25,CC-1003,M,,EMP10045,,0.5,WD-950701,SO-SUR-866
+EMP10156,Samuel ,Patel,Samuel  Patel,1999-01-05,272-55-3773,2015-05-04,Cardiologist,Facilities,"Austin, TX",Active,Part-Time,489000,235.0962,CC-1001,,,EMP10004,,0.5,WD-250115,SO-FAC-990
+EMP10170,Frank,Brooks,Frank Brooks,1999-01-19,900-41-6339,2017-12-01,Administrative Assistant,Laboratory,"Houston, TX",Active,Full-Time,44000,21.1538,CC-1003,,,EMP10046,,1.0,WD-840842,SO-LAB-687
+EMP10032,Michelle,Lewis,Michelle Lewis,1972-11-12,125-15-5011,2008-04-22,Senior Lab Technician,Emergency Dept,"Austin, TX",Active,Full-Time,80000,38.4615,CC-1004,F,,EMP10025,,1.0,WD-125190,SO-EME-706
+EMP10138,Samuel,Cooper,Samuel Cooper,1999-04-24,971-74-8668,2008-01-05,Finance Manager,Cardiology,"Houston, TX",Active,Full-Time,93000,44.7115,CC-1005,F,,EMP10047,,1.0,WD-846176,SO-CAR-493
+EMP10034,Virginia,Ortiz-Martinez,Virginia Ortiz-Martinez,1983-06-20,553-88-9270,2021-12-10,Pharmacist,Pediatrics,"Austin, TX",Active,Full-Time,139000,66.8269,CC-1005,,,EMP10040,,1.0,WD-755725,SO-PED-557
+EMP10214,Amy,Cooper,Amy Cooper,1998-06-25,679-74-6269,2012-09-19,Administrative Assistant,Pediatrics,"Houston, TX",Active,Full-Time,4400.0,2.1154,CC-1005,M,,EMP10033,,1.0,WD-153379,SO-PED-532
+EMP10190,Steven,Hernandez,Steven Hernandez,1988-05-11,764-31-1848,2018-11-27,Executive Assistant,IT,"San Antonio, TX",Active,Full-Time,70000,33.6538,CC-1002,M,,EMP10030,,1.0,WD-670873,SO-IT-275
+EMP10027,Matthew,Phillips,Matthew Phillips,1984-06-13,985-18-5573,2026-02-01,Help Desk Technician,Laboratory,"Houston, TX",Terminated,Full-Time,57000,27.4038,CC-1005,F,Hispanic,EMP10016,2012-06-18,1.0,WD-781605,SO-LAB-153
+EMP10063,Brenda,Collins,Brenda Collins,1957-05-17,247-62-3529,2022-03-16,Radiologist,Finance,"Houston, TX",Active,Full-Time,323000,155.2885,CC-1002,M,Non-Hispanic,EMP10034,,1.0,WD-329212,SO-FIN-413
+EMP10233,Frank,Walker,Frank Walker,1959-06-04,586-44-7102,2021-09-23,Registered Nurse,IT,"Fort Worth, TX",Active,Full-Time,86000,41.3462,CC-1002,F,,EMP10019,,1.0,WD-342669,SO-IT-327
+EMP10087,Brian,Parker,Brian Parker,1964-12-12,794-96-8972,2011-05-10,Compliance Officer,IT,"Houston, TX",Active,Contract,92000,44.2308,CC-1001,M,,EMP10019,,0.0,WD-703027,SO-IT-417
+EMP10282,Patrick,Hall,Patrick Hall,1973-12-30,761-75-3333,2014-04-04,Oncologist,Human Resources,"Fort Worth, TX",Active,Full-Time,34800.0,16.7308,CC-1001,,,EMP10041,,1.0,WD-254021,SO-HUM-474
+EMP10215,Melissa,Foster,Melissa Foster,1975-11-19,202-41-4951,2008-07-31,Finance Manager,Radiology,"San Antonio, TX",Active,Contract,115000,55.2885,CC-2001,M,,EMP10011,,0.0,WD-992104,SO-RAD-884
+EMP10095,Nicholas,Martin,Nicholas Martin,1960-07-20,205-53-2381,2015-02-08,Billing Specialist,Radiology,"San Antonio, TX",Active,Contract,41000,19.7115,CC-1003,M,,EMP10018,,0.0,WD-617459,SO-RAD-521
+EMP10208,Jonathan,Rivera,Jonathan Rivera,1973-08-17,415-69-5341,2015-02-20,Emergency Technician,Pediatrics,"Fort Worth, TX",Active,Full-Time,43000,20.6731,CC-1001,F,,EMP10009,,1.0,WD-765506,SO-PED-181
+EMP10071,Joseph,Reyes,Joseph Reyes,1961-10-03,872-38-7511,2009-02-27,Facilities Manager,Emergency,"Dallas, TX",Active,Full-Time,67000,32.2115,CC-2002,M,Non-Hispanic,EMP10047,,1.0,WD-881410,SO-EME-935
+EMP10228,Dennis,Hughes,Dennis Hughes,1963-09-04,784-54-9871,2006-12-04,Office Manager,Marketing,"San Antonio, TX",Terminated,Full-Time,36890.04,17.7356,CC-2001,,Non-Hispanic,EMP10030,,1.0,WD-636073,SO-MAR-291
+EMP10028,Jessica,Kim,Jessica Kim,1993-12-26,846-50-8149,2012-10-02,Chief Information Officer,Cardiology,"Dallas, TX",Active,Full-Time,237000,113.9423,CC-1001,F,,EMP10033,,1.0,WD-643471,SO-CAR-577
+EMP10210,Karen,Thomas,Karen Thomas,1956-01-27,950-38-3141,2006-05-22,Surgeon,Laboratory,"Houston, TX",Active,Part-Time,566000,272.1154,CC-1002,,Hispanic,EMP10016,,0.5,WD-621986,SO-LAB-627
+EMP10105,Joshua,Thomas,Joshua Thomas,1959-04-14,529-91-8489,2026-02-01,Radiologist,COMPLIANCE,"Houston, TX",Active,Full-Time,185247.35,89.0612,,M,,EMP10000,,1.0,WD-115267,SO-COM-445
+10209,Susan,Alvarez,Susan Alvarez,1977-04-08,505-75-1802,2012-12-24,Accountant,Pediatrics,"Houston, TX",Terminated,Full-Time,"$59,000.00",28.3654,CC-1004,M,,10006,2018-06-06,1.0,WD-681078,SO-PED-604
+EMP10292,Christopher,Campbell,Christopher Campbell,,335-63-6410,2019-10-30,Emergency Technician,Compliance,"Austin, TX",Active,Full-Time,56000,26.9231,CC-2001,M,,EMP10002,,1.0,WD-322203,SO-COM-711
+10230,Thomas,Garcia,Thomas Garcia,1992-12-25,799-65-4308,2006-10-04,Paralegal,Legal,"Fort Worth, TX",Active,Full-Time,55000,26.4423,CC-1002,M,,10035,,1.0,WD-960471,SO-LEG-539
+EMP10094,Deborah,Torres,Deborah Torres,1961-11-19,984-21-9307,2019-06-18,Administrative Assistant,Marketing,"Houston, TX",Active,Full-Time,50000,24.0385,CC-1004,M,Hispanic,EMP10030,,1.0,WD-758592,SO-MAR-650
+EMP10180,Scott,Moore,Scott Moore,1989-06-04,290-72-9804,2014-06-28,Pediatrician,Pediatrics,"Austin, TX",Active,Full-Time,253000,121.6346,CC-2002,,,EMP10022,,1.0,WD-515912,SO-PED-600
+EMP10171,Kathleen,Price,Kathleen Price,1973-10-22,916-47-2133,2014-11-01,Office Manager,Compliance,"Austin, TX",Active,Full-Time,0,0,,F,,EMP10004,,1.0,WD-949566,SO-COM-441
+10276,Timothy,Anderson,Timothy Anderson,1989-08-14,653-46-1404,2010-10-04,Compliance Officer,Pharmacy,"Austin, TX",Active,Full-Time,0,0,CC-1004,M,Hispanic,10005,,1.0,WD-662259,SO-PHA-941
+EMP10440,Amanda,Edwards,Amanda Edwards,1966-10-09,829-97-7350,2024-06-10,Software Engineer,Physical Therapy,"Dallas, TX",Active,Full-Time,126000,60.5769,CC-1004,,Hispanic,,,1.0,WD-178641,SO-PHY-256
+EMP10084,Anna,Foster,Anna Foster,1958-05-10,773-98-5381,2018-08-29,Senior Registered Nurse,Finance,"Fort Worth, TX",Active,Full-Time,81000,38.9423,,F,Hispanic,EMP10042,,1.0,WD-160244,SO-FIN-477
+EMP10014,Patrick,Kelly,Patrick Kelly,1997-05-28,903-70-7669,2008-06-14,Lab Technician,Cardiology,"Dallas, TX",Active,Full-Time,375000,180.2885,CC-1001,M,,EMP10025,,1.0,WD-240221,SO-CAR-761
+EMP10008,Christopher,Mendoza,Christopher Mendoza,,165-59-7252,2018-05-18,Chief Information Officer,Security,"Fort Worth, TX",Terminated,Full-Time,231000,111.0577,CC-1001,M,Non-Hispanic,,2022-05-21,1.0,WD-682119,SO-SEC-562
+EMP10033,Dorothy,Jackson,Dorothy Jackson,,981-23-7965,2021-11-04,HR Manager,Security,"Austin, TX",Active,Full-Time,82000,39.4231,CC-1002,F,,EMP10029,,1.0,WD-457356,SO-SEC-952
+EMP10293,Thomas,Kelly-Peterson,Thomas Kelly-Peterson,,744-75-1642,2006-06-01,Director of Nursing,Radiology,"Austin, TX",Active,Full-Time,130000,62.5,CC-2001,,Hispanic,EMP10040,,1.0,WD-697817,SO-RAD-678
+EMP10003,Timothy,Hernandez,Timothy Hernandez,1981-04-20,743-89-6925,2023-08-09,Director of Nursing,Emergency,"Houston, TX",Active,Full-Time,133000,63.9423,,F,,,,1.0,WD-351262,SO-EME-870
+EMP10132,Anna,Adams,Anna Adams,1997-12-01,485-50-3837,2014-10-15,Lab Technician,Administration,"Houston, TX",Active,Full-Time,62000,29.8077,CC-1005,,,EMP10012,,1.0,WD-878246,SO-ADM-482
+EMP10221,Charles,Nelson,Charles Nelson,1961-12-24,455-50-3750,2010-05-04,Paralegal,Emergency,"Houston, TX",Active,Full-Time,79000,37.9808,CC-1004,M,,EMP10016,,1.0,WD-559876,SO-EME-772
+10166,Laura,Edwards,Laura Edwards,2000-12-21,205-13-2468,2014-02-25,Help Desk Technician,Emergency,"Houston, TX",Active,Full-Time,58000,27.8846,CC-2001,F,,10046,,1.0,WD-435169,SO-EME-889
+EMP10144,Linda,Collins,Linda Collins,1966-11-02,525-68-1945,2016-07-06,Facilities Manager,IT,"Houston, TX",Active,Full-Time,70000,33.6538,CC-1004,,,EMP10002,,1.0,WD-838246,SO-IT-237
+EMP10146,Timothy,Carter,Timothy Carter,1962-03-14,777-79-3178,2026-02-01,Help Desk Technician,Pediatrics,"Dallas, TX",Active,Full-Time,44000,21.1538,CC-1004,M,,EMP10019,,1.0,WD-767349,SO-PED-270
+EMP10154,Melissa,Flores,Melissa Flores,1978-06-19,625-73-8635,2013-01-25,Emergency Physician,Administration,"San Antonio, TX",Active,Full-Time,0,0,,F,,EMP10016,,1.0,WD-769068,SO-ADM-932
+EMP10269,Timothy,Jackson,Timothy Jackson,1959-10-05,157-35-5374,2020-01-13,Oncologist,Finance,"Austin, TX",Leave,Full-Time,375000,180.2885,CC-1005,F,Hispanic,EMP10002,,1.0,WD-799686,SO-FIN-803
+EMP10760,Sarah,Hughes,Sarah Hughes,1999-10-12,948-79-7977,2024-11-15,Office Manager,Pharmacy,"Austin, TX",Active,Full-Time,58000,27.8846,CC-1002,F,,,,1.0,WD-549192,SO-PHA-482
+EMP10200,Jason,Wright,Jason Wright,1960-09-23,829-83-2262,2010-11-25,Physical Therapist,Security,"Houston, TX",Active,Full-Time,80000,38.4615,CC-1003,M,,EMP10016,,1.0,WD-202704,SO-SEC-486
+EMP10004,Timothy,Scott,Timothy Scott,1995-09-05,954-56-3664,2019-04-05,Software Engineer,Surgery,"Fort Worth, TX",Active,Full-Time,10800,5.1923,CC-1002,,Non-Hispanic,,,1.0,WD-163577,SO-SUR-425
+EMP10211,Barbara,Williams,Barbara Williams,1960-10-13,761-66-3110,2009-06-08,Radiology Technician,Cardiology,"Houston, TX",Terminated,Full-Time,61000,29.3269,,F,,EMP10001,2012-07-30,1.0,WD-299422,SO-CAR-951
+EMP10220,Frank,Nguyen,Frank Nguyen,1966-06-04,846-10-7415,2008-12-26,Director of Nursing,Pediatrics,"Houston, TX",Active,Contract,122000,58.6538,CC-1004,,,EMP10031,,0.0,WD-514563,SO-PED-483
+EMP10247,James,Jones,James Jones,1972-11-21,482-11-6279,2021-05-22,Compliance Officer,Nursing,"Houston, TX",Active,Full-Time,76000,36.5385,CC-1006,M,,EMP10006,,1.0,WD-267775,SO-NUR-685
+EMP10188,Angela,Wright,Angela Wright,1983-12-19,390-53-9967,2023-07-31,Director of Nursing,Marketing,"Austin, TX",Active,Part-Time,129000,62.0192,CC-1001,M,,EMP10040,,0.5,WD-728204,SO-MAR-811
+EMP10069,Mark,Brooks,Mark Brooks,1972-01-22,356-96-3240,2018-12-05,Paralegal,Radiology Dept,"Fort Worth, TX",Active,Full-Time,53000,25.4808,CC-1006,F,,EMP10018,,1.0,WD-408824,SO-RAD-962
+EMP10250,Steven,Fost,Steven Fost,1959-05-12,149-94-2771,2018-04-28,Senior Registered Nurse,Cardiology,"Dallas, TX",Terminated,Full-Time,77000,37.0192,CC-1005,F,Non-Hispanic,EMP10009,,1.0,WD-361103,SO-CAR-943
+EMP10108,Benjamin,White,Benjamin White,1967-02-05,833-68-1605,2006-06-01,Charge Nurse,Radiology,"San Antonio, TX",Active,Full-Time,67000,32.2115,CC-1005,,,EMP10034,,1.0,WD-689356,SO-RAD-741
+EMP10062,Ashley,Jimenez-Adams,Ashley Jimenez-Adams,1991-11-08,425-70-7246,2005-12-24,Administrative Assistant,Compliance,"Houston, TX",Active,Contract,40000,19.2308,CC-1006,M,,EMP10006,,0.0,WD-618827,SO-COM-585
+EMP10204,Deborah,Ramos,Deborah Ramos,1999-04-06,894-35-9954,2022-05-01,HR Analyst,Nursing,"Dallas, TX",Active,Full-Time,55000,26.4423,CC-1001,M,,EMP10048,,1.0,WD-723501,SO-NUR-970
+EMP10294,Robert,Castillo,Robert Castillo,1980-06-06,321-67-8723,2006-12-04,Senior Lab Technician,HUMAN RESOURCES,"Dallas, TX",Active,Full-Time,66000,31.7308,CC-1003,,Non-Hispanic,EMP10032,,1.0,WD-423595,SO-HUM-108
+EMP10242,Stephanie,Patel,Stephanie Patel,1958-03-03,825-83-4111,2018-01-29,Security Guard,HUMAN RESOURCES,"Austin, TX",Active,Full-Time,89000,42.7885,CC-1005,F,Non-Hispanic,EMP10035,,1.0,WD-677236,SO-HUM-828
+EMP10123,Rebecca,Taylor,Rebecca Taylor,1988-03-29,675-23-6228,2016-07-21,HR Analyst,Cardiology,"Fort Worth, TX",Active,Full-Time,65000,31.25,CC-1001,M,,EMP10039,,1.0,WD-301814,SO-CAR-153
+EMP10117,Stephen,Kelly,Stephen Kelly,1988-02-05,922-80-3126,2015-06-26,Marketing Coordinator,Emergency,"Fort Worth, TX",Active,Full-Time,48000,23.0769,CC-2002,,,EMP10049,,1.0,WD-230082,SO-EME-416
+EMP10224,Stephen,Lopez,Stephen Lopez,1985-04-26,728-71-1507,2018-04-29,Pharmacist,Legal,"Dallas, TX",Active,Full-Time,121000,58.1731,CC-1004,F,,EMP10044,,1.0,WD-612824,SO-LEG-663
+EMP10157,Virginia,Miller,Virginia Miller,1955-07-29,240-90-4791,2014-04-02,Radiologist,Nursing,"San Antonio, TX",Active,Full-Time,240000,115.3846,CC-2002,F,,EMP10000,,1.0,WD-935527,SO-NUR-189
+EMP10017,Kimberly,Collins,Kimberly Collins,1980-08-04,813-81-8973,2014-06-28,Cardiac Technician,IT,"San Antonio, TX",Terminated,Full-Time,61000,29.3269,CC-1001,M,,EMP10003,2018-10-06,1.0,WD-470141,SO-IT-932
+EMP10568,Kimberly,White,Kimberly White,1959-10-28,303-54-7866,2024-02-14,Systems Administrator,IT,"San Antonio, TX",Active,Full-Time,90000,43.2692,CC-2002,,Non-Hispanic,,,1.0,WD-921934,SO-IT-264
+EMP10267,Edward,Cox,Edward Cox,2000-12-16,963-99-9975,2026-02-01,IT Manager,Surgery,"San Antonio, TX",Active,Full-Time,126000,60.5769,CC-1006,F,Non-Hispanic,EMP10041,,1.0,WD-395503,SO-SUR-465
+EMP10237,Jacob,Ramos,Jacob Ramos,1986-05-18,267-43-2480,2012-09-21,Financial Analyst,Laboratory,"Houston, TX",Active,Full-Time,61000,29.3269,CC-1004,F,Non-Hispanic,EMP10014,,1.0,WD-816137,SO-LAB-665
