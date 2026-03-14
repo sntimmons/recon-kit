@@ -4,9 +4,9 @@
 Writes to:  test_packs/international_names/old.csv
             test_packs/international_names/new.csv
 
-Row layout (20 rows, all drawn from wd00001–wd00020)
+Row layout (20 rows, all drawn from wd00001-wd00020)
 ======================================================
-GROUP A — worker_id KEPT in NEW, name mutated (→ Tier 1 expected, 5 rows)
+GROUP A - worker_id KEPT in NEW, name mutated (→ Tier 1 expected, 5 rows)
 --------------------------------------------------------------------------
 Mutation intent: worker_id guarantees a Tier 1 hit despite name variance.
 Verifies the system is not confused by name differences when ID is intact.
@@ -22,7 +22,7 @@ Verifies the system is not confused by name differences when ID is intact.
   wd00010  Paul Diaz         → NEW last_name  "Díaz"              (add accent)
              norm: "paul diaz" → "paul d az"
 
-GROUP B — worker_id BLANKED in NEW, name mutated (→ Tier 2 expected, 5 rows)
+GROUP B - worker_id BLANKED in NEW, name mutated (→ Tier 2 expected, 5 rows)
 ------------------------------------------------------------------------------
 Mutation intent: without worker_id the system must recover via last4+dob.
 Demonstrates accented / altered names do NOT block Tier 2.
@@ -36,7 +36,7 @@ Demonstrates accented / altered names do NOT block Tier 2.
   wd00015  David Curtis      → NEW last_name "O'Curtis",         worker_id=""
              norm: "david curtis" → "david o'curtis"
 
-TRAP 1 — same full_name_norm, different DOB/last4 (→ Tier 2, no collision, 2 rows)
+TRAP 1 - same full_name_norm, different DOB/last4 (→ Tier 2, no collision, 2 rows)
 ------------------------------------------------------------------------------------
 Purpose: two distinct people both renamed to "Ana Martinez" in old+new.
          Their identity keys (last4+dob) differ, so Tier 2 matches each
@@ -46,7 +46,7 @@ Purpose: two distinct people both renamed to "Ana Martinez" in old+new.
   wd00013  Lee Patel         → "Ana Martinez", last4=3405, dob=2001-09-22, worker_id=""
   Expected: tier2_last4_dob += 2.  No unsafe cross-match.
 
-TRAP 2 — name+DOB match, last4 DIFFERS (→ Tier 4 fallback, NOT Tier 2, 1 row)
+TRAP 2 - name+DOB match, last4 DIFFERS (→ Tier 4 fallback, NOT Tier 2, 1 row)
 -------------------------------------------------------------------------------
 Purpose: verify system does not blindly fall into Tier 2 when last4 changes.
          Name+dob are unique enough for Tier 4 to recover the match.
@@ -56,9 +56,9 @@ Purpose: verify system does not blindly fall into Tier 2 when last4 changes.
   Fallback key OLD+NEW: "ian sanders|1969-03-15|"  (unique in both sides)
   Expected: tier4_fallback += 1.
 
-TRAP 3 — last4+DOB match, name clearly different (→ Tier 2 match, name gap documented)
+TRAP 3 - last4+DOB match, name clearly different (→ Tier 2 match, name gap documented)
 ----------------------------------------------------------------------------------------
-Purpose: document the known gap — Tier 2 auto-matches on identity keys alone
+Purpose: document the known gap - Tier 2 auto-matches on identity keys alone
          with no name-similarity gate. The suspicious pair must be flagged in
          the `suspicious_matches.csv` output even though the system accepts it.
 
@@ -67,7 +67,7 @@ Purpose: document the known gap — Tier 2 auto-matches on identity keys alone
   Tier 2 key matches → auto-matched. Name similarity ≈ 0.47 (flagged as suspicious; threshold=0.60).
   Expected: tier2_last4_dob += 1,  suspicious_match_count == 1.
 
-CLEAN — no mutations (→ Tier 1, 6 rows)
+CLEAN - no mutations (→ Tier 1, 6 rows)
 -----------------------------------------
   wd00003, wd00006, wd00007, wd00009, wd00016, wd00017
 
@@ -79,7 +79,7 @@ EXPECTED SCORECARD
   tier4_fallback           :  1  (Trap 2)
   resolved_pairs           : 20  (all 20 matched, 0 conflicts)
   q0_dup_old / q0_dup_new  :  0 / 0
-  suspicious_match_count   :  1  (Trap 3 — name discrepancy flagged)
+  suspicious_match_count   :  1  (Trap 3 - name discrepancy flagged)
 """
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ RAW_COLS = [
     "district", "last4_ssn", "address", "worker_id",
 ]
 
-# Worker IDs used by this pack (all wd00001–wd00020)
+# Worker IDs used by this pack (all wd00001-wd00020)
 _GROUP_A   = {"wd00014", "wd00008", "wd00002", "wd00012", "wd00010"}
 _GROUP_B   = {"wd00005", "wd00019", "wd00001", "wd00004", "wd00015"}
 _TRAP_1    = {"wd00011", "wd00013"}

@@ -125,7 +125,7 @@ def _resolve_tier_a_duplicates(pairs: pd.DataFrame) -> tuple[pd.DataFrame, int, 
         wdx_rows = group[wdx_mask]
 
         if len(wdx_rows) == 1:
-            # Exactly one wdX candidate — keep it, drop the rest
+            # Exactly one wdX candidate - keep it, drop the rest
             keep_idx = wdx_rows.index[0]
             drop_idx = group.index[group.index != keep_idx].tolist()
             drop_indices.extend(drop_idx)
@@ -137,7 +137,7 @@ def _resolve_tier_a_duplicates(pairs: pd.DataFrame) -> tuple[pd.DataFrame, int, 
                 (existing + "|" if existing else "") + "auto_preferred_wdX_id"
             )
         elif len(wdx_rows) > 1:
-            # Multiple wdX candidates — keep all, annotate
+            # Multiple wdX candidates - keep all, annotate
             for idx in group.index:
                 existing = pairs.at[idx, "notes"]
                 pairs.at[idx, "notes"] = (
@@ -171,7 +171,7 @@ def build_review_candidates(
         df.loc[mask, "_key_a"] = df.loc[mask, "full_name_norm"] + "|" + df.loc[mask, "dob"]
 
         # Tier B: full_name_norm + birth_year + last_name_prefix3
-        # (location_state excluded — blank in source data)
+        # (location_state excluded - blank in source data)
         df["_key_b"] = ""
         mask2 = (
             (df["full_name_norm"] != "") &
@@ -187,13 +187,13 @@ def build_review_candidates(
     used_old: set = set()
     used_new: set = set()
 
-    # Tier A — HIGH confidence: name + dob exact match
+    # Tier A - HIGH confidence: name + dob exact match
     pairs_a = _build_pairs(old, new, "_key_a", "HIGH", 2, "1.0", used_old, used_new)
 
     # Apply wdX duplicate resolution to Tier A before consuming indices
     pairs_a, dup_groups_found, dup_groups_resolved, rows_removed = _resolve_tier_a_duplicates(pairs_a)
 
-    # Track which rows were consumed by Tier A (unique pairs only — 1:1 after merge)
+    # Track which rows were consumed by Tier A (unique pairs only - 1:1 after merge)
     if not pairs_a.empty:
         a_shared = set(old["_key_a"].unique()) & set(new["_key_a"].unique()) - {""}
         a_old_counts = old["_key_a"].value_counts()
@@ -202,7 +202,7 @@ def build_review_candidates(
         used_old.update(old[old["_key_a"].isin(unique_a_keys)].index)
         used_new.update(new[new["_key_a"].isin(unique_a_keys)].index)
 
-    # Tier B — MED confidence: name + birth_year + lname3 (excludes Tier A matches)
+    # Tier B - MED confidence: name + birth_year + lname3 (excludes Tier A matches)
     pairs_b = _build_pairs(old, new, "_key_b", "MED", 1, "", used_old, used_new)
 
     all_pairs = pd.concat([pairs_a, pairs_b], ignore_index=True)

@@ -1,5 +1,5 @@
 """
-root_cause_hire_date.py — Explain the hire_date default pattern.
+root_cause_hire_date.py - Explain the hire_date default pattern.
 
 Reads audit/audit.db and config/policy.yaml to identify pairs where one or
 both hire dates match a suspicious default-date pattern (2026-02-*, 2026-03-*,

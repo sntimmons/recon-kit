@@ -1,17 +1,17 @@
 """
-generate_corrections.py — Workday-ready Correction File Generator.
+generate_corrections.py - Workday-ready Correction File Generator.
 
 Reads matched_pairs from audit/audit.db, applies the gating engine per fix_type,
 and writes APPROVE-only correction CSVs to audit/corrections/out/.
 
 Output files
 ------------
-  corrections_salary.csv    — APPROVE salary changes
-  corrections_status.csv    — APPROVE status changes
-  corrections_hire_date.csv — APPROVE hire-date changes
-  corrections_job_org.csv   — APPROVE position/district/location changes
-  review_needed.csv         — rows where ANY fix_type is REVIEW
-  corrections_manifest.csv  — one row per correction generated (all fix types)
+  corrections_salary.csv    - APPROVE salary changes
+  corrections_status.csv    - APPROVE status changes
+  corrections_hire_date.csv - APPROVE hire-date changes
+  corrections_job_org.csv   - APPROVE position/district/location changes
+  review_needed.csv         - rows where ANY fix_type is REVIEW
+  corrections_manifest.csv  - one row per correction generated (all fix types)
 
 Run:
     venv/Scripts/python.exe audit/corrections/generate_corrections.py [--dry-run] [--out-dir PATH]
@@ -42,12 +42,19 @@ from gating import (
     payrate_delta,
     build_summary_str,
     _parse_confidence,
+    _parse_num,
     _norm,
 )
+from sanity_checks import detect_wave_dates
 
+import os as _os_rk
 ROOT    = _HERE.parents[1]          # repo root
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_DIR = _HERE / "out"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, use the
+# per-run DB.  The --db / --out-dir CLI args take precedence over this.
+_rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+DB_PATH  = (_rk_work / "audit" / "audit.db")            if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_DIR  = (_rk_work / "audit" / "corrections" / "out") if _rk_work else (_HERE / "out")
 
 TODAY = date.today().isoformat()    # YYYY-MM-DD, determined once at import time
 
@@ -95,9 +102,15 @@ _MANIFEST_COLS = [
     "fix_types", "action", "confidence", "summary", "output_file",
 ]
 
+# Rows held back from corrections (overall REVIEW/REJECT_MATCH or Active/$0 salary)
+_HELD_COLS = [
+    "worker_id", "pair_id", "match_source", "fix_types",
+    "overall_action", "hold_reason", "confidence", "summary",
+]
+
 
 # ---------------------------------------------------------------------------
-# Row builders — one per correction type
+# Row builders - one per correction type
 # ---------------------------------------------------------------------------
 
 def _conf_str(row: dict) -> str:
@@ -189,6 +202,20 @@ def _build_review_row(row: dict, result: dict, summary: str) -> dict:
     }
 
 
+def _build_held_row(row: dict, result: dict, hold_reason: str, summary: str) -> dict:
+    """One row per pair held back from corrections due to REVIEW/REJECT_MATCH or Active/$0."""
+    return {
+        "worker_id":      row.get("new_worker_id", ""),
+        "pair_id":        row.get("pair_id", ""),
+        "match_source":   row.get("match_source", ""),
+        "fix_types":      "|".join(result.get("fix_types", [])),
+        "overall_action": result.get("action", ""),
+        "hold_reason":    hold_reason,
+        "confidence":     _conf_str(row),
+        "summary":        summary,
+    }
+
+
 def _build_manifest_row(
     correction_type: str,
     row: dict,
@@ -263,6 +290,7 @@ def _print_dry_run_report(
     job_org_rows: list[dict],
     review_rows: list[dict],
     manifest_rows: list[dict],
+    held_rows: list[dict],
     only_approved: bool,
     include_review_needed: bool,
 ) -> None:
@@ -275,6 +303,7 @@ def _print_dry_run_report(
     print(f"  include_review_needed  : {include_review_needed}")
     print(f"  matched_pairs total    : {total_in:>8,}")
     print(f"  rows with mismatches   : {mismatch_count:>8,}")
+    print(f"  held (not corrected)   : {len(held_rows):>8,}")
     print()
     print("  Would write:")
     print(f"    corrections_salary.csv     : {len(salary_rows):>8,} rows")
@@ -283,9 +312,17 @@ def _print_dry_run_report(
     print(f"    corrections_job_org.csv    : {len(job_org_rows):>8,} rows")
     rn_str = f"{len(review_rows):>8,}" if include_review_needed else "    SKIP"
     print(f"    review_needed.csv          : {rn_str} rows")
+    print(f"    held_corrections.csv       : {len(held_rows):>8,} rows")
     print(f"    corrections_manifest.csv   : {len(manifest_rows):>8,} rows")
     total_corr = len(salary_rows) + len(status_rows) + len(hire_date_rows) + len(job_org_rows)
-    print(f"    (manifest = {total_corr:,} rows; review_needed is NOT in manifest)")
+    print(f"    (manifest = {total_corr:,} rows; review_needed/held are NOT in manifest)")
+
+    if held_rows:
+        print()
+        print("  held_corrections breakdown by hold_reason:")
+        hold_counts = Counter(r["hold_reason"] for r in held_rows)
+        for reason, cnt in sorted(hold_counts.items(), key=lambda x: -x[1]):
+            print(f"    {reason:<40} : {cnt:>6,}")
 
     if review_rows:
         print()
@@ -391,34 +428,74 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  include_review_needed  : {include_review_needed}")
         print(f"  output dir             : {out_dir_display}")
 
+    # Pre-materialise rows so detect_wave_dates can scan the full dataset once.
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    if wave_dates:
+        print(f"  wave dates detected    : {sorted(wave_dates)}")
+
     # Accumulators
     salary_rows:    list[dict] = []
     status_rows:    list[dict] = []
     hire_date_rows: list[dict] = []
     job_org_rows:   list[dict] = []
     review_rows:    list[dict] = []
+    held_rows:      list[dict] = []
     manifest_rows:  list[dict] = []
 
     review_pair_ids: set[str] = set()
     mismatch_count = 0
 
-    for r in mp.to_dict(orient="records"):
-        result    = classify_all(r)
-        fix_types = result["fix_types"]
+    for r in all_rows:
+        result         = classify_all(r, wave_dates=wave_dates)
+        fix_types      = result["fix_types"]
+        overall_action = result["action"]
 
-        if not fix_types:
+        if not fix_types and overall_action == "APPROVE":
             continue
 
         mismatch_count += 1
-        summary        = build_summary_str(r, fix_types)
-        has_any_review = any(v["action"] == "REVIEW" for v in result["per_fix"].values())
+        summary = build_summary_str(r, fix_types)
 
-        # Route fix_types to correction files
+        # -----------------------------------------------------------------------
+        # Fix 2: APPROVE gate - hold all corrections for REVIEW or REJECT_MATCH
+        # pairs.  A pair with overall_action=REVIEW means at least one field
+        # change needs human sign-off; we must not stage any corrections until
+        # the reviewer approves.  REJECT_MATCH pairs should never be corrected.
+        # -----------------------------------------------------------------------
+        if overall_action in ("REVIEW", "REJECT_MATCH"):
+            held_rows.append(
+                _build_held_row(r, result, f"overall_{overall_action}", summary)
+            )
+            # Still populate review_needed so reviewers can find REVIEW pairs.
+            if overall_action == "REVIEW":
+                pair_id = str(r.get("pair_id", ""))
+                if pair_id not in review_pair_ids:
+                    review_pair_ids.add(pair_id)
+                    review_rows.append(_build_review_row(r, result, summary))
+            continue   # <-- no correction rows for this pair
+
+        # From here: overall_action == "APPROVE" - route per fix_type.
         for ft, gate in result["per_fix"].items():
             if only_approved and gate["action"] != "APPROVE":
                 continue
 
             if ft == "salary":
+                # ---------------------------------------------------------------
+                # Fix 1: CRITICAL - never stage a salary correction that would
+                # write $0 (or blank) onto an Active worker.  Such a record
+                # indicates a mapping failure or data artefact.
+                # ---------------------------------------------------------------
+                new_sal    = _parse_num(r.get("new_salary"))
+                new_status = _norm(r.get("new_worker_status", ""))
+                _null_or_active  = new_status in ("active", "")
+                _zero_or_null_sal = (new_sal is None or new_sal == 0.0)
+                if _null_or_active and _zero_or_null_sal:
+                    held_rows.append(
+                        _build_held_row(r, result, "active_zero_salary_blocked", summary)
+                    )
+                    continue   # skip this fix_type only; other fix_types may still proceed
+
                 salary_rows.append(_build_salary_row(r, summary))
                 manifest_rows.append(_build_manifest_row(
                     "salary", r, fix_types, gate["action"], summary, "corrections_salary.csv"
@@ -442,13 +519,6 @@ def main(argv: list[str] | None = None) -> None:
                     "job_org", r, fix_types, gate["action"], summary, "corrections_job_org.csv"
                 ))
 
-        # Route to review_needed if any fix_type is REVIEW (one row per pair)
-        if has_any_review:
-            pair_id = str(r.get("pair_id", ""))
-            if pair_id not in review_pair_ids:
-                review_pair_ids.add(pair_id)
-                review_rows.append(_build_review_row(r, result, summary))
-
     # -----------------------------------------------------------------------
     # Output: dry-run report OR write files
     # -----------------------------------------------------------------------
@@ -457,7 +527,7 @@ def main(argv: list[str] | None = None) -> None:
             total_in, mismatch_count,
             salary_rows, status_rows, hire_date_rows,
             job_org_rows, review_rows, manifest_rows,
-            only_approved, include_review_needed,
+            held_rows, only_approved, include_review_needed,
         )
         return
 
@@ -468,6 +538,7 @@ def main(argv: list[str] | None = None) -> None:
     _write(job_org_rows,   _JOB_ORG_COLS,  out_dir / "corrections_job_org.csv")
     if include_review_needed:
         _write(review_rows, _REVIEW_COLS,   out_dir / "review_needed.csv")
+    _write(held_rows,      _HELD_COLS,      out_dir / "held_corrections.csv")
     _write(manifest_rows,  _MANIFEST_COLS,  out_dir / "corrections_manifest.csv")
 
     total_corrections = (
@@ -481,6 +552,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"    job_org   : {len(job_org_rows):,}")
     if include_review_needed:
         print(f"  review_needed         : {len(review_rows):,}")
+    print(f"  held (not corrected)  : {len(held_rows):,}")
     print(f"  manifest rows         : {len(manifest_rows):,}")
 
 

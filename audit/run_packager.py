@@ -17,7 +17,7 @@ ARCHIVE_DIR = AUDIT_DIR / "audit_archive"
 
 RETENTION_COUNT = 20
 
-# Static source files (always hashed). Finalized source is dynamic — added at runtime.
+# Static source files (always hashed). Finalized source is dynamic - added at runtime.
 _SOURCE_FILES = [
     PROJECT_ROOT / "outputs" / "matched_raw.csv",
 ]
@@ -110,7 +110,7 @@ def _apply_retention(current_run_dir: Path) -> None:
         folder_bytes = _folder_size_bytes(folder)
         zip_base = str(ARCHIVE_DIR / folder.name)
 
-        # Create zip first — only delete original on success
+        # Create zip first - only delete original on success
         shutil.make_archive(zip_base, "zip", RUNS_DIR, folder.name)
         zip_path = Path(zip_base + ".zip")
 
@@ -257,7 +257,7 @@ def package_run(
             entry["missing"] = True
         source_files.append(entry)
 
-    # Add the actual finalized source (dynamic — selected by _pick_finalized_csv)
+    # Add the actual finalized source (dynamic - selected by _pick_finalized_csv)
     if finalized_csv_path is not None:
         fin_entry: dict = {
             "filename": finalized_csv_path.name,

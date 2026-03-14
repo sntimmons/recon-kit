@@ -1,4 +1,4 @@
-# UI Contract — ui_pairs.csv v1
+# UI Contract - ui_pairs.csv v1
 
 ## Overview
 
@@ -8,11 +8,11 @@
 
 ---
 
-## Required Columns (Stable — never reordered or removed in v1)
+## Required Columns (Stable - never reordered or removed in v1)
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `ui_contract_version` | string | Always `"v1"` — use to detect schema changes |
+| `ui_contract_version` | string | Always `"v1"` - use to detect schema changes |
 | `pair_id` | string | Unique identifier for this matched pair |
 | `match_source` | string | How the pair was matched: `worker_id`, `recon_id`, `pk`, `last4_dob`, `dob_name`, `name_hire_date` |
 | `old_worker_id` | string | Worker ID in the OLD system |
@@ -20,7 +20,7 @@
 | `fix_types` | string | Pipe-separated list of detected mismatches: `salary\|status\|hire_date\|job_org` (empty if no change) |
 | `action` | string | Gating decision: `APPROVE` or `REVIEW` |
 | `reason` | string | Why the action was assigned (e.g., `below_threshold`, `missing_confidence`, `auto_approve`) |
-| `confidence` | float\|blank | Match confidence score [0.0–1.0]; blank when not applicable |
+| `confidence` | float\|blank | Match confidence score [0.0-1.0]; blank when not applicable |
 | `min_confidence` | float\|blank | Minimum threshold across active fix_types; blank if no mismatches |
 | `priority_score` | int | Numeric priority (higher = more urgent review) |
 | `summary` | string | Human-readable change summary (e.g., `salary: 50000→55000`) |
@@ -52,17 +52,17 @@
 
 ---
 
-## Optional Columns (Extra Fields — appended after stable block)
+## Optional Columns (Extra Fields - appended after stable block)
 
 When `extra_fields.enabled = true` in `config/policy.yaml`, additional columns are appended in this order:
 
 1. **Group booleans** (one per configured group):
-   - `mismatch_group_<name>` — `True` if any field in the group has a mismatch
+   - `mismatch_group_<name>` - `True` if any field in the group has a mismatch
 
 2. **Per-field triplets** (three columns per extra field):
-   - `old_<field>` — value in OLD system
-   - `new_<field>` — value in NEW system
-   - `mm_<field>` — `True` if old and new values differ (case/whitespace-normalized)
+   - `old_<field>` - value in OLD system
+   - `new_<field>` - value in NEW system
+   - `mm_<field>` - `True` if old and new values differ (case/whitespace-normalized)
 
 Example with `fields: [cost_center, company]` and `groups: {org: [cost_center, company]}`:
 ```

@@ -385,7 +385,7 @@ def main() -> None:
             _BACKUP.unlink()
             print("\n[harness] restored outputs/matched_raw.csv from backup")
 
-    # Write scorecard — merge with any existing rows for other packs
+    # Write scorecard - merge with any existing rows for other packs
     scorecard_path = REPO / "phase3_scorecard.csv"
     run_names = {r["pack_name"] for r in scorecard}
     merged: list[dict] = []

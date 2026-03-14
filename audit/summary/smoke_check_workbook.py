@@ -1,5 +1,5 @@
 """
-smoke_check_workbook.py — Verifies the Excel workbook output.
+smoke_check_workbook.py - Verifies the Excel workbook output.
 
 Assertions
 ----------
@@ -57,7 +57,7 @@ def _pass(msg: str) -> None:
 
 
 def _count_ws_rows(ws) -> int:
-    """Count rows by iteration — works for write_only output (max_row may be None)."""
+    """Count rows by iteration - works for write_only output (max_row may be None)."""
     return sum(1 for _ in ws)
 
 
@@ -79,7 +79,7 @@ def main() -> None:
             _fail(f"Assertion 1 FAILED: build_workbook.main() exited with code {exc.code}")
     except MemoryError:
         _fail(
-            "Assertion 1 FAILED: build_workbook.main() raised MemoryError — "
+            "Assertion 1 FAILED: build_workbook.main() raised MemoryError - "
             "dataset too large for openpyxl default mode. "
             "build_workbook.py must use write_only=True."
         )
@@ -137,7 +137,7 @@ def main() -> None:
             else:
                 _pass(
                     f"Assertion 4: All_Matches sheet present with valid header and data rows "
-                    f"(expected {expected_count:,} rows — verified by build log)"
+                    f"(expected {expected_count:,} rows - verified by build log)"
                 )
 
     # ------------------------------------------------------------------
@@ -169,7 +169,7 @@ def main() -> None:
         print(f"  [SKIP] Assertion 5: {ref_src}")
 
     # ------------------------------------------------------------------
-    # Sheet presence summary (no row iteration — avoids slow large reads)
+    # Sheet presence summary (no row iteration - avoids slow large reads)
     # ------------------------------------------------------------------
     print(f"\n  Sheet presence check:")
     wb = openpyxl.load_workbook(str(wb_path), read_only=True, data_only=True)

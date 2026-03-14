@@ -147,7 +147,7 @@ def finalize(
     # 1) must be manually approved
     manual_match = df[decision_col].apply(_is_match_value)
 
-    # 2) confidence gate (if column exists) — normalize first so "med" == "medium"
+    # 2) confidence gate (if column exists) - normalize first so "med" == "medium"
     if conf_col:
         normalized_conf = df[conf_col].str.lower().map(lambda v: _CONF_NORM.get(v, v))
         conf_ok = normalized_conf.isin(allowed_confidence)
@@ -244,7 +244,7 @@ def finalize(
             "allowed_confidence": sorted(list(allowed_confidence)),
             "min_name_similarity": min_name_similarity,
             "evidence_rule": "score>=1 OR name_similarity>=min OR old_dob==new_dob",
-            "one_to_one": "enforced — ambiguous old/new ids excluded to ambiguous_identity_groups.csv",
+            "one_to_one": "enforced - ambiguous old/new ids excluded to ambiguous_identity_groups.csv",
         },
         "notes": [
             "Finalizes only rows with manual MATCH plus guardrails to prevent accidental bulk approvals.",

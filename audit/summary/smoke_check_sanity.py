@@ -1,5 +1,5 @@
 """
-smoke_check_sanity.py — Verifies sanity_checks.py outputs.
+smoke_check_sanity.py - Verifies sanity_checks.py outputs.
 
 Assertions
 ----------

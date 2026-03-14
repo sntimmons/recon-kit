@@ -1,5 +1,5 @@
 """
-smoke_check_pipeline_artifacts.py — Verify run_manager + step_receipts integration.
+smoke_check_pipeline_artifacts.py - Verify run_manager + step_receipts integration.
 
 Assertions
 ----------

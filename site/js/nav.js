@@ -1,4 +1,4 @@
-/* Navigation — mobile toggle + active page highlight */
+/* Navigation - mobile toggle + active page highlight */
 (function () {
   'use strict';
 

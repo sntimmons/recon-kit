@@ -45,7 +45,7 @@ def anomaly_band(pct):
 def main():
 
     if not MATCHED_RAW.exists():
-        raise FileNotFoundError("Run pipeline first — matched_raw.csv missing")
+        raise FileNotFoundError("Run pipeline first - matched_raw.csv missing")
 
     df = pd.read_csv(MATCHED_RAW)
 

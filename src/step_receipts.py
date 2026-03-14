@@ -1,5 +1,5 @@
 """
-step_receipts.py — Write per-step JSON receipts into the run folder.
+step_receipts.py - Write per-step JSON receipts into the run folder.
 
 Public API
 ----------

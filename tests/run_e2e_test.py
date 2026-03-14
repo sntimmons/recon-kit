@@ -1,5 +1,5 @@
 """
-tests/run_e2e_test.py — Smallest viable end-to-end integration test.
+tests/run_e2e_test.py - Smallest viable end-to-end integration test.
 
 Covers: matcher → resolve_matched_raw → load_sqlite → build_review_queue →
         build_diy_exports → generate_corrections
@@ -7,11 +7,11 @@ Covers: matcher → resolve_matched_raw → load_sqlite → build_review_queue �
 Does NOT cover: mapping.py (requires client-specific raw input files).
 
 Fixture (20 pre-mapped employees):
-  16 worker_id matches  — salary(4), status(3), hire_date(4), job_org(3),
+  16 worker_id matches  - salary(4), status(3), hire_date(4), job_org(3),
                           multi-fix salary+status(1), no-change(1)
-   2 pk matches         — one with salary mismatch (→ REVIEW/below_threshold, confidence=0.9), one clean (→ APPROVE)
-   2 unmatched old      — worker_ids with no NEW counterpart
-   2 unmatched new      — NEW-only workers with no OLD counterpart
+   2 pk matches         - one with salary mismatch (→ REVIEW/below_threshold, confidence=0.9), one clean (→ APPROVE)
+   2 unmatched old      - worker_ids with no NEW counterpart
+   2 unmatched new      - NEW-only workers with no OLD counterpart
 
 Expected outcomes (asserted):
   1. matched_total == 18, unmatched_old == 2, unmatched_new == 2
@@ -43,13 +43,13 @@ PYTHON = sys.executable
 OUT    = ROOT / "outputs"
 TESTS  = Path(__file__).resolve().parent
 
-# Temporary test artifacts — cleaned up on each run
+# Temporary test artifacts - cleaned up on each run
 _TEST_DB  = ROOT / "audit" / "_e2e_test.db"
 _CORR_DIR = ROOT / "audit" / "corrections" / "_e2e_out"
 _WIDE_DIR = ROOT / "audit" / "exports" / "_e2e_out"
 _RQ_DIR   = ROOT / "audit" / "summary"   # review_queue.csv lands here by default
 
-# Backup slots — we swap the live outputs/ files while the test runs
+# Backup slots - we swap the live outputs/ files while the test runs
 _BKUP_OLD = OUT / "_e2e_bkup_mapped_old.csv"
 _BKUP_NEW = OUT / "_e2e_bkup_mapped_new.csv"
 _BKUP_RAW = OUT / "_e2e_bkup_matched_raw.csv"
@@ -199,7 +199,7 @@ def _restore_live_files() -> None:
             shutil.copy2(str(bkup), str(src))
             bkup.unlink()
         elif src.exists():
-            pass  # leave it — live restore is authoritative
+            pass  # leave it - live restore is authoritative
 
     # Restore the live DB
     if _BKUP_DB.exists():
@@ -275,9 +275,9 @@ def _check_q0(db_path: Path) -> None:
         con.close()
 
     if dup_old == 0 and dup_new == 0:
-        _pass("Assertion 3: Q0 PASS — no duplicate worker_ids in matched_pairs_raw")
+        _pass("Assertion 3: Q0 PASS - no duplicate worker_ids in matched_pairs_raw")
     else:
-        _fail(f"Assertion 3: Q0 FAIL — dup_old={dup_old}, dup_new={dup_new}")
+        _fail(f"Assertion 3: Q0 FAIL - dup_old={dup_old}, dup_new={dup_new}")
 
 
 def _check_extra_fields(wide_dir: Path) -> None:
@@ -337,7 +337,7 @@ def _check_corrections(corr_dir: Path) -> None:
         else:
             _fail(f"Assertion {assertion_num}: {fname} expected {expected} rows, got {actual}")
 
-    # Assertion 9: value correctness — W001 salary correction
+    # Assertion 9: value correctness - W001 salary correction
     sal_path = corr_dir / "corrections_salary.csv"
     if sal_path.exists():
         import csv as _csv
@@ -373,14 +373,14 @@ def main() -> None:
         print("\n  [step] running matcher.py ...")
         rc = _run("src/matcher.py")
         if rc != 0:
-            _fail("matcher.py failed — aborting test")
+            _fail("matcher.py failed - aborting test")
             return
 
         # Step 2: resolve_matched_raw
         print("  [step] running resolve_matched_raw.py ...")
         rc = _run("resolve_matched_raw.py")
         if rc != 0:
-            _fail("resolve_matched_raw.py failed — aborting test")
+            _fail("resolve_matched_raw.py failed - aborting test")
             return
 
         # Assert match counts (before DB load overwrites anything)
@@ -391,7 +391,7 @@ def main() -> None:
         print("\n  [step] running load_sqlite.py ...")
         rc = _run("audit/load_sqlite.py")  # uses default audit.db path
         if rc != 0:
-            _fail("load_sqlite.py failed — aborting test")
+            _fail("load_sqlite.py failed - aborting test")
             return
 
         # Use the real audit.db for remaining checks
@@ -414,7 +414,7 @@ def main() -> None:
         print()
         _check_corrections(_CORR_DIR)
 
-        # Step 5: build_diy_exports (into isolated output dir) — checks extra fields
+        # Step 5: build_diy_exports (into isolated output dir) - checks extra fields
         print("\n  [step] running build_diy_exports.py ...")
         _WIDE_DIR.mkdir(parents=True, exist_ok=True)
         rc = _run(

@@ -1,5 +1,5 @@
 """
-build_review_queue.py — Production-grade review queue builder.
+build_review_queue.py - Production-grade review queue builder.
 
 Reads matched_pairs from audit/audit.db, applies the gating engine to every row,
 and writes audit/summary/review_queue.csv containing only rows with at least one
@@ -44,10 +44,18 @@ sys.path.insert(0, str(_HERE))
 
 import gating
 from confidence_policy import is_auto_approve_source
+from sanity_checks import detect_wave_dates
+from explanation import generate_explanation
 
+import os as _os_rk
 ROOT    = _HERE.parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_CSV = _HERE / "review_queue.csv"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, use the
+# per-run DB.  The --db / --out CLI args (added below in main()) take
+# precedence over both the env var and these module-level defaults.
+_rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
+DB_PATH  = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_CSV  = _HERE / "review_queue.csv"
 
 _REQUIRED_COLS = [
     "pair_id", "match_source", "old_worker_id", "new_worker_id",
@@ -116,13 +124,13 @@ def _priority_score(row: dict, fix_types: list[str], result: dict) -> tuple[int,
     return score, labels
 
 
-def _build_row(row: dict) -> dict | None:
+def _build_row(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict | None:
     """
-    Process one matched-pair row.  Returns None if no fix_types detected.
+    Process one matched-pair row.  Returns None if action != REVIEW.
     """
-    result    = gating.classify_all(row)
+    result    = gating.classify_all(row, wave_dates=wave_dates)
     fix_types = result["fix_types"]
-    if not fix_types:
+    if result["action"] != "REVIEW":
         return None
 
     score, labels = _priority_score(row, fix_types, result)
@@ -143,6 +151,7 @@ def _build_row(row: dict) -> dict | None:
         "priority_score":     score,
         "priority_labels":    "|".join(labels),
         "summary":            gating.build_summary_str(row, fix_types),
+        "match_explanation":  generate_explanation(row, result),
         "salary_delta":       "" if d_sal is None else round(d_sal, 2),
         "old_salary":         row.get("old_salary", ""),
         "new_salary":         row.get("new_salary", ""),
@@ -161,12 +170,23 @@ def _build_row(row: dict) -> dict | None:
     }
 
 
-def main() -> None:
-    if not DB_PATH.exists():
-        print(f"[error] audit.db not found: {DB_PATH}", file=sys.stderr)
+def main(argv: list[str] | None = None) -> None:
+    import argparse as _ap
+    _parser = _ap.ArgumentParser(description="Build review queue CSV.")
+    _parser.add_argument("--db",  default=None, metavar="PATH",
+                         help=f"SQLite database path (default: {DB_PATH}).")
+    _parser.add_argument("--out", default=None, metavar="PATH",
+                         help=f"Output CSV path (default: {OUT_CSV}).")
+    _args = _parser.parse_args(argv)
+
+    db_path = Path(_args.db)  if _args.db  else DB_PATH
+    out_csv = Path(_args.out) if _args.out else OUT_CSV
+
+    if not db_path.exists():
+        print(f"[error] audit.db not found: {db_path}", file=sys.stderr)
         sys.exit(2)
 
-    con = sqlite3.connect(str(DB_PATH))
+    con = sqlite3.connect(str(db_path))
     try:
         try:
             mp = pd.read_sql_query("SELECT * FROM matched_pairs", con)
@@ -185,30 +205,40 @@ def main() -> None:
     total_in = len(mp)
     print(f"[build_review_queue] {total_in:,} matched pairs loaded.")
 
-    # Add confidence column if absent (will be blank for all rows — handled gracefully)
+    # Add confidence column if absent (will be blank for all rows - handled gracefully)
     if "confidence" not in mp.columns:
         mp["confidence"] = None
 
+    # Detect wave dates before per-row loop so classify_all can flag individual records
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    if wave_dates:
+        print(f"  wave dates detected: {sorted(wave_dates)}")
+
     out_rows: list[dict] = []
-    for r in mp.to_dict(orient="records"):
-        built = _build_row(r)
+    for r in all_rows:
+        built = _build_row(r, wave_dates=wave_dates)
         if built is not None:
             out_rows.append(built)
 
     if not out_rows:
-        print("[build_review_queue] no mismatches found — empty review queue.")
+        print("[build_review_queue] no mismatches found - empty review queue.")
         pd.DataFrame(columns=[
             "pair_id", "match_source", "old_worker_id", "new_worker_id",
             "old_full_name_norm", "fix_types", "confidence", "action", "reason",
-            "priority_score", "priority_labels", "summary", "salary_delta",
+            "priority_score", "priority_labels", "summary", "match_explanation",
+            "salary_delta",
             "old_salary", "new_salary", "old_payrate", "new_payrate",
             "old_worker_status", "new_worker_status",
             "old_hire_date", "new_hire_date",
             "old_position", "new_position",
             "old_district", "new_district",
             "old_location_state", "new_location_state",
-        ]).to_csv(str(OUT_CSV), index=False)
-        print(f"  wrote: {OUT_CSV.relative_to(ROOT)}  (0 rows)")
+        ]).to_csv(str(out_csv), index=False)
+        try:
+            print(f"  wrote: {out_csv.relative_to(ROOT)}  (0 rows)")
+        except ValueError:
+            print(f"  wrote: {out_csv}  (0 rows)")
         return
 
     queue = pd.DataFrame(out_rows)
@@ -220,8 +250,8 @@ def main() -> None:
         ascending=[False, False, True],
     ).drop(columns=["_abs_sal"])
 
-    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    queue.to_csv(str(OUT_CSV), index=False)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    queue.to_csv(str(out_csv), index=False)
 
     # Print action summary by fix_type
     n_approve = int((queue["action"] == "APPROVE").sum())
@@ -244,7 +274,10 @@ def main() -> None:
               f"APPROVE={counts['APPROVE']:>7,}  "
               f"REVIEW={counts['REVIEW']:>7,}")
 
-    print(f"  wrote: {OUT_CSV.relative_to(ROOT)}")
+    try:
+        print(f"  wrote: {out_csv.relative_to(ROOT)}")
+    except ValueError:
+        print(f"  wrote: {out_csv}")
 
 
 if __name__ == "__main__":

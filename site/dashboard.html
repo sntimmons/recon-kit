@@ -520,6 +520,116 @@
     /* Audit-mode stats (3-col) */
     .results-stats--audit { grid-template-columns: repeat(3, 1fr); }
 
+    /* =========================================================
+       RESULTS SUMMARY CARD (inline / demo-quality)
+    ========================================================= */
+    .summary-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .summary-card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .summary-card__title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+    .summary-card__gate {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      border-radius: 9999px;
+    }
+    .summary-card__gate--pass {
+      background: rgba(80,200,120,0.12);
+      color: var(--green);
+      border: 1px solid rgba(80,200,120,0.3);
+    }
+    .summary-card__gate--fail {
+      background: rgba(224,92,92,0.12);
+      color: var(--red, #e05c5c);
+      border: 1px solid rgba(224,92,92,0.3);
+    }
+    .summary-card__body {
+      padding: 0;
+    }
+    .summary-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 11px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .summary-row:last-child { border-bottom: none; }
+    .summary-row--section-head {
+      background: var(--bg-3);
+      padding: 7px 20px;
+    }
+    .summary-row__label {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+    .summary-row__label--bold {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .summary-row__section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+    }
+    .summary-row__val {
+      font-size: 0.9rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .summary-row__val--green  { color: var(--green); }
+    .summary-row__val--yellow { color: var(--yellow); }
+    .summary-row__val--red    { color: var(--red, #e05c5c); }
+    .summary-row__val--muted  { color: var(--text-muted); font-weight: 500; }
+    .summary-gate-reasons {
+      padding: 10px 20px 14px;
+      background: rgba(224,92,92,0.04);
+      border-top: 1px solid rgba(224,92,92,0.15);
+    }
+    .summary-gate-reasons__title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--red, #e05c5c);
+      margin-bottom: 6px;
+    }
+    .summary-gate-reasons__list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .summary-gate-reasons__list li {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      padding: 2px 0;
+    }
+    .summary-gate-reasons__list li::before {
+      content: '- ';
+      color: var(--red, #e05c5c);
+    }
+
     .downloads-section {
       background: var(--bg-2);
       border: 1px solid var(--border);
@@ -701,17 +811,17 @@
       <div id="upload-recon">
         <div class="upload-grid-2">
           <div class="upload-zone" id="zone-old">
-            <input type="file" accept=".csv" id="file-old" onchange="fileSelected(this, 'old')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-old" onchange="fileSelected(this, 'old')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">Legacy System Export</div>
-            <div class="upload-zone__sub">Old system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">Old system CSV or Excel (.xlsx). Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-old"></div>
           </div>
           <div class="upload-zone" id="zone-new">
-            <input type="file" accept=".csv" id="file-new" onchange="fileSelected(this, 'new')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-new" onchange="fileSelected(this, 'new')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">New System Export</div>
-            <div class="upload-zone__sub">New system CSV. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">New system CSV or Excel (.xlsx). Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-new"></div>
           </div>
         </div>
@@ -720,10 +830,10 @@
       <div id="upload-audit" style="display:none;">
         <div class="upload-grid-1">
           <div class="upload-zone" id="zone-audit">
-            <input type="file" accept=".csv" id="file-audit" onchange="fileSelected(this, 'audit')">
+            <input type="file" accept=".csv,.xlsx,.xls,.xlsm" id="file-audit" onchange="fileSelected(this, 'audit')">
             <div class="upload-icon">&#128194;</div>
             <div class="upload-zone__label">Dataset to Audit</div>
-            <div class="upload-zone__sub">Single CSV file. Drop here or click to browse.</div>
+            <div class="upload-zone__sub">Single CSV or Excel (.xlsx) file. Drop here or click to browse.</div>
             <div class="upload-zone__file" id="fname-audit"></div>
           </div>
         </div>
@@ -762,6 +872,22 @@
               <input type="checkbox" id="opt-workbook" checked>
               <div class="toggle__track"><div class="toggle__thumb"></div></div>
             </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Excel sheet name / index</strong>
+              Which sheet to read when input files are .xlsx (default: 0 = first sheet)
+            </div>
+            <input type="text" id="opt-sheet-name" value="0"
+              style="width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--bg-card);color:var(--text-primary)">
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-row__label">
+              <strong>Min approve rate (%)</strong>
+              Sanity gate threshold — run FAILs if approve rate drops below this (default: 75%)
+            </div>
+            <input type="text" id="opt-min-approve-rate" value="75"
+              style="width:60px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--bg-card);color:var(--text-primary)">
           </div>
         </div>
       </div>
@@ -806,7 +932,7 @@
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--green" id="stat-matched">0</div>
-            <div class="results-stat__label">Matched</div>
+            <div class="results-stat__label">AUTO-APPROVED</div>
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--yellow" id="stat-review">0</div>
@@ -814,7 +940,7 @@
           </div>
           <div class="results-stat">
             <div class="results-stat__val results-stat__val--accent" id="stat-rate">0%</div>
-            <div class="results-stat__label">Match Rate</div>
+            <div class="results-stat__label">DET. MATCH RATE</div>
           </div>
           <div class="results-stat">
             <div class="results-stat__val" id="stat-gate" style="font-size:1.1rem;">PASS</div>
@@ -836,6 +962,15 @@
             <div class="results-stat__val results-stat__val--yellow" id="astat-issues">0</div>
             <div class="results-stat__label">Issues Found</div>
           </div>
+        </div>
+
+        <!-- Results Summary Card (recon mode only) -->
+        <div class="summary-card" id="summary-card" style="display:none;">
+          <div class="summary-card__header">
+            <div class="summary-card__title">Results Summary</div>
+            <div class="summary-card__gate" id="summary-gate-badge">PASS</div>
+          </div>
+          <div class="summary-card__body" id="summary-card-body"></div>
         </div>
 
         <!-- Downloads -->
@@ -895,7 +1030,7 @@
   'use strict';
 
   // -----------------------------------------------------------------------
-  // CONFIG — change password here
+  // CONFIG - change password here
   // -----------------------------------------------------------------------
   var ACCESS_PASSWORD = 'recon2026';
   var API_BASE        = 'http://localhost:5001';
@@ -999,13 +1134,35 @@
     updateRunBar();
   };
 
-  // Drag and drop
-  ['zone-old','zone-new','zone-audit'].forEach(function (id) {
+  // Drag and drop - map zone id → input element id and side key
+  var _DROP_MAP = {
+    'zone-old':   { inputId: 'file-old',   side: 'old'   },
+    'zone-new':   { inputId: 'file-new',   side: 'new'   },
+    'zone-audit': { inputId: 'file-audit', side: 'audit' },
+  };
+  Object.keys(_DROP_MAP).forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;
+    var cfg = _DROP_MAP[id];
     el.addEventListener('dragover',  function (e) { e.preventDefault(); el.classList.add('dragover'); });
-    el.addEventListener('dragleave', function () { el.classList.remove('dragover'); });
-    el.addEventListener('drop',      function () { el.classList.remove('dragover'); });
+    el.addEventListener('dragleave', function ()  { el.classList.remove('dragover'); });
+    el.addEventListener('drop',      function (e) {
+      e.preventDefault();
+      el.classList.remove('dragover');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      // Inject into the hidden file input so fileSelected() path reuses existing logic
+      var input = document.getElementById(cfg.inputId);
+      if (input) {
+        try {
+          // Modern browsers allow programmatic FileList injection via DataTransfer
+          var dt = new DataTransfer();
+          dt.items.add(files[0]);
+          input.files = dt.files;
+        } catch (_) { /* DataTransfer not supported - fall through */ }
+      }
+      fileSelected({ files: files }, cfg.side);
+    });
   });
 
   function updateRunBar() {
@@ -1018,7 +1175,7 @@
       if (!ready) {
         if (uploadedFiles.old) status.textContent = 'Legacy file loaded. Add your new system export to continue.';
         else if (uploadedFiles['new']) status.textContent = 'New file loaded. Add your legacy system export to continue.';
-        else status.textContent = 'Upload both CSV files to enable the engine.';
+        else status.textContent = 'Upload both files (CSV or Excel) to enable the engine.';
       } else {
         status.innerHTML =
           '<strong style="color:var(--text-primary)">' + uploadedFiles.old.name + '</strong>' +
@@ -1029,7 +1186,7 @@
       ready = !!uploadedFiles.audit;
       status.textContent = ready
         ? uploadedFiles.audit.name + ' loaded. Ready to audit.'
-        : 'Upload a CSV file to audit.';
+        : 'Upload a CSV or Excel file to audit.';
     }
 
     btn.disabled = !ready;
@@ -1054,6 +1211,8 @@
       formData.append('corrections', document.getElementById('opt-corrections').checked ? 'true' : 'false');
       formData.append('sanity_gate', document.getElementById('opt-sanity').checked ? 'true' : 'false');
       formData.append('workbook',    document.getElementById('opt-workbook').checked ? 'true' : 'false');
+      formData.append('sheet_name',       (document.getElementById('opt-sheet-name').value || '0').trim());
+      formData.append('min_approve_rate', (document.getElementById('opt-min-approve-rate').value || '75').trim());
     } else {
       endpoint = API_BASE + '/api/run/audit';
       formData.append('audit_file', uploadedFiles.audit);
@@ -1092,7 +1251,12 @@
     corrections:   'Generating correction files',
     workbook:      'Building Excel workbook',
     exports:       'Exporting wide compare / DIY data',
+    comp_bands:    'Validating compensation bands',
     review_queue:  'Building review queue',
+    split_rq:      'Splitting review queue by department',
+    audit_report:  'Generating executive audit report (.docx / .pdf)',
+    audit_trail:   'Writing immutable audit trail (compliance log)',
+    audit_pdf:     'Converting audit report to PDF',
   };
 
   function startPolling(runId) {
@@ -1120,7 +1284,7 @@
         }
       })
       .catch(function () {
-        // Network blip — keep polling
+        // Network blip - keep polling
       });
   }
 
@@ -1157,24 +1321,138 @@
     }
   }
 
+  // ---- Inline Results Summary Card ----
+  function _mkRow(labelText, valText, valClass, labelBold) {
+    var row   = document.createElement('div');
+    row.className = 'summary-row';
+    var lbl   = document.createElement('div');
+    lbl.className = 'summary-row__label' + (labelBold ? ' summary-row__label--bold' : '');
+    lbl.textContent = labelText;
+    var val   = document.createElement('div');
+    val.className = 'summary-row__val' + (valClass ? ' ' + valClass : '');
+    val.textContent = valText;
+    row.appendChild(lbl);
+    row.appendChild(val);
+    return row;
+  }
+
+  function _mkSectionHead(title) {
+    var row = document.createElement('div');
+    row.className = 'summary-row summary-row--section-head';
+    var t = document.createElement('div');
+    t.className = 'summary-row__section-title';
+    t.textContent = title;
+    row.appendChild(t);
+    return row;
+  }
+
+  function _buildSummaryCard(stats) {
+    var card  = document.getElementById('summary-card');
+    var body  = document.getElementById('summary-card-body');
+    var badge = document.getElementById('summary-gate-badge');
+    body.innerHTML = '';
+
+    var gatePassed  = stats.gate_passed !== false;
+    var gateLabel   = gatePassed ? 'GATE: PASS' : 'GATE: FAIL';
+    badge.textContent = gateLabel;
+    badge.className   = 'summary-card__gate ' +
+                        (gatePassed ? 'summary-card__gate--pass' : 'summary-card__gate--fail');
+
+    var total    = stats.total_matched || 0;
+    var approved = (stats.approve_count != null) ? stats.approve_count : Math.max(0, total - (stats.review_count || 0));
+    var review   = stats.review_count  || 0;
+    var blocked  = stats.reject_count  || 0;
+
+    // Records section
+    body.appendChild(_mkSectionHead('Records'));
+    body.appendChild(_mkRow('Total records compared',          total.toLocaleString(),    '',                        true));
+    body.appendChild(_mkRow('Auto-approved (ready to load)',   approved.toLocaleString(), 'summary-row__val--green',  true));
+    body.appendChild(_mkRow('Needs human review',              review.toLocaleString(),   review > 0 ? 'summary-row__val--yellow' : '', false));
+    if (blocked > 0) {
+      body.appendChild(_mkRow('Blocked (possible wrong-person)', blocked.toLocaleString(), 'summary-row__val--red', false));
+    } else {
+      body.appendChild(_mkRow('Blocked (possible wrong-person)', '0 - none detected',     'summary-row__val--muted', false));
+    }
+
+    // Corrections section (only if corrections exist)
+    var fc = stats.fix_counts || {};
+    var fcKeys = Object.keys(fc);
+    if (fcKeys.length > 0 || stats.total_corrections > 0) {
+      body.appendChild(_mkSectionHead('Corrections Staged'));
+      var fixLabels = {
+        'salary':    'Salary corrections',
+        'status':    'Status corrections',
+        'hire_date': 'Hire date corrections',
+        'job_org':   'Job / org corrections',
+      };
+      fcKeys.forEach(function(k) {
+        body.appendChild(_mkRow(fixLabels[k] || k, (fc[k] || 0).toLocaleString(), '', false));
+      });
+      body.appendChild(_mkRow('Total corrections', (stats.total_corrections || 0).toLocaleString(), '', true));
+    }
+
+    // Health gate section
+    body.appendChild(_mkSectionHead('Quality Checks'));
+    var detRate = stats.det_match_rate || (stats.det_match_rate_raw != null ? (stats.det_match_rate_raw * 100).toFixed(1) + '%' : null);
+    if (detRate) {
+      var detOk = (stats.det_match_rate_raw == null) || (stats.det_match_rate_raw >= 0.95);
+      body.appendChild(_mkRow('Deterministic match rate (need >= 95%)', detRate, detOk ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+    if (stats.approve_rate_pct) {
+      var arOk = parseFloat(stats.approve_rate_pct) >= 80;
+      body.appendChild(_mkRow('Auto-approve rate (need >= 80%)', stats.approve_rate_pct, arOk ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+    var az = stats.active_zero_approved;
+    if (az != null) {
+      body.appendChild(_mkRow('Active employees with $0 salary staged', az === 0 ? '0 - clean' : az.toLocaleString(), az === 0 ? 'summary-row__val--green' : 'summary-row__val--red', false));
+    }
+
+    // Gate failure reasons (if any)
+    var reasons = stats.gate_reasons || [];
+    if (!gatePassed && reasons.length > 0) {
+      var reasonsDiv = document.createElement('div');
+      reasonsDiv.className = 'summary-gate-reasons';
+      var rtitle = document.createElement('div');
+      rtitle.className = 'summary-gate-reasons__title';
+      rtitle.textContent = 'Gate failure reasons';
+      reasonsDiv.appendChild(rtitle);
+      var ul = document.createElement('ul');
+      ul.className = 'summary-gate-reasons__list';
+      reasons.forEach(function(r) {
+        var li = document.createElement('li');
+        li.textContent = r;
+        ul.appendChild(li);
+      });
+      reasonsDiv.appendChild(ul);
+      body.appendChild(reasonsDiv);
+    }
+
+    card.style.display = '';
+  }
+
   // ---- Results ----
   function showResults(job) {
     var panel = document.getElementById('results-panel');
     panel.style.display = 'block';
 
     if (currentMode === 'recon') {
-      var stats = job.stats || {};
-      var total   = stats.total_matched || 0;
-      var review  = stats.review_count  || 0;
-      var matched = total;
-      var rate    = total > 0 ? ((matched - review) / matched * 100).toFixed(1) + '%' : 'N/A';
-      var gate    = stats.gate_passed === false ? 'FAIL' : 'PASS';
-      var gateCol = gate === 'FAIL' ? 'results-stat__val--red' : 'results-stat__val--green';
+      var stats    = job.stats || {};
+      var total    = stats.total_matched || 0;
+      var review   = stats.review_count  || 0;
+      // AUTO-APPROVED: use approve_count from sanity gate if available,
+      // otherwise fall back to total minus review queue
+      var approved = (stats.approve_count != null) ? stats.approve_count : (total - review);
+      // DET. MATCH RATE: use det_match_rate from sanity gate (worker_id + pk / total)
+      // if available, otherwise compute approve rate as a fallback
+      var rate     = stats.det_match_rate ||
+                     (total > 0 ? ((approved / total) * 100).toFixed(1) + '%' : 'N/A');
+      var gate     = stats.gate_passed === false ? 'FAIL' : 'PASS';
+      var gateCol  = gate === 'FAIL' ? 'results-stat__val--red' : 'results-stat__val--green';
 
       document.getElementById('recon-stats').style.display = '';
       document.getElementById('audit-stats').style.display = 'none';
       document.getElementById('stat-total').textContent   = total.toLocaleString();
-      document.getElementById('stat-matched').textContent = (total - review).toLocaleString();
+      document.getElementById('stat-matched').textContent = approved.toLocaleString();
       document.getElementById('stat-review').textContent  = review.toLocaleString();
       document.getElementById('stat-rate').textContent    = rate;
 
@@ -1185,6 +1463,9 @@
       document.getElementById('results-label').textContent   = 'Reconciliation complete';
       document.getElementById('results-headline').textContent = 'Your run is ready. Here is what we found.';
       document.getElementById('results-sub').textContent      = 'Download your outputs below. Correction files are Workday-ready.';
+
+      // Build inline results summary card
+      _buildSummaryCard(stats);
 
     } else {
       var s = job.stats || {};
@@ -1205,51 +1486,131 @@
     var outputs = job.outputs || [];
 
     var FILE_LABELS = {
-      'recon_workbook.xlsx':            'Excel workbook (8 sheets)',
+      'audit_report.docx':              'Audit report - executive summary (Word)',
+      'audit_report.pdf':               'Audit report (PDF) - locked for compliance',
+      'audit_trail.json':               'Audit trail (JSON) - compliance log',
+      'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
       'wide_compare.csv':               'Wide compare (all pairs, side-by-side)',
       'review_queue.csv':               'Review queue (records needing attention)',
+      'corrections_manifest.csv':       'Full corrections manifest',
+      'held_corrections.csv':           'Held corrections (REVIEW / rejected pairs)',
+      'unmatched_old.csv':              'Unmatched - Old System (ADP)',
+      'unmatched_new.csv':              'Unmatched - New System (Workday)',
+      'review_queue_summary.csv':       'Review queue - department summary',
       'corrections_salary.csv':         'Salary corrections (Workday format)',
       'corrections_status.csv':         'Status corrections',
       'corrections_hire_date.csv':      'Hire date corrections',
       'corrections_job_org.csv':        'Job/org corrections',
-      'corrections_manifest.csv':       'Full corrections manifest',
-      'internal_audit_report.csv':      'Audit report (full)',
+      'sanity_results.json':            'Sanity check results (JSON)',
+      'sanity_gate.json':               'Sanity gate evaluation (JSON)',
+      'audit_report.csv':               'Audit report - raw (CSV)',
+      'internal_audit_report.csv':      'Internal audit report (full)',
       'internal_audit_duplicates.csv':  'Duplicate records',
       'internal_audit_blanks.csv':      'Field completeness breakdown',
       'internal_audit_suspicious.csv':  'Suspicious default values',
     };
 
+    // Primary files always shown at top (in this order)
+    var PRIMARY_NAMES = [
+      'recon_workbook.xlsx',
+      'audit_report.docx',
+      'audit_report.pdf',
+      'corrections_manifest.csv',
+      'held_corrections.csv',
+      'wide_compare.csv',
+      'review_queue.csv',
+      'unmatched_old.csv',
+      'unmatched_new.csv',
+      'audit_trail.json',
+    ];
+
+    // Secondary files: everything else (dept queues, detail CSVs, raw JSON, etc.)
+    var SECONDARY_NAMES = [
+      'review_queue_summary.csv',
+      'corrections_salary.csv',
+      'corrections_status.csv',
+      'corrections_hire_date.csv',
+      'corrections_job_org.csv',
+      'sanity_results.json',
+      'sanity_gate.json',
+    ];
+
+    function _makeDownloadRow(f) {
+      var row = document.createElement('div');
+      row.className = 'download-row';
+
+      var info = document.createElement('div');
+      info.className = 'download-row__info';
+
+      var name = document.createElement('div');
+      name.className = 'download-row__name';
+      name.textContent = f.name;
+
+      var desc = document.createElement('div');
+      desc.className = 'download-row__size';
+      var label = FILE_LABELS[f.name] || (f.name.startsWith('review_queue_') ? 'Department review queue' : '');
+      desc.textContent = label + (f.size ? '  \u00B7  ' + _fmtSize(f.size) : '');
+
+      info.appendChild(name);
+      info.appendChild(desc);
+
+      var link = document.createElement('a');
+      link.className = 'dl-btn';
+      link.href = API_BASE + '/api/download/' + currentRunId + '/' + encodeURIComponent(f.name);
+      link.textContent = 'Download';
+      link.setAttribute('download', f.name);
+
+      row.appendChild(info);
+      row.appendChild(link);
+      return row;
+    }
+
+    // Gate-blocked notice - shown above downloads when gate FAIL
+    if (currentMode === 'recon' && stats.gate_passed === false) {
+      var notice = document.createElement('div');
+      notice.style.cssText = 'padding:10px 14px; margin-bottom:8px; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; font-size:0.82rem; color:#7d5a00;';
+      notice.textContent = 'Corrections unavailable - gate must pass before corrections can be loaded.';
+      dl.appendChild(notice);
+    }
+
     if (outputs.length === 0) {
       dl.innerHTML = '<div style="padding: 20px; font-size: 0.85rem; color: var(--text-muted);">No output files available. Check the engine log for details.</div>';
     } else {
-      outputs.forEach(function (f) {
-        var row = document.createElement('div');
-        row.className = 'download-row';
+      // Build index by name for fast lookup
+      var outputByName = {};
+      outputs.forEach(function(f) { outputByName[f.name] = f; });
 
-        var info = document.createElement('div');
-        info.className = 'download-row__info';
-
-        var name = document.createElement('div');
-        name.className = 'download-row__name';
-        name.textContent = f.name;
-
-        var desc = document.createElement('div');
-        desc.className = 'download-row__size';
-        desc.textContent = (FILE_LABELS[f.name] || '') + (f.size ? '  \u00B7  ' + _fmtSize(f.size) : '');
-
-        info.appendChild(name);
-        info.appendChild(desc);
-
-        var link = document.createElement('a');
-        link.className = 'dl-btn';
-        link.href = API_BASE + '/api/download/' + currentRunId + '/' + encodeURIComponent(f.name);
-        link.textContent = 'Download';
-        link.setAttribute('download', f.name);
-
-        row.appendChild(info);
-        row.appendChild(link);
-        dl.appendChild(row);
+      // --- Primary section ---
+      PRIMARY_NAMES.forEach(function(name) {
+        if (outputByName[name]) dl.appendChild(_makeDownloadRow(outputByName[name]));
       });
+
+      // --- Secondary section (collapsed by default) ---
+      var secondary = outputs.filter(function(f) {
+        return PRIMARY_NAMES.indexOf(f.name) === -1;
+      });
+
+      if (secondary.length > 0) {
+        var toggle = document.createElement('div');
+        toggle.style.cssText = 'padding:10px 0 4px; cursor:pointer; font-size:0.825rem; color:var(--accent); user-select:none;';
+        toggle.innerHTML = '&#9656; + ' + secondary.length + ' additional files (department queues, correction details)';
+
+        var secWrap = document.createElement('div');
+        secWrap.style.display = 'none';
+        secondary.forEach(function(f) {
+          // Sort: named secondaries first, then dept review_queue files alphabetically
+          secWrap.appendChild(_makeDownloadRow(f));
+        });
+
+        toggle.addEventListener('click', function() {
+          var isOpen = secWrap.style.display !== 'none';
+          secWrap.style.display = isOpen ? 'none' : 'block';
+          toggle.innerHTML = (isOpen ? '&#9656;' : '&#9662;') + ' + ' + secondary.length + ' additional files (department queues, correction details)';
+        });
+
+        dl.appendChild(toggle);
+        dl.appendChild(secWrap);
+      }
     }
   }
 
@@ -1257,6 +1618,7 @@
     document.getElementById('results-panel').style.display  = 'none';
     document.getElementById('progress-panel').style.display = 'none';
     document.getElementById('error-panel').style.display    = 'none';
+    document.getElementById('summary-card').style.display   = 'none';
   }
 
   function showError(msg) {

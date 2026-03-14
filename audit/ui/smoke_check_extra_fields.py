@@ -1,5 +1,5 @@
 """
-smoke_check_extra_fields.py — In-memory fixture test for Dynamic Audit Fields.
+smoke_check_extra_fields.py - In-memory fixture test for Dynamic Audit Fields.
 
 Assertions
 ----------
@@ -52,7 +52,7 @@ _ROW_MISMATCH = {
     "old_location_state": "CA",
     "new_location_state": "CA",
     "confidence":         "1.0",
-    # Extra fields — cost_center differs, company matches, department differs
+    # Extra fields - cost_center differs, company matches, department differs
     "old_cost_center":    "CC100",
     "new_cost_center":    "CC200",
     "old_company":        "Acme",

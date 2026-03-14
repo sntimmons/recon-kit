@@ -1,14 +1,14 @@
 """
-smoke_check_sanity_gate.py — Verify sanity_gate.py logic and JSON output files.
+smoke_check_sanity_gate.py - Verify sanity_gate.py logic and JSON output files.
 
 Assertions
 ----------
 1. Gate FAILS when thresholds are set to zero and suspicious data is present
-   (uses in-memory fake results + tight policy — no DB required).
+   (uses in-memory fake results + tight policy - no DB required).
 2. Gate PASSES when thresholds are set very high
-   (uses in-memory fake results + loose policy — no DB required).
+   (uses in-memory fake results + loose policy - no DB required).
 3. sanity_results.json and sanity_gate.json exist in audit/summary/ and each
-   contains the expected boolean field (skipped if files do not exist yet —
+   contains the expected boolean field (skipped if files do not exist yet -
    run `run_sanity_gate.py` first to generate them).
 
 Does NOT modify config/policy.yaml.  Exits 0 on pass, 2 on fail.
@@ -44,7 +44,7 @@ _FAKE_RESULTS = {
     "files_written": {},
 }
 
-# Policy with zero thresholds — any suspicious row triggers FAIL.
+# Policy with zero thresholds - any suspicious row triggers FAIL.
 _TIGHT_POLICY = {
     "sanity_gate": {
         "enabled": True,
@@ -63,7 +63,7 @@ _TIGHT_POLICY = {
     }
 }
 
-# Policy with very high thresholds — nothing triggers FAIL.
+# Policy with very high thresholds - nothing triggers FAIL.
 _LOOSE_POLICY = {
     "sanity_gate": {
         "enabled": True,
@@ -164,7 +164,7 @@ def main() -> None:
         if not gate_json.exists():
             missing.append("sanity_gate.json")
         _skip(
-            f"Assertion 3: {', '.join(missing)} not found — "
+            f"Assertion 3: {', '.join(missing)} not found - "
             "run `run_sanity_gate.py` first to generate them."
         )
     else:

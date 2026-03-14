@@ -70,6 +70,7 @@ _BUILTIN_ALIASES: Dict[str, str] = {
     "seniority_date":         "hire_date",
     # ── position ────────────────────────────────────────────────────────────
     "job_title":              "position",
+    "position_title":         "position",
     "job_profile":            "position",
     "title":                  "position",
     "job_code":               "position",
@@ -225,8 +226,22 @@ def _load_extra_fields() -> list[str]:
 
 
 def _norm_str(x) -> str:
-    if x is None or (isinstance(x, float) and pd.isna(x)) or pd.isna(x):
+    if x is None:
         return ""
+    if isinstance(x, float):
+        try:
+            if pd.isna(x):
+                return ""
+        except Exception:
+            return ""
+    # Guard against list/dict/array types from malformed XLSX cells
+    try:
+        is_na = pd.isna(x)
+        # pd.isna on a scalar returns a bool; on a collection raises or returns array
+        if isinstance(is_na, bool) and is_na:
+            return ""
+    except Exception:
+        pass
     s = str(x).strip()
     s = re.sub(r"\s+", " ", s)
     return s
@@ -237,6 +252,121 @@ def _norm_name(x) -> str:
     s = re.sub(r"[^a-z\s\-']", "", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+# ---------------------------------------------------------------------------
+# Name component parsing
+# ---------------------------------------------------------------------------
+
+# Suffixes stripped from the last_name field before matching.
+# Stored separately in the "suffix" column.
+_NAME_SUFFIXES: frozenset[str] = frozenset({
+    "jr", "jr.", "sr", "sr.",
+    "ii", "iii", "iv", "v",
+    "2nd", "3rd", "4th",
+    "esq", "esq.",
+    "phd", "ph.d", "ph.d.",
+    "md", "m.d", "m.d.",
+})
+
+# Canonical display form for known suffixes
+_SUFFIX_DISPLAY: dict[str, str] = {
+    "jr": "Jr.", "jr.": "Jr.",
+    "sr": "Sr.", "sr.": "Sr.",
+    "ii": "II", "iii": "III", "iv": "IV", "v": "V",
+    "2nd": "II", "3rd": "III", "4th": "IV",
+    "esq": "Esq.", "esq.": "Esq.",
+    "phd": "PhD", "ph.d": "PhD", "ph.d.": "PhD",
+    "md": "MD", "m.d": "MD", "m.d.": "MD",
+}
+
+
+def _strip_suffix(last_name_raw: str) -> tuple[str, str | None]:
+    """Strip a trailing name suffix from last_name_raw.
+
+    Returns (cleaned_last_name, suffix_display | None).
+    e.g. "Smith Jr."  -> ("smith", "Jr.")
+         "Williams"   -> ("williams", None)
+         "O'Brien III" -> ("o'brien", "III")
+    """
+    s = _norm_name(last_name_raw)   # lowercase + clean
+    if not s:
+        return s, None
+    parts = s.split()
+    if len(parts) >= 2 and parts[-1] in _NAME_SUFFIXES:
+        suffix_key  = parts[-1]
+        suffix_disp = _SUFFIX_DISPLAY.get(suffix_key, suffix_key.capitalize())
+        return " ".join(parts[:-1]), suffix_disp
+    # Also handle comma-separated: "Smith, Jr."
+    # (already covered by _norm_name stripping commas)
+    return s, None
+
+
+def _split_first_middle(first_name_raw: str) -> tuple[str, str | None]:
+    """Split a first_name field that may contain a middle name or initial.
+
+    Examples:
+      "Nancy"           -> ("nancy", None)
+      "Nancy R"         -> ("nancy", "r")       # single initial
+      "Nancy Roman"     -> ("nancy", "roman")   # full middle name
+      "John Michael"    -> ("john", "michael")
+      "Mary Jo"         -> ("mary jo", None)    # 2-word given name - treated as first only
+    Returns (first_norm, middle_norm | None)
+    """
+    s = _norm_name(first_name_raw)
+    if not s:
+        return s, None
+    parts = s.split()
+    if len(parts) == 1:
+        return parts[0], None
+    if len(parts) == 2:
+        first_p, second_p = parts
+        # If second part is a single letter (middle initial), treat as middle
+        if len(second_p) == 1:
+            return first_p, second_p    # "nancy r"  -> first="nancy", middle="r"
+        # If second part looks like a real name (>2 chars), treat as middle
+        if len(second_p) >= 3:
+            return first_p, second_p   # "nancy roman" -> first="nancy", middle="roman"
+        # 2-letter second part (like "Jo", "Li") - ambiguous, keep as first
+        return s, None
+    if len(parts) >= 3:
+        # "Mary Ann Louise" -> take first word as first, rest as middle
+        return parts[0], " ".join(parts[1:])
+    return s, None
+
+
+def _build_name_components(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive name component columns from first_name and last_name.
+
+    New columns added (string dtype, NA if not present):
+      first_name_norm  - first only, lowercase, no middle, no suffix
+      last_name_norm   - last only, lowercase, no suffix (used as matching key)
+      middle_name      - middle name or initial (nullable)
+      suffix           - name suffix like "Jr.", "III" (nullable)
+
+    Existing full_name_norm is preserved unchanged.
+    """
+    first_raw = df.get("first_name", pd.Series([""] * len(df))).fillna("").astype(str)
+    last_raw  = df.get("last_name",  pd.Series([""] * len(df))).fillna("").astype(str)
+
+    first_norms, middles = zip(*[_split_first_middle(v) for v in first_raw]) if len(df) > 0 \
+                           else ([], [])
+    last_norms,  suffixes = zip(*[_strip_suffix(v)       for v in last_raw])  if len(df) > 0 \
+                            else ([], [])
+
+    df["first_name_norm"] = pd.array(list(first_norms), dtype="string")
+    df["last_name_norm"]  = pd.array(list(last_norms),  dtype="string")
+
+    mid_series = pd.array([m if m else pd.NA for m in middles], dtype="string")
+    suf_series = pd.array([s if s else pd.NA for s in suffixes], dtype="string")
+    df["middle_name"] = mid_series
+    df["suffix"]      = suf_series
+
+    # Replace empty strings with NA
+    for col in ("first_name_norm", "last_name_norm", "middle_name", "suffix"):
+        df[col] = df[col].replace("", pd.NA)
+
+    return df
 
 
 def _to_date_series(s: pd.Series) -> pd.Series:
@@ -373,12 +503,22 @@ def _dedupe_option_a(df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
     return keep_df
 
 
-def map_file(input_path: str | Path, output_path: str | Path, label: str) -> None:
+def map_file(
+    input_path: str | Path,
+    output_path: str | Path,
+    label: str,
+    sheet_name: int | str = 0,
+) -> None:
     input_path = Path(input_path)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    df = pd.read_csv(input_path)
+    ext = input_path.suffix.lower()
+    if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
+        print(f"[map_file] reading Excel file: {input_path.name}  sheet={sheet_name!r}")
+        df = pd.read_excel(input_path, sheet_name=sheet_name, dtype=str)
+    else:
+        df = pd.read_csv(input_path)
     df.columns = [c.strip() for c in df.columns]
 
     # Resolve non-standard column names (e.g. "Associate_ID" → "worker_id",
@@ -400,6 +540,7 @@ def map_file(input_path: str | Path, output_path: str | Path, label: str) -> Non
     df["first_name"] = df["first_name"].apply(_norm_str).astype("string")
     df["last_name"] = df["last_name"].apply(_norm_str).astype("string")
     df["full_name_norm"] = _build_full_name_norm(df)
+    df = _build_name_components(df)   # adds first_name_norm, last_name_norm, middle_name, suffix
 
     df["dob"] = _to_date_series(df["dob"]).astype("string")
     df["hire_date"] = _to_date_series(df["hire_date"]).astype("string")
@@ -436,6 +577,11 @@ def map_file(input_path: str | Path, output_path: str | Path, label: str) -> Non
         "first_name",
         "last_name",
         "full_name_norm",
+        # Name components (derived from first_name / last_name)
+        "first_name_norm",   # first only, lowercase, no middle name
+        "last_name_norm",    # last only, lowercase, no suffix (used as matching key)
+        "middle_name",       # middle name or initial (nullable)
+        "suffix",            # Jr. / Sr. / II / III / IV (nullable)
         "dob",
         "hire_date",
         "last4_ssn",

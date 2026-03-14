@@ -1,12 +1,12 @@
 """
-smoke_check_exports.py — Verifies DIY XLOOKUP export outputs.
+smoke_check_exports.py - Verifies DIY XLOOKUP export outputs.
 
 Assertions
 ----------
 1. build_diy_exports runs without error (exit 0).
 2. Output files exist (xlookup_keys.csv, wide_compare.csv).
 3. All required stable headers are present in each output file.
-   Extra columns (mm_*, old_<extra>, new_<extra>) are allowed — exact match
+   Extra columns (mm_*, old_<extra>, new_<extra>) are allowed - exact match
    is NOT required so that extra_fields additions don't break this check.
 4. wide_compare row count == matched_pairs count from DB.
 
@@ -28,7 +28,7 @@ OUT_DIR = _HERE / "out"
 
 EXPECTED_FILES = ["xlookup_keys.csv", "wide_compare.csv"]
 
-# Required stable headers — extra columns may appear after these.
+# Required stable headers - extra columns may appear after these.
 # Use a list to preserve intended order for documentation, but check as a set.
 REQUIRED_HEADERS = {
     "xlookup_keys.csv": [
@@ -94,7 +94,7 @@ def main() -> None:
     _pass(f"Assertion 2: all {len(EXPECTED_FILES)} output files exist")
 
     # ------------------------------------------------------------------
-    # Assertion 3: Required headers present (subset check — extras allowed)
+    # Assertion 3: Required headers present (subset check - extras allowed)
     # ------------------------------------------------------------------
     header_failures: list[str] = []
     for fname, required_cols in REQUIRED_HEADERS.items():

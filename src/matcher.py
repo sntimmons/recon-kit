@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -10,7 +11,11 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "outputs"
+
+# Per-run isolation: when RK_WORK_DIR is set by api_server.py, write all
+# outputs into that run-specific directory instead of the global outputs/.
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+OUT = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -73,7 +78,7 @@ def _one_to_one_join(
     o_keyed = o[o["_k"].notna()].copy()
     n_keyed = n[n["_k"].notna()].copy()
 
-    # Discard keys that appear more than once on either side — ambiguous.
+    # Discard keys that appear more than once on either side - ambiguous.
     o_dup_keys = set(o_keyed.loc[o_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     n_dup_keys = set(n_keyed.loc[n_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     bad = o_dup_keys | n_dup_keys
@@ -119,7 +124,7 @@ def compute_confidence(row: dict) -> float:
         last4_match           * 0.2   (1.0 if old_last4_ssn == new_last4_ssn, else 0.0)
         location_state_match  * 0.1   (1.0 if old_location_state == new_location_state)
 
-    worker_id and recon_id are exact business/system ID matches — always 1.0.
+    worker_id and recon_id are exact business/system ID matches - always 1.0.
     """
     ms = str(row.get("match_source") or "").strip().lower()
     if ms in ("worker_id", "recon_id"):
@@ -187,8 +192,15 @@ def main() -> None:
     report["matched_by_dob_name"] = int(len(m))
     all_matches.append(m)
 
-    # Tier 6: full_name_norm + hire_date
-    m, old, new = _one_to_one_join(old, new, ["full_name_norm", "hire_date"], "name_hire_date")
+    # Tier 6: last_name_norm + hire_date (more robust than full_name_norm + hire_date)
+    # Using last name as the join key catches cases where first name differs slightly
+    # between systems (John vs Johnny, Mary vs Marie).  First name similarity is
+    # captured in the confidence score via SequenceMatcher on full_name_norm.
+    # Falls back to full_name_norm + hire_date when last_name_norm is unavailable.
+    _t6_keys = (["last_name_norm", "hire_date"]
+                if "last_name_norm" in old.columns and "last_name_norm" in new.columns
+                else ["full_name_norm", "hire_date"])
+    m, old, new = _one_to_one_join(old, new, _t6_keys, "name_hire_date")
     report["matched_by_name_hire_date"] = int(len(m))
     all_matches.append(m)
 
@@ -208,6 +220,23 @@ def main() -> None:
 
         base["old_full_name_norm"] = matched.get("full_name_norm_old", pd.NA)
         base["new_full_name_norm"] = matched.get("full_name_norm_new", pd.NA)
+        # Name components (from mapping.py _build_name_components)
+        base["old_first_name_norm"] = matched.get("first_name_norm_old", pd.NA)
+        base["new_first_name_norm"] = matched.get("first_name_norm_new", pd.NA)
+        base["old_last_name_norm"]  = matched.get("last_name_norm_old",  pd.NA)
+        base["new_last_name_norm"]  = matched.get("last_name_norm_new",  pd.NA)
+        base["old_middle_name"]     = matched.get("middle_name_old", pd.NA)
+        base["new_middle_name"]     = matched.get("middle_name_new", pd.NA)
+        base["old_suffix"]          = matched.get("suffix_old", pd.NA)
+        base["new_suffix"]          = matched.get("suffix_new", pd.NA)
+        # name_change_detected: True when last names differ and both are present
+        def _name_changed(row: dict) -> bool:
+            old_ln = str(row.get("old_last_name_norm") or "").strip()
+            new_ln = str(row.get("new_last_name_norm") or "").strip()
+            return bool(old_ln and new_ln and old_ln != new_ln)
+        base["name_change_detected"] = [
+            _name_changed(r) for r in base.to_dict(orient="records")
+        ]
         base["old_dob"] = matched.get("dob_old", pd.NA)
         base["new_dob"] = matched.get("dob_new", pd.NA)
         base["old_hire_date"] = matched.get("hire_date_old", pd.NA)
@@ -254,7 +283,12 @@ def main() -> None:
         matched_raw = pd.DataFrame(columns=[
             "old_worker_id", "new_worker_id",
             "old_recon_id",  "new_recon_id",
-            "old_full_name_norm", "new_full_name_norm",
+            "old_full_name_norm",    "new_full_name_norm",
+            "old_first_name_norm",   "new_first_name_norm",
+            "old_last_name_norm",    "new_last_name_norm",
+            "old_middle_name",       "new_middle_name",
+            "old_suffix",            "new_suffix",
+            "name_change_detected",
             "old_dob",       "new_dob",
             "old_hire_date", "new_hire_date",
             "old_last4_ssn", "new_last4_ssn",
@@ -269,6 +303,24 @@ def main() -> None:
         ])
 
     matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
+
+    # Add unmatched_reason: "no_id" if worker_id is blank/null, "no_match_found" otherwise.
+    old = old.copy()
+    if "worker_id" in old.columns:
+        old["unmatched_reason"] = old["worker_id"].apply(
+            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
+        )
+    else:
+        old["unmatched_reason"] = "no_match_found"
+
+    new = new.copy()
+    if "worker_id" in new.columns:
+        new["unmatched_reason"] = new["worker_id"].apply(
+            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
+        )
+    else:
+        new["unmatched_reason"] = "no_match_found"
+
     old.to_csv(OUT / "unmatched_old.csv", index=False)
     new.to_csv(OUT / "unmatched_new.csv", index=False)
 

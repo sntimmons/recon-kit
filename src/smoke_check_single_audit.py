@@ -1,5 +1,5 @@
 """
-smoke_check_single_audit.py — Validates single_audit.py without running the DB.
+smoke_check_single_audit.py - Validates single_audit.py without running the DB.
 
 Assertions
 ----------
@@ -66,7 +66,7 @@ def main() -> None:
     # Assertion 3: out-dir creation and receipt.json round-trip
     # ------------------------------------------------------------------
     # We don't have a DB in CI, so we test path creation by writing a dummy
-    # receipt directly — verifying that the receipt schema is valid JSON.
+    # receipt directly - verifying that the receipt schema is valid JSON.
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = Path(tmp) / "test_slice"
         out_dir.mkdir()

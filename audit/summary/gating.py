@@ -17,9 +17,13 @@ classify_row(row: dict, fix_type: str) -> dict
 classify_all(row: dict) -> dict
     Classify all detected fix_types.  Returns:
         fix_types : list[str]
-        action    : "APPROVE" | "REVIEW"   (REVIEW if ANY fix_type is REVIEW)
+        action    : "APPROVE" | "REVIEW" | "REJECT_MATCH"
         reason    : str
         per_fix   : dict[str, dict]        (one entry per fix_type)
+
+evaluate_hire_date_delta(old_date_str, new_date_str, row, other_fix_types) -> tuple | None
+    Check if a hire-date difference matches a known systematic pattern.
+    Returns (action, reason) or None if no pattern applies.
 
 salary_delta(row: dict) -> float | None
     Compute new_salary - old_salary if both parse; else None.
@@ -30,6 +34,7 @@ payrate_delta(row: dict) -> float | None
 from __future__ import annotations
 
 import sys
+from datetime import date as _date
 from pathlib import Path
 
 # Allow running this file directly or importing from a sibling script.
@@ -109,6 +114,77 @@ _TERMINATED_STATUSES: frozenset[str] = frozenset({
     "terminated (involuntary)", "terminated (voluntary)",
 })
 
+# ---------------------------------------------------------------------------
+# REJECT_MATCH configuration
+# ---------------------------------------------------------------------------
+# Sources where low confidence indicates a likely wrong-person pairing.
+_REJECT_MATCH_LOW_CONF_SOURCES: frozenset[str] = frozenset({"dob_name"})
+_REJECT_MATCH_CONF_THRESHOLD:   float          = 0.75
+
+# Sources treated as fuzzy (not deterministic) for salary-ratio REJECT_MATCH check.
+_DETERMINISTIC_SOURCES: frozenset[str] = frozenset({"worker_id", "pk", "recon_id"})
+_REJECT_MATCH_SALARY_RATIO:     float  = 2.5   # salary_ratio > this on a fuzzy match → REJECT_MATCH
+
+# ---------------------------------------------------------------------------
+# Hire-date systematic pattern configuration
+# ---------------------------------------------------------------------------
+# Only apply pattern auto-approve to deterministic sources.
+_HIRE_DATE_PATTERN_SOURCES: frozenset[str] = frozenset({"worker_id", "pk"})
+# Off-by-one: exactly 1 day delta (rounding / timezone artefact).
+_OFF_BY_ONE_DAYS:    int  = 1
+# Systematic year shifts (including common leap-year variants).
+_YEAR_SHIFT_DELTAS: frozenset[int] = frozenset({365, 366, 730, 731})
+
+
+# ---------------------------------------------------------------------------
+# Public helper: hire-date pattern evaluator (Fix 4)
+# ---------------------------------------------------------------------------
+
+def evaluate_hire_date_delta(
+    old_date_str,
+    new_date_str,
+    row:             dict,
+    other_fix_types: "list[str]",
+) -> "tuple[str, str] | None":
+    """
+    Check whether a hire-date change matches a known systematic pattern.
+
+    Returns (action, reason) when a pattern applies, None otherwise.
+    Only fires for deterministic sources (worker_id, pk) - never for fuzzy matches.
+
+    Rules
+    -----
+    abs_days == 1                                 → APPROVE  off_by_one_day_pattern
+    abs_days in {365,366,730,731} + no other fix  → APPROVE  systematic_year_shift_pattern
+    abs_days in {365,366,730,731} + other fix     → REVIEW   year_shift_with_other_mismatches
+    anything else                                 → None (normal gating applies)
+    """
+    ms = _norm(row.get("match_source", ""))
+    if ms not in _HIRE_DATE_PATTERN_SOURCES:
+        return None
+
+    try:
+        old_s = str(old_date_str or "").strip()
+        new_s = str(new_date_str or "").strip()
+        if not old_s or not new_s:
+            return None
+        old_d = _date.fromisoformat(old_s)
+        new_d = _date.fromisoformat(new_s)
+        abs_days = abs((new_d - old_d).days)
+    except (ValueError, TypeError):
+        return None
+
+    if abs_days == _OFF_BY_ONE_DAYS:
+        return "APPROVE", "hire_date:off_by_one_day_pattern"
+
+    if abs_days in _YEAR_SHIFT_DELTAS:
+        has_other = bool(other_fix_types)
+        if not has_other:
+            return "APPROVE", "hire_date:systematic_year_shift_pattern"
+        return "REVIEW", "hire_date:year_shift_with_other_mismatches"
+
+    return None
+
 
 def payrate_delta(row: dict) -> float | None:
     """Return new_payrate - old_payrate if both are numeric; else None."""
@@ -117,6 +193,59 @@ def payrate_delta(row: dict) -> float | None:
     if old is None or new is None:
         return None
     return new - old
+
+
+# ---------------------------------------------------------------------------
+# Payrate conversion detection (Task 2)
+# ---------------------------------------------------------------------------
+_PAYRATE_CONV_TOL = 0.02   # 2% tolerance band around the target ratio
+
+
+def _within_pct(ratio: float, target: float, tol: float = _PAYRATE_CONV_TOL) -> bool:
+    """True when abs(ratio - target) / target <= tol."""
+    if target == 0:
+        return False
+    return abs(ratio - target) / target <= tol
+
+
+def detect_payrate_conversion(row: dict) -> "str | None":
+    """
+    Detect whether a payrate difference is actually a known unit-conversion.
+
+    Checks (in priority order):
+      annual_to_hourly   : old_salary / new_payrate ~= 2080
+      hourly_to_annual   : new_salary / old_payrate ~= 2080
+      biweekly_to_annual : old_salary / new_payrate ~= 26
+      annual_to_biweekly : new_salary / old_payrate ~= 26
+
+    Returns a conversion_type string or None if no pattern matches.
+    """
+    old_sal = _parse_num(row.get("old_salary"))
+    new_sal = _parse_num(row.get("new_salary"))
+    old_pay = _parse_num(row.get("old_payrate"))
+    new_pay = _parse_num(row.get("new_payrate"))
+
+    # Annual → hourly: the old system stored an annual salary; the new stores hourly
+    if old_sal is not None and new_pay is not None and new_pay > 0:
+        if _within_pct(old_sal / new_pay, 2080):
+            return "annual_to_hourly"
+
+    # Hourly → annual: the old system stored hourly; the new stores annual salary
+    if new_sal is not None and old_pay is not None and old_pay > 0:
+        if _within_pct(new_sal / old_pay, 2080):
+            return "hourly_to_annual"
+
+    # Biweekly → annual (old biweekly rate * 26 = new annual salary)
+    if new_sal is not None and old_pay is not None and old_pay > 0:
+        if _within_pct(new_sal / old_pay, 26):
+            return "biweekly_to_annual"
+
+    # Annual → biweekly (old annual salary / 26 = new biweekly rate)
+    if old_sal is not None and new_pay is not None and new_pay > 0:
+        if _within_pct(old_sal / new_pay, 26):
+            return "annual_to_biweekly"
+
+    return None
 
 
 def infer_fix_types(row: dict) -> list[str]:
@@ -211,9 +340,17 @@ def classify_row(row: dict, fix_type: str) -> dict:
     return result
 
 
-def classify_all(row: dict) -> dict:
+def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     """
     Classify all detected fix_types for a matched-pair row.
+
+    Parameters
+    ----------
+    row        : matched-pair dict
+    wave_dates : optional frozenset of new_hire_date strings detected as bulk-import
+                 waves by detect_wave_dates().  Any record whose new_hire_date is in
+                 this set is forced to action=REVIEW with reason "hire_date_wave",
+                 even if no other field changes are detected.
 
     Returns
     -------
@@ -225,7 +362,24 @@ def classify_all(row: dict) -> dict:
     """
     fix_types = infer_fix_types(row)
 
+    # -------------------------------------------------------------------
+    # Override 3: hire_date_wave - evaluated before the early-return so it
+    # catches records with no other field changes.
+    # -------------------------------------------------------------------
+    wave_flagged = False
+    if wave_dates:
+        new_hd = str(row.get("new_hire_date", "") or "").strip()
+        if new_hd and new_hd in wave_dates:
+            wave_flagged = True
+
     if not fix_types:
+        if wave_flagged:
+            return {
+                "fix_types": [],
+                "action":    "REVIEW",
+                "reason":    "hire_date_wave",
+                "per_fix":   {},
+            }
         return {
             "fix_types": [],
             "action":    "APPROVE",
@@ -238,7 +392,7 @@ def classify_all(row: dict) -> dict:
         per_fix[ft] = classify_row(row, ft)
 
     # -------------------------------------------------------------------
-    # Override 1: extreme salary ratio — fires even for auto-approve
+    # Override 1: extreme salary ratio - fires even for auto-approve
     # sources (e.g. worker_id).  Any ratio outside [0.85, 1.15] → REVIEW.
     # -------------------------------------------------------------------
     if "salary" in per_fix:
@@ -250,7 +404,7 @@ def classify_all(row: dict) -> dict:
             )
 
     # -------------------------------------------------------------------
-    # Override 2: active → terminated / inactive — always routes to REVIEW
+    # Override 2: active → terminated / inactive - always routes to REVIEW
     # regardless of confidence score or match_source auto-approve flag.
     # -------------------------------------------------------------------
     if "status" in per_fix:
@@ -262,23 +416,110 @@ def classify_all(row: dict) -> dict:
                 f"active_to_terminated ({old_status}->{new_status})"
             )
 
-    # Overall: REVIEW if ANY fix_type is REVIEW
-    overall_action = (
-        "REVIEW" if any(v["action"] == "REVIEW" for v in per_fix.values())
-        else "APPROVE"
-    )
+    # -------------------------------------------------------------------
+    # Override 3b: hire-date systematic patterns (Fix 4)
+    # Only applies to deterministic sources; evaluated before wave check.
+    # -------------------------------------------------------------------
+    if "hire_date" in per_fix:
+        other_fix_types = [ft for ft in fix_types if ft != "hire_date"]
+        pattern = evaluate_hire_date_delta(
+            row.get("old_hire_date"), row.get("new_hire_date"),
+            row, other_fix_types,
+        )
+        if pattern is not None:
+            p_action, p_reason = pattern
+            per_fix["hire_date"]["action"] = p_action
+            per_fix["hire_date"]["reason"] = p_reason
+            per_fix["hire_date"]["pattern_applied"] = True
+
+    # -------------------------------------------------------------------
+    # Override 6: payrate conversion detection
+    # Check before routing payrate to REVIEW - if old_salary/new_payrate
+    # or new_salary/old_payrate matches 2080 (annual<->hourly) or 26
+    # (annual<->biweekly), the change is a unit conversion, not a real
+    # discrepancy.  Auto-approve the payrate fix_type.
+    # -------------------------------------------------------------------
+    conversion_type: "str | None" = None
+    if "payrate" in per_fix:
+        conversion_type = detect_payrate_conversion(row)
+        if conversion_type is not None:
+            per_fix["payrate"]["action"] = "APPROVE"
+            per_fix["payrate"]["reason"] = f"payrate_conversion:{conversion_type}"
+
+    # -------------------------------------------------------------------
+    # Override 4: REJECT_MATCH - wrong-person pairing signals (Fix 3)
+    # (a) dob_name source with confidence < 0.75
+    # (b) Any non-deterministic source with salary_ratio > 2.5
+    # REJECT_MATCH overrides everything - treated as worse than REVIEW.
+    # -------------------------------------------------------------------
+    ms         = _norm(row.get("match_source", ""))
+    confidence = _parse_confidence(row.get("confidence"))
+    reject_reason: str = ""
+
+    if ms in _REJECT_MATCH_LOW_CONF_SOURCES:
+        conf_val = confidence if confidence is not None else 0.0
+        if conf_val < _REJECT_MATCH_CONF_THRESHOLD:
+            reject_reason = (
+                f"reject_match:dob_name_low_confidence ({conf_val:.3f}"
+                f"<{_REJECT_MATCH_CONF_THRESHOLD:.2f})"
+            )
+
+    if not reject_reason and ms not in _DETERMINISTIC_SOURCES:
+        ratio = _salary_ratio(row)
+        if ratio is not None and ratio > _REJECT_MATCH_SALARY_RATIO:
+            # Do NOT trigger REJECT_MATCH when the extreme ratio is explained by
+            # a payrate unit conversion (e.g. old_salary=25 hourly → new_salary=52000
+            # annual gives ratio=2080 which far exceeds 2.5 but is legitimate).
+            if conversion_type is None:
+                reject_reason = (
+                    f"reject_match:fuzzy_extreme_salary_ratio ({ratio:.4f}"
+                    f">{_REJECT_MATCH_SALARY_RATIO:.1f})"
+                )
+
+    # Overall action computation
     review_reasons = [
         f"{ft}:{v['reason']}"
         for ft, v in per_fix.items()
         if v["action"] == "REVIEW"
     ]
-    overall_reason = "|".join(review_reasons) if review_reasons else "all_fix_types_approved"
+
+    # Append wave flag to reasons and force REVIEW
+    if wave_flagged:
+        review_reasons.append("hire_date_wave")
+
+    # Override 5: name_change_detected - last name differs between systems.
+    # Always routes to REVIEW so a human can confirm it is the same person
+    # (could be a legal name change, a marriage, a data-entry error, or truly
+    # a different employee).  Never blocks corrections, just adds to review reasons.
+    name_changed = bool(row.get("name_change_detected") is True
+                        or str(row.get("name_change_detected", "")).lower() in ("true", "1", "yes"))
+    if name_changed:
+        old_ln = str(row.get("old_last_name_norm") or "").strip()
+        new_ln = str(row.get("new_last_name_norm") or "").strip()
+        review_reasons.append(
+            f"name_change_detected ({old_ln} -> {new_ln})" if (old_ln and new_ln)
+            else "name_change_detected"
+        )
+
+    if reject_reason:
+        overall_action = "REJECT_MATCH"
+        overall_reason = reject_reason
+    elif review_reasons:
+        overall_action = "REVIEW"
+        overall_reason = "|".join(review_reasons)
+    elif wave_flagged:
+        overall_action = "REVIEW"
+        overall_reason = "hire_date_wave"
+    else:
+        overall_action = "APPROVE"
+        overall_reason = "all_fix_types_approved"
 
     return {
-        "fix_types": fix_types,
-        "action":    overall_action,
-        "reason":    overall_reason,
-        "per_fix":   per_fix,
+        "fix_types":       fix_types,
+        "action":          overall_action,
+        "reason":          overall_reason,
+        "per_fix":         per_fix,
+        "conversion_type": conversion_type,
     }
 
 

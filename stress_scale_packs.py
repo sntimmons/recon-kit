@@ -35,7 +35,7 @@ Trap behaviour at scale
 
   Trap 2 (Ian Sanders, corrupt last4 in NEW → Tier 4 fallback):
       OLD last4=2148 / NEW last4=9999.  With the same dob bump on both
-      sides the Tier-2 keys are "2148|<dob+r>" vs "9999|<dob+r>" — still
+      sides the Tier-2 keys are "2148|<dob+r>" vs "9999|<dob+r>" - still
       different, so Tier 2 still fails.  The fallback key is
       "ian sanders|<dob+r>|" which is unique in each replicate, so Tier 4
       fires correctly.

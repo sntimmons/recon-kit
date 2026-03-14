@@ -1,13 +1,13 @@
 """
-api_server.py — Local API server for the Recon-Kit dashboard.
+api_server.py - Local API server for the Recon-Kit dashboard.
 
 Run with:
     venv/Scripts/python.exe api_server.py
 
 Listens on http://localhost:5001
 Serves the static site from site/ and provides two API endpoints:
-  POST /api/run/recon   — cross-system reconciliation (old + new CSV)
-  POST /api/run/audit   — internal data audit (single CSV)
+  POST /api/run/recon   - cross-system reconciliation (old + new CSV)
+  POST /api/run/audit   - internal data audit (single CSV)
   GET  /api/status/<run_id>
   GET  /api/download/<run_id>/<filename>
 """
@@ -32,11 +32,15 @@ from flask import Flask, jsonify, request, send_from_directory, abort
 HERE        = Path(__file__).resolve().parent
 SITE_DIR    = HERE / "site"
 RUNS_DIR    = HERE / "dashboard_runs"
-INPUTS_DIR  = HERE / "inputs"
 PYTHON      = sys.executable
 
 RUNS_DIR.mkdir(exist_ok=True)
-INPUTS_DIR.mkdir(exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Concurrency guard: only one full recon pipeline at a time.
+# Concurrent internal-audit runs are fine (they write to isolated run dirs).
+# ---------------------------------------------------------------------------
+_RECON_SEMAPHORE = threading.BoundedSemaphore(1)
 
 # ---------------------------------------------------------------------------
 # App
@@ -89,17 +93,32 @@ def _finish_step(run_id: str, step: str, status: str = "done"):
                 break
 
 
-def _run_cmd(cmd: list[str], cwd: Path, run_id: str) -> tuple[int, str]:
-    """Run a subprocess, stream stdout/stderr into job log, return (rc, output)."""
+def _make_run_env(run_dir: Path) -> dict[str, str]:
+    """Build an os.environ copy with per-run path overrides injected."""
     env = os.environ.copy()
-    env["PYTHONUTF8"] = "1"
+    env["PYTHONUTF8"]  = "1"
+    env["RK_WORK_DIR"] = str(run_dir)   # all pipeline scripts respect this
+    return env
+
+
+def _run_cmd(
+    cmd: list[str],
+    cwd: Path,
+    run_id: str,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str]:
+    """Run a subprocess, stream stdout/stderr into job log, return (rc, output)."""
+    _env = os.environ.copy()
+    _env["PYTHONUTF8"] = "1"
+    if env:
+        _env.update(env)
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        env=env,
+        env=_env,
     )
     lines = []
     for line in proc.stdout:
@@ -115,13 +134,20 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     wanted = [
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
+        "audit_report.docx",
+        "audit_report.pdf",
+        "audit_trail.json",
         "wide_compare.csv",
+        "unmatched_old.csv",
+        "unmatched_new.csv",
         "review_queue.csv",
+        "review_queue_summary.csv",
         "corrections_salary.csv",
         "corrections_status.csv",
         "corrections_hire_date.csv",
         "corrections_job_org.csv",
         "corrections_manifest.csv",
+        "held_corrections.csv",
         "audit_report.csv",
         "sanity_results.json",
         "sanity_gate.json",
@@ -133,7 +159,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     found = []
     for name in wanted:
         p = run_dir / name
-        if p.exists():
+        if p.exists() and p.stat().st_size > 0:
             found.append({"name": name, "size": p.stat().st_size})
     # Also pick up anything in corrections subfolder
     corr_dir = run_dir / "corrections"
@@ -141,6 +167,13 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         for p in corr_dir.iterdir():
             if p.suffix in (".csv", ".xlsx", ".json") and p.name not in [f["name"] for f in found]:
                 found.append({"name": "corrections/" + p.name, "size": p.stat().st_size})
+
+    # Dynamically pick up per-department review queue CSVs
+    existing_names = {f["name"] for f in found}
+    for p in run_dir.glob("review_queue_*.csv"):
+        if p.name not in existing_names and p.exists() and p.stat().st_size > 0:
+            found.append({"name": p.name, "size": p.stat().st_size})
+
     return found
 
 
@@ -186,14 +219,77 @@ def _parse_run_stats(run_dir: Path) -> dict:
         except Exception:
             pass
 
-    # Gate status from sanity_gate.json
+    # Gate status + health metrics from sanity_gate.json
     gate_file = run_dir / "sanity_gate.json"
     if gate_file.exists():
         try:
             gate = json.loads(gate_file.read_text(encoding="utf-8"))
             stats["gate_passed"] = gate.get("passed", True)
+            stats["gate_reasons"] = gate.get("reasons", [])
+            # Extract det_match_rate for the DET. MATCH RATE dashboard card
+            hc     = gate.get("health_checks", {})
+            dr_val = hc.get("det_rate", {}).get("value")
+            if dr_val is not None:
+                stats["det_match_rate"] = f"{float(dr_val) * 100:.1f}%"
+                stats["det_match_rate_raw"] = float(dr_val)
+            # approve_rate from health checks
+            ar_val = hc.get("approve_rate", {}).get("value")
+            if ar_val is not None and ar_val != "not_computed":
+                try:
+                    stats["approve_rate_pct"] = f"{float(ar_val) * 100:.1f}%"
+                except (ValueError, TypeError):
+                    pass
+            # active_zero check
+            az = hc.get("active_zero_salary", {})
+            if az:
+                stats["active_zero_approved"] = az.get("value_approved", az.get("value", 0))
         except Exception:
             pass
+
+    # Approve count for AUTO-APPROVED dashboard card (sanity_results.json health_metrics)
+    results_file = run_dir / "sanity_results.json"
+    if results_file.exists():
+        try:
+            rdata = json.loads(results_file.read_text(encoding="utf-8"))
+            hm    = rdata.get("health_metrics", {})
+            if "approve_count" in hm:
+                stats["approve_count"] = int(hm["approve_count"])
+        except Exception:
+            pass
+
+    # Count REJECT_MATCH rows from wide_compare.csv
+    wide = run_dir / "wide_compare.csv"
+    if wide.exists():
+        try:
+            import csv as _csv
+            n_reject = 0
+            with wide.open(encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                for row in reader:
+                    if row.get("action") == "REJECT_MATCH":
+                        n_reject += 1
+            stats["reject_count"] = n_reject
+        except Exception:
+            pass
+
+    # Per-fix correction counts from individual correction CSVs
+    fix_counts: dict[str, int] = {}
+    for fix_name in ("salary", "status", "hire_date", "job_org"):
+        p = run_dir / f"corrections_{fix_name}.csv"
+        if p.exists() and p.stat().st_size > 0:
+            try:
+                import csv as _csv
+                with p.open(encoding="utf-8") as f:
+                    reader = _csv.reader(f)
+                    next(reader)
+                    n = sum(1 for _ in reader)
+                if n > 0:
+                    fix_counts[fix_name] = n
+            except Exception:
+                pass
+    if fix_counts:
+        stats["fix_counts"] = fix_counts
+        stats["total_corrections"] = sum(fix_counts.values())
 
     return stats
 
@@ -202,109 +298,230 @@ def _parse_run_stats(run_dir: Path) -> dict:
 # Recon pipeline runner (background thread)
 # ---------------------------------------------------------------------------
 def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Path, options: dict):
-    """Run the full cross-system reconciliation pipeline."""
+    """Run the full cross-system reconciliation pipeline.
+
+    Per-run isolation strategy
+    --------------------------
+    Every subprocess inherits RK_WORK_DIR=run_dir so that all pipeline
+    scripts write their outputs into the per-run tree rather than global
+    paths.  The in-run directory layout mirrors the repo structure:
+
+        run_dir/
+          inputs/                    ← uploaded CSVs
+          outputs/                   ← mapped_*.csv, matched_raw.csv
+          audit/
+            audit.db                 ← per-run SQLite database
+            summary/                 ← sanity JSON, review_queue.csv
+            corrections/out/         ← correction CSVs, held_corrections.csv
+          wide_compare.csv           ← from build_diy_exports
+          recon_workbook.xlsx        ← from build_workbook
+          audit_report.docx          ← from generate_report
+    """
+    run_env = _make_run_env(run_dir)
+
+    # Derive per-run sub-paths (scripts also compute these from RK_WORK_DIR)
+    run_inputs  = run_dir / "inputs"
+    run_outputs = run_dir / "outputs"
+    run_audit   = run_dir / "audit"
+    run_summary = run_audit / "summary"
+    run_corr    = run_audit / "corrections" / "out"
+    run_db      = run_audit / "audit.db"
+
     try:
+        _RECON_SEMAPHORE.acquire()
         with _jobs_lock:
             _jobs[run_id]["status"] = "running"
 
-        # 1. Copy input files to inputs/
+        # Create the per-run directory structure up front
+        for d in (run_inputs, run_outputs, run_summary, run_corr):
+            d.mkdir(parents=True, exist_ok=True)
+
+        # Resolve file-type options
+        old_ext    = options.get("old_ext", ".csv")
+        new_ext    = options.get("new_ext", ".csv")
+        sheet_name = options.get("sheet_name", 0)
+
+        # 1. Copy input files into per-run inputs/ (preserve original extension)
         _set_step(run_id, "upload")
-        shutil.copy2(old_path, INPUTS_DIR / "old.csv")
-        shutil.copy2(new_path, INPUTS_DIR / "new.csv")
+        shutil.copy2(old_path, run_inputs / f"old{old_ext}")
+        shutil.copy2(new_path, run_inputs / f"new{new_ext}")
         _finish_step(run_id, "upload")
 
-        # 2. Mapping
+        # 2. Mapping - use absolute run_dir paths so no global outputs/ is touched
         _set_step(run_id, "mapping")
+        old_in  = run_inputs  / f"old{old_ext}"
+        new_in  = run_inputs  / f"new{new_ext}"
+        old_out = run_outputs / "mapped_old.csv"
+        new_out = run_outputs / "mapped_new.csv"
         rc, _ = _run_cmd(
             [str(PYTHON), "-c",
-             "from src.mapping import map_file; "
-             "map_file('inputs/old.csv','outputs/mapped_old.csv','old'); "
-             "map_file('inputs/new.csv','outputs/mapped_new.csv','new')"],
-            HERE, run_id
+             f"from src.mapping import map_file; "
+             f"map_file(r'{old_in}', r'{old_out}', 'old', sheet_name={sheet_name!r}); "
+             f"map_file(r'{new_in}', r'{new_out}', 'new', sheet_name={sheet_name!r})"],
+            HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "mapping", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Mapping step failed")
 
-        # 3. Matching
+        # 3. Matching - RK_WORK_DIR tells matcher.py where to write matched_raw.csv
         _set_step(run_id, "matching")
-        rc, _ = _run_cmd([str(PYTHON), "src/matcher.py"], HERE, run_id)
+        rc, _ = _run_cmd([str(PYTHON), "src/matcher.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "matching", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Matcher step failed")
 
-        # 4. Resolve conflicts
+        # 4. Resolve conflicts - RK_WORK_DIR tells resolve where matched_raw.csv lives
         _set_step(run_id, "resolve")
-        rc, _ = _run_cmd([str(PYTHON), "resolve_matched_raw.py"], HERE, run_id)
+        rc, _ = _run_cmd([str(PYTHON), "resolve_matched_raw.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "resolve", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Resolve step failed")
 
-        # 5. Load SQLite
+        # 5. Load SQLite - RK_WORK_DIR tells load_sqlite where to place audit.db
         _set_step(run_id, "load_db")
-        rc, _ = _run_cmd([str(PYTHON), "audit/load_sqlite.py"], HERE, run_id)
+        rc, _ = _run_cmd([str(PYTHON), "audit/load_sqlite.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "load_db", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("DB load step failed")
 
-        # 6. Run audit
+        # 6. Run audit queries - RK_WORK_DIR tells run_audit.py which DB to use
         _set_step(run_id, "audit")
-        rc, _ = _run_cmd([str(PYTHON), "audit/run_audit.py"], HERE, run_id)
+        rc, _ = _run_cmd([str(PYTHON), "audit/run_audit.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Audit step failed")
 
-        # 7. Optional: sanity gate
+        # 7. Optional: sanity gate - write JSON to per-run summary dir
+        _gate_blocked = False
         if options.get("sanity_gate", True):
             _set_step(run_id, "sanity_gate")
-            rc, _ = _run_cmd(
-                [str(PYTHON), "audit/summary/run_sanity_gate.py",
-                 "--out", str(HERE / "audit" / "summary")],
-                HERE, run_id
-            )
+            gate_cmd = [str(PYTHON), "audit/summary/run_sanity_gate.py",
+                        "--db",  str(run_db),
+                        "--out", str(run_summary),
+                        "--min-approve-rate", str(options.get("min_approve_rate", 0.75))]
+            rc, _ = _run_cmd(gate_cmd, HERE, run_id, env=run_env)
             _finish_step(run_id, "sanity_gate", "done" if rc == 0 else "warn")
+            # Read gate result to decide whether corrections are blocked
+            _gate_json = run_summary / "sanity_gate.json"
+            if _gate_json.exists():
+                try:
+                    import json as _json
+                    _gd = _json.loads(_gate_json.read_text())
+                    _gate_blocked = not _gd.get("passed", True)
+                except Exception:
+                    pass
 
-        # 8. Optional: generate corrections
-        if options.get("corrections", True):
+        # 8. Optional: generate corrections - skipped when gate fails
+        if options.get("corrections", True) and not _gate_blocked:
             _set_step(run_id, "corrections")
             rc, _ = _run_cmd(
-                [str(PYTHON), "audit/corrections/generate_corrections.py"],
-                HERE, run_id
+                [str(PYTHON), "audit/corrections/generate_corrections.py",
+                 "--db",      str(run_db),
+                 "--out-dir", str(run_corr)],
+                HERE, run_id, env=run_env,
             )
             _finish_step(run_id, "corrections", "done" if rc == 0 else "warn")
+        elif _gate_blocked:
+            _finish_step(run_id, "corrections", "blocked")
 
-        # 9. DIY exports — must run before workbook so wide_compare.csv exists
+        # 9. DIY exports - writes wide_compare.csv directly to run_dir
         _set_step(run_id, "exports")
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/exports/build_diy_exports.py",
+             "--db",     str(run_db),
              "--out-dir", str(run_dir)],
-            HERE, run_id
+            HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "exports", "done" if rc == 0 else "warn")
 
-        # 10. Optional: Excel workbook — reads run_dir/wide_compare.csv, not global
+        # 9.5 Optional: compensation band validation
+        bands_path_str = options.get("bands_path")
+        if bands_path_str and Path(bands_path_str).exists():
+            _set_step(run_id, "comp_bands")
+            rc, _ = _run_cmd(
+                [str(PYTHON), "audit/summary/comp_band_validator.py",
+                 "--wide",  str(run_dir / "wide_compare.csv"),
+                 "--bands", bands_path_str],
+                HERE, run_id, env=run_env,
+            )
+            _finish_step(run_id, "comp_bands", "done" if rc == 0 else "warn")
+
+        # 10. Optional: Excel workbook - reads wide_compare.csv from run_dir
         if options.get("workbook", True):
             _set_step(run_id, "workbook")
-            wide_csv = run_dir / "wide_compare.csv"
-            rc, _ = _run_cmd(
-                [str(PYTHON), "audit/summary/build_workbook.py",
-                 "--out",  str(run_dir / "recon_workbook.xlsx"),
-                 "--wide", str(wide_csv),
-                 "--db",   str(HERE / "audit" / "audit.db")],
-                HERE, run_id
-            )
+            _wb_cmd = [str(PYTHON), "audit/summary/build_workbook.py",
+                       "--out",      str(run_dir / "recon_workbook.xlsx"),
+                       "--wide",     str(run_dir / "wide_compare.csv"),
+                       "--db",       str(run_db),
+                       "--manifest", str(run_corr / "corrections_manifest.csv")]
+            if _gate_blocked:
+                _wb_cmd.append("--gate-blocked")
+            rc, _ = _run_cmd(_wb_cmd, HERE, run_id, env=run_env)
             _finish_step(run_id, "workbook", "done" if rc == 0 else "warn")
 
-        # 11. Review queue
+        # 11. Review queue - pass per-run DB and output path
         _set_step(run_id, "review_queue")
         rc, _ = _run_cmd(
-            [str(PYTHON), "audit/summary/build_review_queue.py"],
-            HERE, run_id
+            [str(PYTHON), "audit/summary/build_review_queue.py",
+             "--db",  str(run_db),
+             "--out", str(run_dir / "review_queue.csv")],
+            HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "review_queue", "done" if rc == 0 else "warn")
 
-        # 12. Copy key outputs to run_dir
-        _copy_key_outputs(run_dir)
+        # 11.5 Split review queue by department
+        _set_step(run_id, "split_rq")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/summary/split_review_queue.py",
+             "--rq",  str(run_dir / "review_queue.csv"),
+             "--out", str(run_dir)],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "split_rq", "done" if rc == 0 else "warn")
+
+        # 12. Audit report (.docx) - fully isolated, writes directly to run_dir
+        _set_step(run_id, "audit_report")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/generate_report.py",
+             "--db",   str(run_db),
+             "--wide", str(run_dir / "wide_compare.csv"),
+             "--out",  str(run_dir / "audit_report.docx")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
+
+        # 12.5 PDF version of audit report
+        _set_step(run_id, "audit_pdf")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/generate_pdf.py",
+             "--docx", str(run_dir / "audit_report.docx"),
+             "--out",  str(run_dir / "audit_report.pdf")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "audit_pdf", "done" if rc == 0 else "warn")  # non-fatal
+
+        # 13. Promote sub-dir outputs to run_dir root for easy download
+        _promote_run_outputs(run_dir)
+
+        # 14. Build immutable audit trail log
+        _set_step(run_id, "audit_trail")
+        # Find the actual old/new input files (may be .csv or .xlsx)
+        _old_inputs = list(run_dir.glob("old_input.*"))
+        _new_inputs = list(run_dir.glob("new_input.*"))
+        _old_arg = ["--old", str(_old_inputs[0])] if _old_inputs else []
+        _new_arg = ["--new", str(_new_inputs[0])] if _new_inputs else []
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/summary/build_audit_trail.py",
+             "--run-id", run_id,
+             "--wide",   str(run_dir / "wide_compare.csv"),
+             "--gate",   str(run_dir / "sanity_gate.json"),
+             "--out",    str(run_dir / "audit_trail.json"),
+             *_old_arg,
+             *_new_arg],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "audit_trail", "done" if rc == 0 else "warn")
 
         # Parse stats
         stats = _parse_run_stats(run_dir)
@@ -319,45 +536,47 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             _jobs[run_id]["status"] = "error"
             _jobs[run_id]["error"] = str(exc)
 
+    finally:
+        _RECON_SEMAPHORE.release()
 
-def _copy_key_outputs(run_dir: Path):
-    """Copy important output files from their default locations into run_dir."""
-    mapping = {
-        HERE / "outputs" / "matched_raw.csv":                         run_dir / "matched_raw.csv",
-        HERE / "audit" / "audit_runs":                                None,  # handled below
-        HERE / "audit" / "summary" / "review_queue.csv":              run_dir / "review_queue.csv",
-        HERE / "audit" / "summary" / "sanity_results.json":           run_dir / "sanity_results.json",
-        HERE / "audit" / "summary" / "sanity_gate.json":              run_dir / "sanity_gate.json",
-        HERE / "audit" / "corrections" / "out" / "corrections_salary.csv":   run_dir / "corrections_salary.csv",
-        HERE / "audit" / "corrections" / "out" / "corrections_status.csv":   run_dir / "corrections_status.csv",
-        HERE / "audit" / "corrections" / "out" / "corrections_hire_date.csv": run_dir / "corrections_hire_date.csv",
-        HERE / "audit" / "corrections" / "out" / "corrections_job_org.csv":   run_dir / "corrections_job_org.csv",
-        HERE / "audit" / "corrections" / "out" / "corrections_manifest.csv":  run_dir / "corrections_manifest.csv",
-        HERE / "audit" / "ui" / "ui_pairs.csv":                       run_dir / "wide_compare.csv",
+
+def _promote_run_outputs(run_dir: Path) -> None:
+    """Promote per-run sub-directory outputs to run_dir root for easy download.
+
+    All pipeline steps now write into run_dir sub-directories (outputs/,
+    audit/summary/, audit/corrections/out/) via RK_WORK_DIR isolation.
+    This function copies the user-facing files to the flat run_dir root so
+    the download list can find them without knowing the internal layout.
+    """
+    run_audit   = run_dir / "audit"
+    run_summary = run_audit / "summary"
+    run_corr    = run_audit / "corrections" / "out"
+    run_outputs = run_dir / "outputs"
+
+    flat_map = {
+        # sanity outputs
+        run_summary / "sanity_results.json":           run_dir / "sanity_results.json",
+        run_summary / "sanity_gate.json":              run_dir / "sanity_gate.json",
+        # corrections (build_review_queue writes directly to run_dir/review_queue.csv
+        # via --out arg, so it's already there - entries below are safety copies)
+        run_corr    / "corrections_salary.csv":        run_dir / "corrections_salary.csv",
+        run_corr    / "corrections_status.csv":        run_dir / "corrections_status.csv",
+        run_corr    / "corrections_hire_date.csv":     run_dir / "corrections_hire_date.csv",
+        run_corr    / "corrections_job_org.csv":       run_dir / "corrections_job_org.csv",
+        run_corr    / "corrections_manifest.csv":      run_dir / "corrections_manifest.csv",
+        run_corr    / "held_corrections.csv":          run_dir / "held_corrections.csv",
+        # matched_raw (informational - not required for downloads but useful)
+        run_outputs / "matched_raw.csv":               run_dir / "matched_raw.csv",
+        # unmatched records (records with no counterpart in the other system)
+        run_outputs / "unmatched_old.csv":             run_dir / "unmatched_old.csv",
+        run_outputs / "unmatched_new.csv":             run_dir / "unmatched_new.csv",
     }
-    for src, dst in mapping.items():
-        if dst is None:
-            continue
+    for src, dst in flat_map.items():
         if src.exists() and not dst.exists():
             try:
                 shutil.copy2(src, dst)
             except Exception:
                 pass
-
-    # Copy latest packaged run workbook if present
-    audit_runs = HERE / "audit" / "audit_runs"
-    if audit_runs.exists():
-        run_folders = sorted(audit_runs.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-        for folder in run_folders:
-            for wb in folder.glob("*.xlsx"):
-                dst = run_dir / "recon_workbook.xlsx"
-                if not dst.exists():
-                    try:
-                        shutil.copy2(wb, dst)
-                    except Exception:
-                        pass
-                break
-            break
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +624,15 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
+def _safe_ext(filename: str) -> str:
+    """Return .xlsx (or .xls/.xlsm) or .csv based on the uploaded filename."""
+    if filename:
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
+            return ext
+    return ".csv"
+
+
 @app.post("/api/run/recon")
 def api_run_recon():
     old_file = request.files.get("old_file")
@@ -412,20 +640,52 @@ def api_run_recon():
     if not old_file or not new_file:
         return jsonify({"error": "Both old_file and new_file are required"}), 400
 
+    old_ext = _safe_ext(old_file.filename)
+    new_ext = _safe_ext(new_file.filename)
+
+    # sheet_name: int index or sheet name string; default to first sheet (0)
+    raw_sn = request.form.get("sheet_name", "0").strip()
+    sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
+
+    # min_approve_rate: per-run sanity gate threshold override (default 0.75)
+    raw_mar = request.form.get("min_approve_rate", "0.75").strip()
+    try:
+        min_approve_rate: float = float(raw_mar)
+        # Accept percentages like "75" as well as decimals like "0.75"
+        if min_approve_rate > 1.0:
+            min_approve_rate = min_approve_rate / 100.0
+        min_approve_rate = max(0.0, min(1.0, min_approve_rate))
+    except (ValueError, TypeError):
+        min_approve_rate = 0.75
+
+    # Optional compensation bands file
+    bands_file = request.files.get("bands_file")
+
     options = {
-        "sanity_gate": request.form.get("sanity_gate", "true").lower() == "true",
-        "corrections": request.form.get("corrections", "true").lower() == "true",
-        "workbook":    request.form.get("workbook",    "true").lower() == "true",
+        "sanity_gate":      request.form.get("sanity_gate", "true").lower() == "true",
+        "corrections":      request.form.get("corrections", "true").lower() == "true",
+        "workbook":         request.form.get("workbook",    "true").lower() == "true",
+        "old_ext":          old_ext,
+        "new_ext":          new_ext,
+        "sheet_name":       sheet_name,
+        "min_approve_rate": min_approve_rate,
+        "has_bands":        bands_file is not None,
     }
 
     run_id  = _make_run_id()
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    old_path = run_dir / "old_input.csv"
-    new_path = run_dir / "new_input.csv"
+    old_path = run_dir / f"old_input{old_ext}"
+    new_path = run_dir / f"new_input{new_ext}"
     old_file.save(str(old_path))
     new_file.save(str(new_path))
+
+    if bands_file:
+        bands_ext  = _safe_ext(bands_file.filename) or ".csv"
+        bands_path = run_dir / f"compensation_bands{bands_ext}"
+        bands_file.save(str(bands_path))
+        options["bands_path"] = str(bands_path)
 
     with _jobs_lock:
         _jobs[run_id] = {
@@ -511,13 +771,37 @@ def api_download(run_id: str, filename: str):
     run_dir = RUNS_DIR / run_id
     if not run_dir.exists():
         abort(404)
-    # Security: only allow files within run_dir
-    target = (run_dir / filename).resolve()
-    if not str(target).startswith(str(run_dir.resolve())):
+    # Security: only allow files within run_dir (resolve symlinks)
+    try:
+        target = (run_dir / filename).resolve()
+        base   = run_dir.resolve()
+    except Exception:
+        abort(403)
+    if not str(target).startswith(str(base) + os.sep) and str(target) != str(base):
         abort(403)
     if not target.exists():
         abort(404)
-    return send_from_directory(str(run_dir), filename, as_attachment=True)
+    if target.stat().st_size == 0:
+        abort(404)   # empty file - treat as not yet generated
+
+    # Explicit MIME types for Office formats (some systems don't register these)
+    _MIME = {
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".csv":  "text/csv",
+        ".json": "application/json",
+        ".pdf":  "application/pdf",
+    }
+    ext      = os.path.splitext(filename)[1].lower()
+    mimetype = _MIME.get(ext)
+
+    # serve the file relative to run_dir (handles subdirectories like corrections/)
+    rel_dir  = str(target.parent)
+    basename = target.name
+    return send_from_directory(rel_dir, basename,
+                               as_attachment=True,
+                               mimetype=mimetype,
+                               download_name=basename)
 
 
 @app.get("/api/ping")

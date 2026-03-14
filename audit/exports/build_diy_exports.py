@@ -1,13 +1,13 @@
 """
-build_diy_exports.py — DIY XLOOKUP export generator.
+build_diy_exports.py - DIY XLOOKUP export generator.
 
 Writes two CSVs to audit/exports/out/ for use in Excel XLOOKUP formulas
 and wide side-by-side comparison with gating decisions.
 
 Outputs
 -------
-  xlookup_keys.csv  — key fields for XLOOKUP matching
-  wide_compare.csv  — all matched_pairs with gating columns appended
+  xlookup_keys.csv  - key fields for XLOOKUP matching
+  wide_compare.csv  - all matched_pairs with gating columns appended
 
 Extra fields from config/policy.yaml are appended to wide_compare as
 old_<field>, new_<field>, mm_<field> triplets when available in matched_pairs.
@@ -38,6 +38,8 @@ from gating import (
     _norm,
 )
 from config_loader import load_policy, load_extra_fields, load_pii_config, load_audit_config
+from explanation import generate_explanation
+from sanity_checks import detect_wave_dates
 
 ROOT    = _HERE.parents[1]
 DB_PATH = ROOT / "audit" / "audit.db"
@@ -55,14 +57,20 @@ _XLOOKUP_COLS = [
     "old_full_name_norm", "new_full_name_norm",
 ]
 
-# Stable wide_compare columns — do not reorder.
+# Stable wide_compare columns - do not reorder.
 # Extra field triplets (old_/new_/mm_) are appended after this list.
 _WIDE_COLS = [
     # Keys / gating
     "pair_id", "match_source", "confidence",
-    "action", "reason", "fix_types", "summary", "priority_score",
+    "action", "reason", "fix_types", "summary", "match_explanation", "priority_score",
     # Side-by-side fields
     "old_full_name_norm", "new_full_name_norm",
+    # Name components (first/last/middle/suffix + name change flag)
+    "old_first_name_norm", "new_first_name_norm",
+    "old_last_name_norm",  "new_last_name_norm",
+    "old_middle_name",     "new_middle_name",
+    "old_suffix",          "new_suffix",
+    "name_change_detected",
     "old_worker_status", "new_worker_status",
     "old_worker_type", "new_worker_type",
     "old_hire_date", "new_hire_date",
@@ -74,11 +82,15 @@ _WIDE_COLS = [
     "old_payrate", "new_payrate",
     # Computed helpers
     "salary_delta", "salary_ratio", "payrate_delta",
+    "conversion_type",
     "status_changed", "hire_date_changed", "job_org_changed",
+    "hire_date_pattern",
     "needs_review", "suggested_action",
+    # Compensation band validation (optional - populated when bands file provided)
+    "comp_band_status", "comp_band_min", "comp_band_mid", "comp_band_max", "comp_band_match",
 ]
 
-# Set of column names already in the stable schema — used to prevent duplication
+# Set of column names already in the stable schema - used to prevent duplication
 _WIDE_EXISTING = set(_WIDE_COLS)
 
 
@@ -211,13 +223,19 @@ def main(argv: list[str] | None = None) -> None:
     if available_extra:
         print(f"  extra fields    : {available_extra}")
 
+    # Detect wave dates before per-row loop so classify_all can flag individual records
+    all_rows   = mp.to_dict(orient="records")
+    wave_dates = detect_wave_dates(all_rows)
+    if wave_dates:
+        print(f"  wave dates detected: {sorted(wave_dates)}")
+
     xlookup_rows: list[dict] = []
     wide_rows:    list[dict] = []
     n_approve = 0
     n_review  = 0
 
-    for r in mp.to_dict(orient="records"):
-        result    = classify_all(r)
+    for r in all_rows:
+        result    = classify_all(r, wave_dates=wave_dates)
         fix_types = result["fix_types"]
         action    = result["action"]
         reason    = result["reason"]
@@ -252,6 +270,7 @@ def main(argv: list[str] | None = None) -> None:
             "reason":             reason,
             "fix_types":          "|".join(fix_types),
             "summary":            summary,
+            "match_explanation":  generate_explanation(r, result),
             "priority_score":     prio,
             "old_full_name_norm": r.get("old_full_name_norm", ""),
             "new_full_name_norm": r.get("new_full_name_norm", ""),
@@ -276,11 +295,22 @@ def main(argv: list[str] | None = None) -> None:
             "salary_delta":       sal_d,
             "salary_ratio":       sal_rat,
             "payrate_delta":      pay_d,
+            "conversion_type":    result.get("conversion_type") or "",
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
             "hire_date_changed":  not _str_eq(r.get("old_hire_date"), r.get("new_hire_date")),
             "job_org_changed":    "job_org" in fix_types,
+            # Fix 4: hire_date_pattern - populated when a systematic pattern was detected
+            # (off_by_one_day_pattern or systematic_year_shift_pattern).
+            "hire_date_pattern":  result.get("per_fix", {}).get("hire_date", {}).get("reason", "")
+                                  if "hire_date" in fix_types else "",
             "needs_review":       action == "REVIEW",
             "suggested_action":   action,
+            # Comp band - populated by comp_band_validator.py if bands file provided
+            "comp_band_status":   "",
+            "comp_band_min":      "",
+            "comp_band_mid":      "",
+            "comp_band_max":      "",
+            "comp_band_match":    "",
         }
 
         # Append extra field triplets + compute per-field mismatch for groups.
@@ -294,7 +324,7 @@ def main(argv: list[str] | None = None) -> None:
             wide_row[f"mm_{field}"]  = mm
             field_mm[field] = mm
 
-        # Group mismatch booleans — True if any field in the group has a mismatch.
+        # Group mismatch booleans - True if any field in the group has a mismatch.
         for group_name, group_fields in extra_groups.items():
             wide_row[f"mismatch_group_{group_name}"] = any(
                 field_mm.get(f, False) for f in group_fields

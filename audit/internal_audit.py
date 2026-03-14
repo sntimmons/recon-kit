@@ -1,15 +1,15 @@
 """
-audit/internal_audit.py — Single-file internal data quality audit.
+audit/internal_audit.py - Single-file internal data quality audit.
 
 Usage:
     venv/Scripts/python.exe audit/internal_audit.py --file path/to/data.csv --out-dir path/to/output/
 
 Outputs (all written to --out-dir):
-    internal_audit_report.json      — machine-readable summary (for API)
-    internal_audit_report.csv       — human-readable full report
-    internal_audit_duplicates.csv   — duplicate worker_id records
-    internal_audit_blanks.csv       — per-column blank/null rates
-    internal_audit_suspicious.csv   — suspicious default values detected
+    internal_audit_report.json      - machine-readable summary (for API)
+    internal_audit_report.csv       - human-readable full report
+    internal_audit_duplicates.csv   - duplicate worker_id records
+    internal_audit_blanks.csv       - per-column blank/null rates
+    internal_audit_suspicious.csv   - suspicious default values detected
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ def _detect_suspicious(df: pd.DataFrame) -> list[dict]:
                     "value": str(val),
                     "count": int(mask.sum()),
                     "pct": round(mask.sum() / len(df) * 100, 2),
-                    "description": f"Salary exactly {val} — common system default",
+                    "description": f"Salary exactly {val} - common system default",
                 })
 
     # Hire date suspicious defaults
@@ -71,7 +71,7 @@ def _detect_suspicious(df: pd.DataFrame) -> list[dict]:
                     "value": prefix,
                     "count": int(mask.sum()),
                     "pct": round(mask.sum() / len(df) * 100, 2),
-                    "description": f"Hire date starting with {prefix} — possible system default",
+                    "description": f"Hire date starting with {prefix} - possible system default",
                 })
 
     # Suspicious worker statuses
@@ -85,7 +85,7 @@ def _detect_suspicious(df: pd.DataFrame) -> list[dict]:
                     "value": s,
                     "count": int(mask.sum()),
                     "pct": round(mask.sum() / len(df) * 100, 2),
-                    "description": f"Worker status '{s}' — placeholder or test value",
+                    "description": f"Worker status '{s}' - placeholder or test value",
                 })
 
     return rows
@@ -219,7 +219,7 @@ def run_internal_audit(file_path: Path, out_dir: Path) -> dict:
     for col, info in dup_summary.items():
         issues.append(f"Duplicate {col}: {info['duplicate_records']} records across {info['duplicate_values']} values")
     for s in suspicious:
-        issues.append(f"{s['check']}: {s['count']} records ({s['pct']}%) — {s['description']}")
+        issues.append(f"{s['check']}: {s['count']} records ({s['pct']}%) - {s['description']}")
     for r in completeness:
         if r["blank_pct"] > 20 and r["field"] in ["worker_id", "full_name", "first_name", "last_name", "email"]:
             issues.append(f"High blank rate on {r['field']}: {r['blank_pct']}%")

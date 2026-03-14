@@ -1,5 +1,5 @@
 """
-smoke_check_run_manager.py — Verify run_manager.py logic.
+smoke_check_run_manager.py - Verify run_manager.py logic.
 
 Assertions
 ----------
