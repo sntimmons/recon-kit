@@ -488,7 +488,9 @@ def main(argv: list[str] | None = None) -> None:
                 # ---------------------------------------------------------------
                 new_sal    = _parse_num(r.get("new_salary"))
                 new_status = _norm(r.get("new_worker_status", ""))
-                if new_status == "active" and (new_sal is None or new_sal == 0.0):
+                _null_or_active  = new_status in ("active", "")
+                _zero_or_null_sal = (new_sal is None or new_sal == 0.0)
+                if _null_or_active and _zero_or_null_sal:
                     held_rows.append(
                         _build_held_row(r, result, "active_zero_salary_blocked", summary)
                     )

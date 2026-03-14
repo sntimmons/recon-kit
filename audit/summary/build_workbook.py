@@ -148,7 +148,7 @@ def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
         .fillna("")
         .str.strip()
         .str.lower()
-        == "active"
+        .isin(["active", ""])
     )
     new_sal_num = pd.to_numeric(
         df.get("new_salary", pd.Series(dtype=object))
@@ -417,12 +417,17 @@ def main(argv: list[str] | None = None) -> None:
         "--manifest", default=None, metavar="PATH",
         help=f"corrections_manifest.csv path (default: auto from RK_WORK_DIR or {MANIFEST_CSV}).",
     )
+    parser.add_argument(
+        "--gate-blocked", action="store_true", default=False,
+        help="Sanity gate failed - write blocked placeholder to Corrections_Manifest sheet.",
+    )
     args = parser.parse_args(argv)
 
     out_path      = Path(args.out)      if args.out      else OUT_PATH
     wide_path     = Path(args.wide)     if args.wide     else WIDE_CSV
     db_path       = Path(args.db)       if args.db       else DB_PATH
     manifest_path = Path(args.manifest) if args.manifest else MANIFEST_CSV
+    gate_blocked  = args.gate_blocked
 
     if not db_path.exists():
         print(f"[error] DB not found: {db_path}", file=sys.stderr)
@@ -487,7 +492,12 @@ def main(argv: list[str] | None = None) -> None:
         review_df  = pd.DataFrame()
         review_src = "unavailable"
 
-    if manifest_path.exists():
+    if gate_blocked:
+        manifest_df  = pd.DataFrame([
+            {"note": "Corrections blocked - sanity gate failed. Resolve gate failure before generating corrections."}
+        ])
+        manifest_src = "blocked (gate FAIL)"
+    elif manifest_path.exists():
         manifest_df  = pd.read_csv(str(manifest_path))
         manifest_src = manifest_path.name
     else:

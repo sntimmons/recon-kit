@@ -565,7 +565,7 @@ def run_sanity_checks(db_path: Path, out_dir: Path) -> dict:
 
     active_zero_salary_count = sum(
         1 for r in rows
-        if str(r.get("new_worker_status", "") or "").strip().lower() == "active"
+        if str(r.get("new_worker_status", "") or "").strip().lower() in ("active", "")
         and (_parse_float(r.get("new_salary")) or 0.0) == 0.0
     )
 

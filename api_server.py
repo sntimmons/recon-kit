@@ -393,6 +393,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             raise RuntimeError("Audit step failed")
 
         # 7. Optional: sanity gate - write JSON to per-run summary dir
+        _gate_blocked = False
         if options.get("sanity_gate", True):
             _set_step(run_id, "sanity_gate")
             gate_cmd = [str(PYTHON), "audit/summary/run_sanity_gate.py",
@@ -401,9 +402,18 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
                         "--min-approve-rate", str(options.get("min_approve_rate", 0.75))]
             rc, _ = _run_cmd(gate_cmd, HERE, run_id, env=run_env)
             _finish_step(run_id, "sanity_gate", "done" if rc == 0 else "warn")
+            # Read gate result to decide whether corrections are blocked
+            _gate_json = run_summary / "sanity_gate.json"
+            if _gate_json.exists():
+                try:
+                    import json as _json
+                    _gd = _json.loads(_gate_json.read_text())
+                    _gate_blocked = not _gd.get("passed", True)
+                except Exception:
+                    pass
 
-        # 8. Optional: generate corrections - pass per-run DB and output dir
-        if options.get("corrections", True):
+        # 8. Optional: generate corrections - skipped when gate fails
+        if options.get("corrections", True) and not _gate_blocked:
             _set_step(run_id, "corrections")
             rc, _ = _run_cmd(
                 [str(PYTHON), "audit/corrections/generate_corrections.py",
@@ -412,6 +422,8 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
                 HERE, run_id, env=run_env,
             )
             _finish_step(run_id, "corrections", "done" if rc == 0 else "warn")
+        elif _gate_blocked:
+            _finish_step(run_id, "corrections", "blocked")
 
         # 9. DIY exports - writes wide_compare.csv directly to run_dir
         _set_step(run_id, "exports")
@@ -438,14 +450,14 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         # 10. Optional: Excel workbook - reads wide_compare.csv from run_dir
         if options.get("workbook", True):
             _set_step(run_id, "workbook")
-            rc, _ = _run_cmd(
-                [str(PYTHON), "audit/summary/build_workbook.py",
-                 "--out",      str(run_dir / "recon_workbook.xlsx"),
-                 "--wide",     str(run_dir / "wide_compare.csv"),
-                 "--db",       str(run_db),
-                 "--manifest", str(run_corr / "corrections_manifest.csv")],
-                HERE, run_id, env=run_env,
-            )
+            _wb_cmd = [str(PYTHON), "audit/summary/build_workbook.py",
+                       "--out",      str(run_dir / "recon_workbook.xlsx"),
+                       "--wide",     str(run_dir / "wide_compare.csv"),
+                       "--db",       str(run_db),
+                       "--manifest", str(run_corr / "corrections_manifest.csv")]
+            if _gate_blocked:
+                _wb_cmd.append("--gate-blocked")
+            rc, _ = _run_cmd(_wb_cmd, HERE, run_id, env=run_env)
             _finish_step(run_id, "workbook", "done" if rc == 0 else "warn")
 
         # 11. Review queue - pass per-run DB and output path

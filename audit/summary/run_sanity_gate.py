@@ -93,7 +93,7 @@ def _compute_approve_rate(db_path: Path) -> tuple[int, int, float, int]:
             # Check: is this an active employee with $0 salary?
             status = str(r.get("new_worker_status", "") or "").strip().lower()
             sal    = _parse_salary(r.get("new_salary"))
-            if status == "active" and (sal is None or sal == 0.0):
+            if status in ("active", "") and (sal is None or sal == 0.0):
                 active_zero_approved += 1
 
     rate = round(n_approve / total, 6) if total > 0 else 0.0
