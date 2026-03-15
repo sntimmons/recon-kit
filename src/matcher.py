@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -148,6 +149,19 @@ def compute_confidence(row: dict) -> float:
     return round(min(1.0, max(0.0, score)), 4)
 
 
+def _ascii_fold_name_part(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    return (
+        unicodedata.normalize("NFKD", raw)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+
+
 def main() -> None:
     old = _load("old")
     new = _load("new")
@@ -241,10 +255,11 @@ def main() -> None:
         base["new_middle_name"]     = matched.get("middle_name_new", pd.NA)
         base["old_suffix"]          = matched.get("suffix_old", pd.NA)
         base["new_suffix"]          = matched.get("suffix_new", pd.NA)
-        # name_change_detected: True when last names differ and both are present
+        # name_change_detected: True only for genuine last-name changes.
+        # Accent-only differences (García vs Garcia) should not be flagged.
         def _name_changed(row: dict) -> bool:
-            old_ln = str(row.get("old_last_name_norm") or "").strip()
-            new_ln = str(row.get("new_last_name_norm") or "").strip()
+            old_ln = _ascii_fold_name_part(row.get("old_last_name_norm"))
+            new_ln = _ascii_fold_name_part(row.get("new_last_name_norm"))
             return bool(old_ln and new_ln and old_ln != new_ln)
         base["name_change_detected"] = [
             _name_changed(r) for r in base.to_dict(orient="records")

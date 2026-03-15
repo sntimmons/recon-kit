@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Dict, Any
 
@@ -48,6 +49,10 @@ _BUILTIN_ALIASES: Dict[str, str] = {
     "fname":                  "first_name",
     "given_name":             "first_name",
     "forename":               "first_name",
+    # ── middle_name ─────────────────────────────────────────────────────────
+    "middle_name":            "middle_name",
+    "middle_initial":         "middle_name",
+    "mname":                  "middle_name",
     # ── last_name ───────────────────────────────────────────────────────────
     "legal_last_name":        "last_name",
     "lname":                  "last_name",
@@ -247,8 +252,15 @@ def _norm_str(x) -> str:
     return s
 
 
-def _norm_name(x) -> str:
-    s = _norm_str(x).lower()
+def _norm_name(x, *, strip_accents: bool = False) -> str:
+    s = _norm_str(x)
+    if s and strip_accents:
+        s = (
+            unicodedata.normalize("NFKD", s)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
+    s = s.lower()
     s = re.sub(r"[^a-z\s\-']", "", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -289,7 +301,7 @@ def _strip_suffix(last_name_raw: str) -> tuple[str, str | None]:
          "Williams"   -> ("williams", None)
          "O'Brien III" -> ("o'brien", "III")
     """
-    s = _norm_name(last_name_raw)   # lowercase + clean
+    s = _norm_name(last_name_raw, strip_accents=True)   # lowercase + clean
     if not s:
         return s, None
     parts = s.split()
@@ -313,7 +325,7 @@ def _split_first_middle(first_name_raw: str) -> tuple[str, str | None]:
       "Mary Jo"         -> ("mary jo", None)    # 2-word given name - treated as first only
     Returns (first_norm, middle_norm | None)
     """
-    s = _norm_name(first_name_raw)
+    s = _norm_name(first_name_raw, strip_accents=True)
     if not s:
         return s, None
     parts = s.split()
@@ -348,6 +360,7 @@ def _build_name_components(df: pd.DataFrame) -> pd.DataFrame:
     """
     first_raw = df.get("first_name", pd.Series([""] * len(df))).fillna("").astype(str)
     last_raw  = df.get("last_name",  pd.Series([""] * len(df))).fillna("").astype(str)
+    middle_raw = df.get("middle_name", pd.Series([""] * len(df))).fillna("").astype(str)
 
     first_norms, middles = zip(*[_split_first_middle(v) for v in first_raw]) if len(df) > 0 \
                            else ([], [])
@@ -357,7 +370,15 @@ def _build_name_components(df: pd.DataFrame) -> pd.DataFrame:
     df["first_name_norm"] = pd.array(list(first_norms), dtype="string")
     df["last_name_norm"]  = pd.array(list(last_norms),  dtype="string")
 
-    mid_series = pd.array([m if m else pd.NA for m in middles], dtype="string")
+    explicit_middle = [
+        _norm_str(v) if _norm_str(v) else None
+        for v in middle_raw
+    ]
+    mid_values = [
+        explicit if explicit else parsed
+        for explicit, parsed in zip(explicit_middle, middles)
+    ]
+    mid_series = pd.array([m if m else pd.NA for m in mid_values], dtype="string")
     suf_series = pd.array([s if s else pd.NA for s in suffixes], dtype="string")
     df["middle_name"] = mid_series
     df["suffix"]      = suf_series
@@ -530,7 +551,7 @@ def map_file(
     expected = [
         "first_name", "last_name", "position", "dob", "hire_date", "location",
         "salary", "payrate", "worker_status", "worker_type", "district",
-        "last4_ssn", "address", "worker_id", "recon_id",
+        "last4_ssn", "address", "worker_id", "recon_id", "middle_name",
     ]
     df = _ensure_columns(df, expected)
 
@@ -539,6 +560,7 @@ def map_file(
 
     df["first_name"] = df["first_name"].apply(_norm_str).astype("string")
     df["last_name"] = df["last_name"].apply(_norm_str).astype("string")
+    df["middle_name"] = df["middle_name"].apply(_norm_str).replace("", pd.NA).astype("string")
     df["full_name_norm"] = _build_full_name_norm(df)
     df = _build_name_components(df)   # adds first_name_norm, last_name_norm, middle_name, suffix
 

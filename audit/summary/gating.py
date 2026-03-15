@@ -85,6 +85,21 @@ def _str_changed(old_val, new_val) -> bool:
     return _norm(old_val) != _norm(new_val)
 
 
+def _name_change_reason(row: dict) -> str | None:
+    """Return the review reason for a genuine last-name change, if present."""
+    name_changed = bool(
+        row.get("name_change_detected") is True
+        or str(row.get("name_change_detected", "")).lower() in ("true", "1", "yes")
+    )
+    if not name_changed:
+        return None
+    old_ln = str(row.get("old_last_name_norm") or "").strip()
+    new_ln = str(row.get("new_last_name_norm") or "").strip()
+    if old_ln and new_ln:
+        return f"name_change_detected ({old_ln} -> {new_ln})"
+    return "name_change_detected"
+
+
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
@@ -372,6 +387,8 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
         if new_hd and new_hd in wave_dates:
             wave_flagged = True
 
+    name_change_reason = _name_change_reason(row)
+
     if not fix_types:
         if wave_flagged:
             return {
@@ -491,15 +508,8 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
     # Always routes to REVIEW so a human can confirm it is the same person
     # (could be a legal name change, a marriage, a data-entry error, or truly
     # a different employee).  Never blocks corrections, just adds to review reasons.
-    name_changed = bool(row.get("name_change_detected") is True
-                        or str(row.get("name_change_detected", "")).lower() in ("true", "1", "yes"))
-    if name_changed:
-        old_ln = str(row.get("old_last_name_norm") or "").strip()
-        new_ln = str(row.get("new_last_name_norm") or "").strip()
-        review_reasons.append(
-            f"name_change_detected ({old_ln} -> {new_ln})" if (old_ln and new_ln)
-            else "name_change_detected"
-        )
+    if name_change_reason:
+        review_reasons.append(name_change_reason)
 
     if reject_reason:
         overall_action = "REJECT_MATCH"
