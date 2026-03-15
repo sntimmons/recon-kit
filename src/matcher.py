@@ -152,6 +152,18 @@ def main() -> None:
     old = _load("old")
     new = _load("new")
 
+    def _is_missing_id(v: object) -> bool:
+        return bool(pd.isna(v) or str(v).strip() == "")
+
+    old_no_id = pd.DataFrame(columns=old.columns)
+    new_no_id = pd.DataFrame(columns=new.columns)
+    if "worker_id" in old.columns:
+        old_no_id = old[old["worker_id"].apply(_is_missing_id)].copy()
+        old = old[~old["worker_id"].apply(_is_missing_id)].copy()
+    if "worker_id" in new.columns:
+        new_no_id = new[new["worker_id"].apply(_is_missing_id)].copy()
+        new = new[~new["worker_id"].apply(_is_missing_id)].copy()
+
     report: Dict[str, Any] = {
         "matched_total": 0,
         "matched_by_worker_id": 0,
@@ -304,22 +316,21 @@ def main() -> None:
 
     matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
 
-    # Add unmatched_reason: "no_id" if worker_id is blank/null, "no_match_found" otherwise.
+    # Add unmatched_reason: "no_id" for blank/null worker_id rows,
+    # "no_match_found" for all non-empty worker_id rows that did not match.
     old = old.copy()
-    if "worker_id" in old.columns:
-        old["unmatched_reason"] = old["worker_id"].apply(
-            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
-        )
-    else:
-        old["unmatched_reason"] = "no_match_found"
+    old["unmatched_reason"] = "no_match_found"
+    if not old_no_id.empty:
+        old_no_id = old_no_id.copy()
+        old_no_id["unmatched_reason"] = "no_id"
+        old = pd.concat([old, old_no_id], ignore_index=True)
 
     new = new.copy()
-    if "worker_id" in new.columns:
-        new["unmatched_reason"] = new["worker_id"].apply(
-            lambda v: "no_id" if (pd.isna(v) or str(v).strip() == "") else "no_match_found"
-        )
-    else:
-        new["unmatched_reason"] = "no_match_found"
+    new["unmatched_reason"] = "no_match_found"
+    if not new_no_id.empty:
+        new_no_id = new_no_id.copy()
+        new_no_id["unmatched_reason"] = "no_id"
+        new = pd.concat([new, new_no_id], ignore_index=True)
 
     old.to_csv(OUT / "unmatched_old.csv", index=False)
     new.to_csv(OUT / "unmatched_new.csv", index=False)
