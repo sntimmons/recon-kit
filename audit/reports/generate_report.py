@@ -612,14 +612,14 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
                 )
     doc.add_paragraph()
 
-    # Compensation band validation (optional - only shown when bands file was provided)
-    _add_heading(doc, "3.4 Compensation Band Validation", 2)
-    if "comp_band_status" not in df.columns or df["comp_band_status"].fillna("").str.strip().eq("").all():
-        doc.add_paragraph(
-            "No compensation band file was provided for this run. "
-            "To enable band validation, upload a compensation_bands.csv alongside the source files."
-        )
-    else:
+    # Compensation band validation is optional - skip the section entirely when
+    # no bands were uploaded or every comp_band_status value is blank/null.
+    has_comp_band_data = (
+        "comp_band_status" in df.columns
+        and not df["comp_band_status"].fillna("").str.strip().eq("").all()
+    )
+    if has_comp_band_data:
+        _add_heading(doc, "3.4 Compensation Band Validation", 2)
         total        = len(df)
         n_below      = int((df["comp_band_status"] == "below_band_min").sum())
         n_above      = int((df["comp_band_status"] == "above_band_max").sum())
@@ -659,7 +659,7 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
             if show_cols:
                 sample = outlier_df[show_cols].head(10)
                 _data_table(doc, show_cols, sample.fillna("").astype(str).values.tolist())
-    doc.add_paragraph()
+        doc.add_paragraph()
 
 
 def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
