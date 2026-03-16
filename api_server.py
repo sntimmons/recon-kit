@@ -306,6 +306,10 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "audit_report.pdf",
         "chro_approval_document.pdf",
         "audit_trail.json",
+        "eib_job_org.xlsx",
+        "eib_hire_date.xlsx",
+        "eib_status.xlsx",
+        "eib_salary.xlsx",
         "wide_compare.csv",
         "unmatched_old.csv",
         "unmatched_new.csv",
@@ -600,6 +604,17 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             _finish_step(run_id, "corrections", "done" if rc == 0 else "warn")
         elif _gate_blocked:
             _finish_step(run_id, "corrections", "blocked")
+
+        # 8.5 Optional: build Workday EIB exports from approved corrections
+        if options.get("corrections", True) and not _gate_blocked:
+            _set_step(run_id, "eib")
+            rc, _ = _run_cmd(
+                [str(PYTHON), "audit/exports/build_eib.py",
+                 "--run-id", run_id,
+                 "--run-dir", str(run_dir)],
+                HERE, run_id, env=run_env,
+            )
+            _finish_step(run_id, "eib", "done" if rc == 0 else "warn")
 
         # 9. DIY exports - writes wide_compare.csv directly to run_dir
         _set_step(run_id, "exports")

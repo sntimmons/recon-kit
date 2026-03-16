@@ -52,6 +52,15 @@ _DEFAULT_CONFIDENCE_POLICY: dict = {
 # sanity_gate.enabled=False so the gate is a no-op without a config file.
 _DEFAULT_POLICY: dict = {
     "client_name": "Your Organization",
+    "client": {
+        "name": "Your Organization",
+        "chro_name": "",
+        "chro_title": "Chief Human Resources Officer",
+    },
+    "systems": {
+        "old_system": "ADP Workforce Now",
+        "new_system": "Workday",
+    },
     "gating": {
         "salary_payrate_min_confidence": 0.97,
         "status_min_confidence":         0.98,

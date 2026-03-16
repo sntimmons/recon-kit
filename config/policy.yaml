@@ -8,6 +8,15 @@
 
 client_name: Your Organization
 
+client:
+  name: "Your Organization"
+  chro_name: ""
+  chro_title: "Chief Human Resources Officer"
+
+systems:
+  old_system: "ADP Workforce Now"
+  new_system: "Workday"
+
 gating:
   # Legacy reference values - kept for documentation only.
   # Active thresholds are now in confidence_policy below.

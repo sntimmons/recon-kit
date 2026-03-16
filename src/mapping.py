@@ -9,6 +9,8 @@ from typing import Dict, Any
 
 import pandas as pd
 
+from connectors.registry import get_connector
+
 # ---------------------------------------------------------------------------
 # Column alias resolution
 # ---------------------------------------------------------------------------
@@ -169,7 +171,24 @@ def _load_yaml_aliases() -> Dict[str, str]:
         return {}
 
 
-def _apply_aliases(df: pd.DataFrame) -> pd.DataFrame:
+def _load_policy_system_connector(label: str):
+    try:
+        _summary = Path(__file__).resolve().parent.parent / "audit" / "summary"
+        if str(_summary) not in sys.path:
+            sys.path.insert(0, str(_summary))
+        from config_loader import load_policy  # noqa: PLC0415
+
+        policy = load_policy()
+        systems = policy.get("systems", {}) if isinstance(policy.get("systems"), dict) else {}
+        connector_name = systems.get("old_system") if label == "old" else systems.get("new_system")
+        if not connector_name:
+            return None
+        return get_connector(str(connector_name))
+    except Exception:
+        return None
+
+
+def _apply_aliases(df: pd.DataFrame, extra_aliases: Dict[str, str] | None = None) -> pd.DataFrame:
     """Rename input columns to the standard pipeline names.
 
     Resolution order (highest wins):
@@ -186,6 +205,8 @@ def _apply_aliases(df: pd.DataFrame) -> pd.DataFrame:
       is renamed; the rest are left unchanged.
     """
     aliases: Dict[str, str] = {**_BUILTIN_ALIASES, **_load_yaml_aliases()}
+    if extra_aliases:
+        aliases.update({_canonical_col(k): v for k, v in extra_aliases.items()})
 
     claimed: set[str] = set(df.columns)   # track which standard names are taken
     rename_map: Dict[str, str] = {}
@@ -635,11 +656,13 @@ def map_file(
         df = pd.read_csv(input_path)
     df.columns = [c.strip() for c in df.columns]
 
+    connector = _load_policy_system_connector(label)
+
     # Resolve non-standard column names (e.g. "Associate_ID" → "worker_id",
     # "Date_of_Birth" → "dob", "Annual_Salary" → "salary", etc.) before any
     # downstream normalization so that the rest of the function always sees
     # the expected standard names.
-    df = _apply_aliases(df)
+    df = _apply_aliases(df, extra_aliases=connector.to_alias_map() if connector else None)
 
     expected = [
         "first_name", "last_name", "position", "dob", "hire_date", "location",
