@@ -304,6 +304,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "recon_workbook.xlsx",
         "audit_report.docx",
         "audit_report.pdf",
+        "chro_approval_document.pdf",
         "audit_trail.json",
         "wide_compare.csv",
         "unmatched_old.csv",
@@ -697,6 +698,17 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "audit_trail", "done" if rc == 0 else "warn")
+
+        # 15. CHRO approval document - requires audit_trail.json and gate outputs
+        _set_step(run_id, "chro_approval")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/build_chro_approval.py",
+             "--run-id", run_id,
+             "--run-dir", str(run_dir),
+             "--out", str(run_dir / "chro_approval_document.pdf")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "chro_approval", "done" if rc == 0 else "warn")
 
         # Parse stats
         stats = _parse_run_stats(run_dir)

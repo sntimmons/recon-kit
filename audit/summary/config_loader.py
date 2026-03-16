@@ -51,6 +51,7 @@ _DEFAULT_CONFIDENCE_POLICY: dict = {
 # Defaults used when policy.yaml is absent or unreadable.
 # sanity_gate.enabled=False so the gate is a no-op without a config file.
 _DEFAULT_POLICY: dict = {
+    "client_name": "Your Organization",
     "gating": {
         "salary_payrate_min_confidence": 0.97,
         "status_min_confidence":         0.98,
