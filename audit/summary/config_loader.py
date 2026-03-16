@@ -67,8 +67,8 @@ _DEFAULT_POLICY: dict = {
         "gate":    {"enabled": False, "min_confidence": 0.95},
     },
     "pii": {
-        "include_dob_in_ui":      True,   # safe default: do not suppress
-        "include_dob_in_exports": True,
+        "include_dob_in_ui":      False,   # safe default: suppress DOB - opt in explicitly via policy.yaml
+        "include_dob_in_exports": False,
     },
     "sanity_gate": {
         "enabled":      False,
@@ -214,12 +214,12 @@ def load_pii_config(policy: dict | None = None) -> dict:
         include_dob_in_ui      (bool) - include old_dob/new_dob in ui_pairs.csv
         include_dob_in_exports (bool) - include old_dob/new_dob in wide_compare/workbook
 
-    Safe default is True (do not suppress) so that this module is safe to
-    import even without policy.yaml.  The real policy.yaml sets both to False.
+    Safe default is False (suppress DOB) so that this module is safe to
+    import even without policy.yaml. Exposure requires explicit opt-in.
     """
     if policy is None:
         policy = load_policy()
-    return policy.get("pii", {"include_dob_in_ui": True, "include_dob_in_exports": True})
+    return policy.get("pii", {"include_dob_in_ui": False, "include_dob_in_exports": False})
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

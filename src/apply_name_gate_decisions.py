@@ -163,8 +163,8 @@ def apply_decisions(
     # ------------------------------------------------------------------
     # Integrity: no duplicate non-blank worker_id_old / worker_id_new
     # ------------------------------------------------------------------
-    _check_no_dup(combined, "worker_id_old", out_path.parent)
-    _check_no_dup(combined, "worker_id_new", out_path.parent)
+    _check_no_dup(combined, "old_worker_id", out_path.parent)
+    _check_no_dup(combined, "new_worker_id", out_path.parent)
 
     # ------------------------------------------------------------------
     # Write

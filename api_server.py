@@ -15,6 +15,7 @@ Serves the static site from site/ and provides two API endpoints:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -46,6 +47,24 @@ _RECON_SEMAPHORE = threading.BoundedSemaphore(1)
 # App
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=str(SITE_DIR), static_url_path="")
+logger = logging.getLogger(__name__)
+
+
+def _warn_if_policy_unavailable() -> None:
+    policy_path = HERE / "config" / "policy.yaml"
+    try:
+        from audit.summary.config_loader import load_policy
+        load_policy(policy_path)
+        if not policy_path.exists():
+            logger.warning("policy.yaml could not be loaded at startup - using internal defaults")
+    except Exception as exc:
+        logger.warning(
+            "policy.yaml could not be loaded at startup - using internal defaults (%s)",
+            type(exc).__name__,
+        )
+
+
+_warn_if_policy_unavailable()
 
 # In-memory job registry  { run_id: { status, steps, result, error } }
 _jobs: dict[str, dict] = {}
@@ -409,8 +428,12 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
                     import json as _json
                     _gd = _json.loads(_gate_json.read_text())
                     _gate_blocked = not _gd.get("passed", True)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(
+                        "sanity_gate.json unreadable - treating as gate FAIL: %s",
+                        type(e).__name__,
+                    )
+                    _gate_blocked = True
 
         # 8. Optional: generate corrections - skipped when gate fails
         if options.get("corrections", True) and not _gate_blocked:

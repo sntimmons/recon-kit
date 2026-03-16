@@ -81,9 +81,9 @@ def run_cmd_optional(cmd: list[str], cwd: Path, env: dict[str, str], label: str)
 
 
 def _read_gate_json(gate_json: Path) -> tuple[bool, dict]:
-    """Read sanity_gate.json; return (passed, blocked_outputs). Defaults to PASS on error."""
+    """Read sanity_gate.json; return (passed, blocked_outputs). Fail closed on error."""
     if not gate_json.exists():
-        return True, {"corrections": False, "workbook": False, "exports": False}
+        return False, {"corrections": True, "workbook": True, "exports": True}
     try:
         with open(str(gate_json), "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -92,7 +92,7 @@ def _read_gate_json(gate_json: Path) -> tuple[bool, dict]:
             data.get("blocked_outputs", {"corrections": False, "workbook": False, "exports": False}),
         )
     except Exception:
-        return True, {"corrections": False, "workbook": False, "exports": False}
+        return False, {"corrections": True, "workbook": True, "exports": True}
 
 
 # ---------------------------------------------------------------------------
