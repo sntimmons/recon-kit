@@ -108,6 +108,12 @@ _DEFAULT_POLICY: dict = {
         "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
         "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
         "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
+        "salary_outlier_threshold": 2.5,
+        "salary_outlier_min_dept_size": 5,
+        "pay_equity_variance_threshold": 0.30,
+        "pay_equity_min_group_size": 3,
+        "ghost_employee_check": True,
+        "manager_loop_check": True,
     },
 }
 
@@ -264,6 +270,12 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
         suspicious_hire_date_prefixes (list[str])
         suspicious_status_values (list[str])
         duplicate_check_fields (list[str])
+        salary_outlier_threshold (float)
+        salary_outlier_min_dept_size (int)
+        pay_equity_variance_threshold (float)
+        pay_equity_min_group_size (int)
+        ghost_employee_check (bool)
+        manager_loop_check (bool)
     """
     if policy is None:
         policy = load_policy()
@@ -275,6 +287,12 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
             "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
             "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
             "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
+            "salary_outlier_threshold": 2.5,
+            "salary_outlier_min_dept_size": 5,
+            "pay_equity_variance_threshold": 0.30,
+            "pay_equity_min_group_size": 3,
+            "ghost_employee_check": True,
+            "manager_loop_check": True,
         },
     )
 

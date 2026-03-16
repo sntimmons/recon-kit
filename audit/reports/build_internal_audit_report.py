@@ -142,7 +142,8 @@ def _build_page_one(pdf: PdfPages, run_id: str, summary: dict) -> None:
         ax.text(0.08, y, _wrap(para, width=88), ha="left", va="top", fontsize=11)
         y -= 0.09
 
-    _footer(fig, run_id, 1, 3)
+    total_pages = 4 if any(f.get("check_key") == "pay_equity_flag" for f in (summary.get("findings_for_pdf", []) or [])) else 3
+    _footer(fig, run_id, 1, total_pages)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -155,7 +156,7 @@ def _build_page_two(pdf: PdfPages, run_id: str, summary: dict) -> None:
     ax.axis("off")
 
     fig.text(0.08, 0.93, "Findings By Category", ha="left", va="top", fontsize=18, weight="bold", color="#1F4E79")
-    findings = summary.get("findings_for_pdf", []) or []
+    findings = [f for f in (summary.get("findings_for_pdf", []) or []) if f.get("check_key") != "pay_equity_flag"]
 
     y = 0.88
     for finding in findings:
@@ -186,7 +187,8 @@ def _build_page_two(pdf: PdfPages, run_id: str, summary: dict) -> None:
         else:
             y -= 0.02
 
-    _footer(fig, run_id, 2, 3)
+    total_pages = 4 if any(f.get("check_key") == "pay_equity_flag" for f in (summary.get("findings_for_pdf", []) or [])) else 3
+    _footer(fig, run_id, 2, total_pages)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -226,7 +228,47 @@ def _build_page_three(pdf: PdfPages, run_id: str, blanks_csv: Path) -> None:
     if len(rows) > 20:
         ax.text(0.08, 0.10, "Additional completeness rows are available in internal_audit_blanks.csv.", ha="left", va="top", fontsize=9, style="italic")
 
-    _footer(fig, run_id, 3, 3)
+    total = 4 if blanks_csv.parent.joinpath("internal_audit_report.json").exists() else 3
+    try:
+        summary = _read_json(blanks_csv.parent / "internal_audit_report.json")
+        total = 4 if any(f.get("check_key") == "pay_equity_flag" for f in (summary.get("findings_for_pdf", []) or [])) else 3
+    except Exception:
+        pass
+    _footer(fig, run_id, 3, total)
+    pdf.savefig(fig)
+    plt.close(fig)
+
+
+def _build_page_four_pay_equity(pdf: PdfPages, run_id: str, summary: dict) -> None:
+    pay_equity = next((f for f in (summary.get("findings_for_pdf", []) or []) if f.get("check_key") == "pay_equity_flag"), None)
+    if not pay_equity:
+        return
+
+    fig = plt.figure(figsize=(PAGE_W, PAGE_H))
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    fig.text(0.08, 0.93, "Pay Equity Variance Summary", ha="left", va="top", fontsize=18, weight="bold", color="#1F4E79")
+    ax.text(0.08, 0.88, _wrap("Variance above 30% within the same role warrants review. This analysis does not include demographic data.", width=88), ha="left", va="top", fontsize=10)
+
+    group_rows = pay_equity.get("group_rows", []) or []
+    rows = [["Title", "Department", "Employees", "Min Salary", "Max Salary", "Variance %"]]
+    for row in group_rows[:18]:
+        rows.append([
+            str(row.get("title", "")),
+            str(row.get("department", "")),
+            str(row.get("employees", "")),
+            str(row.get("min_salary", "")),
+            str(row.get("max_salary", "")),
+            str(row.get("variance_pct", "")),
+        ])
+    _draw_table(ax, 0.08, 0.82, 0.84, rows, [0.22, 0.20, 0.10, 0.12, 0.12, 0.08], 0.038, font_size=8)
+    if len(group_rows) > 18:
+        ax.text(0.08, 0.08, "Additional pay equity rows are available in internal_audit_report.csv.", ha="left", va="top", fontsize=9, style="italic")
+
+    _footer(fig, run_id, 4, 4)
     pdf.savefig(fig)
     plt.close(fig)
 
@@ -238,6 +280,7 @@ def build_pdf(run_id: str, run_dir: Path, out_path: Path) -> None:
         _build_page_one(pdf, run_id, summary)
         _build_page_two(pdf, run_id, summary)
         _build_page_three(pdf, run_id, run_dir / "internal_audit_blanks.csv")
+        _build_page_four_pay_equity(pdf, run_id, summary)
 
 
 def main() -> None:

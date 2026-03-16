@@ -19,6 +19,7 @@ import argparse
 import csv
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -34,6 +35,10 @@ DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES = ["2026-02", "2026-03", "1900-", "1970-01
 DEFAULT_SUSPICIOUS_STATUSES = ["unknown", "n/a", "na", "null", "none", "test"]
 DEFAULT_DUPLICATE_FIELDS = ["worker_id", "email", "last4_ssn"]
 DEFAULT_HIGH_BLANK_RATE_THRESHOLD = 0.20
+DEFAULT_SALARY_OUTLIER_THRESHOLD = 2.5
+DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE = 5
+DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD = 0.30
+DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE = 3
 
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
@@ -58,6 +63,27 @@ def _safe_json_value(x):
     return val if val != "" else ""
 
 
+def _check_catalog() -> list[dict]:
+    return [
+        {"check_key": "duplicate_worker_id", "check_name": "Duplicate worker_id", "severity": "CRITICAL"},
+        {"check_key": "duplicate_email", "check_name": "Duplicate email", "severity": "MEDIUM"},
+        {"check_key": "duplicate_last4_ssn", "check_name": "Duplicate last4_ssn", "severity": "CRITICAL"},
+        {"check_key": "active_zero_salary", "check_name": "Active employees with $0 or missing salary", "severity": "CRITICAL"},
+        {"check_key": "salary_suspicious_default", "check_name": "Suspicious salary default values", "severity": "HIGH"},
+        {"check_key": "hire_date_suspicious_default", "check_name": "Suspicious hire date defaults", "severity": "HIGH"},
+        {"check_key": "status_suspicious_value", "check_name": "Suspicious status placeholders", "severity": "HIGH"},
+        {"check_key": "impossible_dates", "check_name": "Impossible dates", "severity": "HIGH"},
+        {"check_key": "status_hire_date_mismatch", "check_name": "Status and termination-date mismatches", "severity": "HIGH"},
+        {"check_key": "missing_manager", "check_name": "Active employees with no manager", "severity": "MEDIUM"},
+        {"check_key": "manager_loop", "check_name": "Manager reporting loops", "severity": "HIGH"},
+        {"check_key": "salary_outlier", "check_name": "Salary outliers by department", "severity": "MEDIUM"},
+        {"check_key": "pay_equity_flag", "check_name": "Pay equity variance flags", "severity": "HIGH"},
+        {"check_key": "ghost_employee_indicator", "check_name": "Ghost employee indicators", "severity": "CRITICAL"},
+        {"check_key": "duplicate_name_different_id", "check_name": "Duplicate names with different IDs", "severity": "MEDIUM"},
+        {"check_key": "suspicious_round_salary", "check_name": "Suspicious round number salaries", "severity": "LOW"},
+    ]
+
+
 def _read_input(file_path: Path, sheet_name: int | str = 0) -> pd.DataFrame:
     ext = file_path.suffix.lower()
     if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
@@ -77,6 +103,12 @@ def _load_config() -> dict:
         "suspicious_hire_date_prefixes": list(cfg.get("suspicious_hire_date_prefixes", DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES) or DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES),
         "suspicious_status_values": [_norm_lower(v) for v in (cfg.get("suspicious_status_values", DEFAULT_SUSPICIOUS_STATUSES) or DEFAULT_SUSPICIOUS_STATUSES)],
         "duplicate_check_fields": [str(v).strip() for v in (cfg.get("duplicate_check_fields", DEFAULT_DUPLICATE_FIELDS) or DEFAULT_DUPLICATE_FIELDS) if str(v).strip()],
+        "salary_outlier_threshold": float(cfg.get("salary_outlier_threshold", DEFAULT_SALARY_OUTLIER_THRESHOLD) or DEFAULT_SALARY_OUTLIER_THRESHOLD),
+        "salary_outlier_min_dept_size": int(cfg.get("salary_outlier_min_dept_size", DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE) or DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE),
+        "pay_equity_variance_threshold": float(cfg.get("pay_equity_variance_threshold", DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD) or DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD),
+        "pay_equity_min_group_size": int(cfg.get("pay_equity_min_group_size", DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE) or DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE),
+        "ghost_employee_check": bool(cfg.get("ghost_employee_check", True)),
+        "manager_loop_check": bool(cfg.get("manager_loop_check", True)),
     }
 
 
@@ -129,6 +161,45 @@ def _status_column(df: pd.DataFrame) -> str | None:
     return None
 
 
+def _first_present(df: pd.DataFrame, names: list[str]) -> str | None:
+    lowered = {str(col).strip().lower(): col for col in df.columns}
+    for col in names:
+        if col in df.columns:
+            return col
+        match = lowered.get(str(col).strip().lower())
+        if match:
+            return match
+    return None
+
+
+def _name_columns(df: pd.DataFrame) -> list[str]:
+    cols = []
+    for col in ["full_name", "first_name", "last_name"]:
+        if col in df.columns:
+            cols.append(col)
+    return cols
+
+
+def _record_label(row: pd.Series) -> str:
+    for col in ["worker_id", "full_name", "first_name", "last_name", "email"]:
+        val = _norm_str(row.get(col))
+        if val:
+            return val
+    return "Unknown"
+
+
+def _numeric_series(df: pd.DataFrame, col: str | None) -> pd.Series:
+    if not col or col not in df.columns:
+        return pd.Series([pd.NA] * len(df), index=df.index, dtype="float64")
+    return pd.to_numeric(df[col], errors="coerce")
+
+
+def _date_series(df: pd.DataFrame, col: str | None) -> pd.Series:
+    if not col or col not in df.columns:
+        return pd.Series([pd.NaT] * len(df), index=df.index)
+    return pd.to_datetime(df[col], errors="coerce")
+
+
 def _completeness_severity(field: str, blank_pct: float, threshold_pct: float) -> str:
     if blank_pct <= 0:
         return "LOW"
@@ -142,16 +213,27 @@ def _completeness_severity(field: str, blank_pct: float, threshold_pct: float) -
 
 
 def _check_severity(check_key: str, field: str | None = None) -> str:
-    if check_key in {"duplicate_worker_id", "duplicate_last4_ssn", "active_zero_salary"}:
+    if check_key in {
+        "duplicate_worker_id",
+        "duplicate_last4_ssn",
+        "active_zero_salary",
+        "ghost_employee_indicator",
+    }:
         return "CRITICAL"
     if check_key in {
         "salary_suspicious_default",
         "hire_date_suspicious_default",
         "status_suspicious_value",
+        "impossible_dates",
+        "status_hire_date_mismatch",
+        "manager_loop",
+        "pay_equity_flag",
     }:
         return "HIGH"
-    if check_key == "duplicate_email":
+    if check_key in {"duplicate_email", "missing_manager", "salary_outlier", "duplicate_name_different_id"}:
         return "MEDIUM"
+    if check_key == "suspicious_round_salary":
+        return "LOW"
     if check_key == "high_blank_rate":
         if field == "worker_id":
             return "CRITICAL"
@@ -209,19 +291,501 @@ def _detect_active_zero_salary(df: pd.DataFrame) -> list[dict]:
 
     statuses = df[status_col].astype(str).str.strip().str.lower()
     salaries = pd.to_numeric(df["salary"], errors="coerce")
-    mask = (statuses == "active") & (salaries == 0)
+    salary_blank = _blank_mask(df["salary"])
+    mask = (statuses == "active") & ((salaries == 0) | salary_blank)
     if mask.any():
         findings.append(
             {
                 "section": "CRITICAL_CHECKS",
                 "check_key": "active_zero_salary",
-                "check_name": "Active employee $0 salary",
+                "check_name": "Active employees with $0 or missing salary",
                 "field": "salary",
                 "severity": "CRITICAL",
                 "count": int(mask.sum()),
                 "pct": round(mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
-                "description": "Active employees with a $0 salary were detected. This is a critical payroll and compliance risk.",
+                "description": "Active employee has $0 or missing salary - likely a data entry error",
                 "sample_rows": _sample_rows(df, mask, extra=[status_col, "salary"]),
+            }
+        )
+    return findings
+
+
+def _detect_impossible_dates(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    hire_col = _first_present(df, ["hire_date", "start_date", "date_hired"])
+    dob_col = _first_present(df, ["date_of_birth", "dob", "birth_date"])
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    status_col = _status_column(df)
+
+    today = pd.Timestamp(datetime.now().date())
+    hire_dates = _date_series(df, hire_col)
+    dob_dates = _date_series(df, dob_col)
+    term_dates = _date_series(df, term_col)
+    status_norm = df[status_col].astype(str).str.strip().str.lower() if status_col else pd.Series("", index=df.index)
+
+    rows: list[dict] = []
+    if hire_col:
+        masks = [
+            (hire_dates > today, hire_col, "Hire date is in the future"),
+            (hire_dates < pd.Timestamp("1950-01-01"), hire_col, "Hire date is before 1950-01-01"),
+        ]
+        for mask, field_name, reason in masks:
+            for idx in df.index[mask.fillna(False)]:
+                rows.append(
+                    {
+                        "row_number": int(idx) + 2,
+                        "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                        "field_name": field_name,
+                        "field_value": _safe_json_value(df.at[idx, field_name]),
+                        "why_flagged": reason,
+                    }
+                )
+    if dob_col:
+        old_mask = dob_dates <= (today - pd.Timedelta(days=365 * 100))
+        young_mask = dob_dates >= (today - pd.Timedelta(days=365 * 16))
+        masks = [
+            (old_mask, dob_col, "DOB implies age over 100"),
+            (young_mask, dob_col, "DOB implies age under 16"),
+        ]
+        if hire_col:
+            masks.append((dob_dates > hire_dates, dob_col, "DOB is after hire date"))
+        for mask, field_name, reason in masks:
+            for idx in df.index[mask.fillna(False)]:
+                rows.append(
+                    {
+                        "row_number": int(idx) + 2,
+                        "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                        "field_name": field_name,
+                        "field_value": _safe_json_value(df.at[idx, field_name]),
+                        "why_flagged": reason,
+                    }
+                )
+    if term_col:
+        masks = []
+        if hire_col:
+            masks.append((term_dates < hire_dates, term_col, "Termination date is before hire date"))
+        if status_col:
+            masks.append(((term_dates > today) & (status_norm == "terminated"), term_col, "Termination date is in the future while status is Terminated"))
+        for mask, field_name, reason in masks:
+            for idx in df.index[mask.fillna(False)]:
+                rows.append(
+                    {
+                        "row_number": int(idx) + 2,
+                        "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                        "field_name": field_name,
+                        "field_value": _safe_json_value(df.at[idx, field_name]),
+                        "why_flagged": reason,
+                    }
+                )
+
+    if rows:
+        findings.append(
+            {
+                "section": "DATE_CHECKS",
+                "check_key": "impossible_dates",
+                "check_name": "Impossible dates",
+                "field": hire_col or dob_col or term_col or "",
+                "severity": "HIGH",
+                "count": len(rows),
+                "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Dates were found that are impossible or internally inconsistent.",
+                "sample_rows": rows[:5],
+            }
+        )
+    return findings
+
+
+def _detect_status_hire_date_mismatch(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not term_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    term_blank = _blank_mask(df[term_col])
+    active_with_term = (statuses == "active") & ~term_blank
+    terminated_without_term = (statuses == "terminated") & term_blank
+
+    if active_with_term.any():
+        findings.append(
+            {
+                "section": "STATUS_CHECKS",
+                "check_key": "status_hire_date_mismatch",
+                "check_name": "Termination date but Active status",
+                "field": status_col,
+                "severity": "HIGH",
+                "count": int(active_with_term.sum()),
+                "pct": round(active_with_term.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Employee has termination date but is marked Active",
+                "sample_rows": _sample_rows(df, active_with_term, extra=[status_col, term_col]),
+            }
+        )
+    if terminated_without_term.any():
+        findings.append(
+            {
+                "section": "STATUS_CHECKS",
+                "check_key": "status_hire_date_mismatch",
+                "check_name": "Terminated status without termination date",
+                "field": status_col,
+                "severity": "HIGH",
+                "count": int(terminated_without_term.sum()),
+                "pct": round(terminated_without_term.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Employee is marked Terminated but has no termination date",
+                "sample_rows": _sample_rows(df, terminated_without_term, extra=[status_col, term_col]),
+            }
+        )
+    return findings
+
+
+def _detect_missing_manager(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    manager_col = _first_present(df, ["manager_id", "manager", "supervisor_id", "Manager_ID", "ManagerEmployeeID", "Manager_Worker_ID"])
+    if not status_col or not manager_col:
+        return findings
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    mask = (statuses == "active") & _blank_mask(df[manager_col])
+    if mask.any():
+        findings.append(
+            {
+                "section": "ORG_CHECKS",
+                "check_key": "missing_manager",
+                "check_name": "Active employees with no manager",
+                "field": manager_col,
+                "severity": "MEDIUM",
+                "count": int(mask.sum()),
+                "pct": round(mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Active employee has no manager assigned",
+                "sample_rows": _sample_rows(df, mask, extra=[manager_col, _first_present(df, ["department", "business_unit", "dept", "district"])]),
+            }
+        )
+    return findings
+
+
+def _detect_manager_loops(df: pd.DataFrame, enabled: bool) -> list[dict]:
+    findings: list[dict] = []
+    worker_col = _first_present(df, ["worker_id"])
+    manager_col = _first_present(df, ["manager_id", "manager", "supervisor_id", "Manager_ID", "ManagerEmployeeID", "Manager_Worker_ID"])
+    if not enabled or not worker_col or not manager_col:
+        return findings
+
+    worker_ids = df[worker_col].astype(str).str.strip()
+    manager_ids = df[manager_col].astype(str).str.strip()
+    links = {}
+    for idx in df.index:
+        wid = worker_ids.at[idx]
+        mid = manager_ids.at[idx]
+        if wid and wid.lower() != "nan" and mid and mid.lower() != "nan":
+            links[wid] = mid
+
+    cycles: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    for wid, mid in links.items():
+        if wid == mid:
+            key = tuple(sorted([wid]))
+            if key not in seen:
+                seen.add(key)
+                cycles.append([wid])
+            continue
+        if mid in links and links.get(mid) == wid:
+            key = tuple(sorted([wid, mid]))
+            if key not in seen:
+                seen.add(key)
+                cycles.append([wid, mid])
+        mid2 = links.get(mid)
+        if mid2 and mid2 in links and links.get(mid2) == wid:
+            key = tuple(sorted([wid, mid, mid2]))
+            if key not in seen:
+                seen.add(key)
+                cycles.append([wid, mid, mid2])
+
+    if cycles:
+        sample_rows = [
+            {
+                "cycle_length": len(cycle),
+                "employee_ids": " -> ".join(cycle + [cycle[0]]) if len(cycle) > 1 else cycle[0],
+            }
+            for cycle in cycles[:5]
+        ]
+        findings.append(
+            {
+                "section": "ORG_CHECKS",
+                "check_key": "manager_loop",
+                "check_name": "Manager reporting loops",
+                "field": manager_col,
+                "severity": "HIGH",
+                "count": len(cycles),
+                "pct": round(len(cycles) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Manager reporting loop detected - these employees report to each other",
+                "sample_rows": sample_rows,
+            }
+        )
+    return findings
+
+
+def _detect_salary_outliers(df: pd.DataFrame, config: dict) -> list[dict]:
+    findings: list[dict] = []
+    dept_col = _first_present(df, ["department", "business_unit", "dept", "district", "Department_Name"])
+    if "salary" not in df.columns or not dept_col or len(df) < 10:
+        return findings
+
+    salary = pd.to_numeric(df["salary"], errors="coerce")
+    dept = df[dept_col].astype(str).str.strip()
+    threshold = float(config["salary_outlier_threshold"])
+    min_size = int(config["salary_outlier_min_dept_size"])
+
+    rows = []
+    for dept_name, idxs in dept.groupby(dept).groups.items():
+        if not dept_name or dept_name.lower() == "nan":
+            continue
+        dept_salary = salary.loc[idxs].dropna()
+        if len(dept_salary) < min_size:
+            continue
+        median = float(dept_salary.median())
+        if median <= 0:
+            continue
+        high_mask = salary.loc[idxs] > (median * threshold)
+        low_mask = salary.loc[idxs] < (median * 0.3)
+        flagged = salary.loc[idxs][(high_mask | low_mask).fillna(False)]
+        for idx, value in flagged.items():
+            ratio = float(value) / median if median else 0.0
+            rows.append(
+                {
+                    "row_number": int(idx) + 2,
+                    "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                    "department": dept_name,
+                    "salary": _safe_json_value(df.at[idx, "salary"]),
+                    "median_salary": f"{median:.2f}",
+                    "note": f"Salary is {ratio:.2f}x the department median - verify this is correct",
+                }
+            )
+    if rows:
+        findings.append(
+            {
+                "section": "SALARY_CHECKS",
+                "check_key": "salary_outlier",
+                "check_name": "Salary outliers by department",
+                "field": dept_col,
+                "severity": "MEDIUM",
+                "count": len(rows),
+                "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Salary outliers were detected relative to department medians.",
+                "sample_rows": rows[:5],
+            }
+        )
+    return findings
+
+
+def _detect_pay_equity_flags(df: pd.DataFrame, config: dict) -> list[dict]:
+    findings: list[dict] = []
+    title_col = _first_present(df, ["job_title", "position", "position_title", "Job_Title"])
+    dept_col = _first_present(df, ["department", "business_unit", "dept", "district", "Department_Name"])
+    if "salary" not in df.columns or not title_col or not dept_col:
+        return findings
+
+    salary = pd.to_numeric(df["salary"], errors="coerce")
+    min_size = int(config["pay_equity_min_group_size"])
+    threshold = float(config["pay_equity_variance_threshold"])
+    group_df = pd.DataFrame({
+        "salary": salary,
+        "title": df[title_col].astype(str).str.strip(),
+        "department": df[dept_col].astype(str).str.strip(),
+    })
+    group_df = group_df.dropna(subset=["salary"])
+    group_df = group_df[(group_df["title"] != "") & (group_df["department"] != "")]
+    if group_df.empty:
+        return findings
+
+    group_rows = []
+    for (title, dept_name), grp in group_df.groupby(["title", "department"]):
+        if len(grp) < min_size:
+            continue
+        median = float(grp["salary"].median())
+        if median <= 0:
+            continue
+        variance = (float(grp["salary"].max()) - float(grp["salary"].min())) / median
+        if variance > threshold:
+            group_rows.append(
+                {
+                    "title": title,
+                    "department": dept_name,
+                    "employees": int(len(grp)),
+                    "min_salary": f"{float(grp['salary'].min()):.2f}",
+                    "max_salary": f"{float(grp['salary'].max()):.2f}",
+                    "median_salary": f"{median:.2f}",
+                    "variance_pct": f"{variance * 100:.1f}%",
+                }
+            )
+
+    if group_rows:
+        findings.append(
+            {
+                "section": "PAY_EQUITY",
+                "check_key": "pay_equity_flag",
+                "check_name": "Pay equity variance flags",
+                "field": title_col,
+                "severity": "HIGH",
+                "count": len(group_rows),
+                "pct": round(len(group_rows) / max(len(group_df), 1) * 100, 2),
+                "description": "Salary variance of more than 30% within the same title and department - review for pay equity compliance",
+                "sample_rows": group_rows[:5],
+                "group_rows": group_rows,
+            }
+        )
+    return findings
+
+
+def _detect_ghost_employees(df: pd.DataFrame, enabled: bool) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    dept_col = _first_present(df, ["department", "business_unit", "dept", "district", "Department_Name"])
+    manager_col = _first_present(df, ["manager_id", "manager", "supervisor_id", "Manager_ID", "ManagerEmployeeID", "Manager_Worker_ID"])
+    hire_col = _first_present(df, ["hire_date", "start_date", "date_hired"])
+    if not enabled or not status_col or "salary" not in df.columns or not dept_col or not manager_col or not hire_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salaries = pd.to_numeric(df["salary"], errors="coerce")
+    mask = (
+        (statuses == "active")
+        & ((salaries == 0) | _blank_mask(df["salary"]))
+        & _blank_mask(df[dept_col])
+        & _blank_mask(df[manager_col])
+        & ~_blank_mask(df[hire_col])
+    )
+    if mask.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "ghost_employee_indicator",
+                "check_name": "Ghost employee indicators",
+                "field": status_col,
+                "severity": "CRITICAL",
+                "count": int(mask.sum()),
+                "pct": round(mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Possible ghost employee - active status with no salary, no department, and no manager",
+                "sample_rows": _sample_rows(df, mask, extra=[status_col, "salary", dept_col, manager_col, hire_col]),
+            }
+        )
+    return findings
+
+
+def _detect_duplicate_name_different_id(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    worker_col = _first_present(df, ["worker_id"])
+    first_col = _first_present(df, ["first_name"])
+    last_col = _first_present(df, ["last_name"])
+    full_name_col = _first_present(df, ["full_name"])
+    if not worker_col or ((not first_col or not last_col) and not full_name_col):
+        return findings
+
+    working = pd.DataFrame(index=df.index)
+    if full_name_col:
+        working["name_key"] = df[full_name_col].astype(str).str.strip().str.lower()
+    else:
+        working["name_key"] = (
+            df[first_col].astype(str).str.strip().str.lower() + "|" + df[last_col].astype(str).str.strip().str.lower()
+        )
+    working["worker_id"] = df[worker_col].astype(str).str.strip()
+    working = working[(working["name_key"] != "") & (working["worker_id"] != "")]
+    if working.empty:
+        return findings
+
+    rows = []
+    for _, grp in working.groupby("name_key"):
+        if grp["worker_id"].nunique() > 1 and len(grp) > 1:
+            sample_idx = grp.index[:5]
+            for idx in sample_idx:
+                rows.append(
+                    {
+                        "row_number": int(idx) + 2,
+                        "worker_id": _safe_json_value(df.at[idx, worker_col]),
+                        "name": _safe_json_value(df.at[idx, full_name_col]) if full_name_col else f"{_safe_json_value(df.at[idx, first_col])} {_safe_json_value(df.at[idx, last_col])}".strip(),
+                    }
+                )
+    if rows:
+        findings.append(
+            {
+                "section": "IDENTITY_CHECKS",
+                "check_key": "duplicate_name_different_id",
+                "check_name": "Duplicate names with different IDs",
+                "field": worker_col,
+                "severity": "MEDIUM",
+                "count": len(rows),
+                "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Two employees share the same name with different IDs - verify these are different people",
+                "sample_rows": rows[:5],
+            }
+        )
+    return findings
+
+
+def _detect_suspicious_round_salary(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    dept_col = _first_present(df, ["department", "business_unit", "dept", "district", "Department_Name"])
+    if not status_col or "salary" not in df.columns:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    active_mask = statuses == "active"
+    salary = pd.to_numeric(df["salary"], errors="coerce")
+    valid = salary[active_mask & salary.notna()]
+    if valid.empty:
+        return findings
+
+    repeated_counts = valid.value_counts()
+    exact_values = {1, 10, 100, 1000, 10000, 12345, 99999, 999999}
+    dept_medians = {}
+    if dept_col:
+        dept_series = df[dept_col].astype(str).str.strip()
+        for dept_name, idxs in dept_series.groupby(dept_series).groups.items():
+            dept_salary = salary.loc[idxs].dropna()
+            if dept_name and dept_name.lower() != "nan" and not dept_salary.empty:
+                dept_medians[dept_name] = float(dept_salary.median())
+    rows = []
+    for idx in df.index[active_mask.fillna(False)]:
+        value = salary.at[idx]
+        if pd.isna(value):
+            continue
+        count = int(repeated_counts.get(value, 0))
+        if count <= 3:
+            continue
+        int_value = int(value)
+        is_exact = int_value in exact_values
+        is_round = str(int_value).endswith("00000")
+        if not is_exact and not is_round:
+            continue
+        significant = True
+        if dept_col:
+            dept_name = _norm_str(df.at[idx, dept_col])
+            median = dept_medians.get(dept_name)
+            if median and median > 0:
+                significant = abs(float(value) - median) / median > 0.2
+        if not significant:
+            continue
+        rows.append(
+            {
+                "row_number": int(idx) + 2,
+                "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                "salary": _safe_json_value(df.at[idx, "salary"]),
+                "repeated_count": count,
+            }
+        )
+    if rows:
+        findings.append(
+            {
+                "section": "SALARY_CHECKS",
+                "check_key": "suspicious_round_salary",
+                "check_name": "Suspicious round number salaries",
+                "field": "salary",
+                "severity": "LOW",
+                "count": len(rows),
+                "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Salary appears to be a placeholder value - verify this is correct",
+                "sample_rows": rows[:5],
             }
         )
     return findings
@@ -409,6 +973,24 @@ def _severity_counts(findings: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _check_counts(findings: list[dict]) -> list[dict]:
+    counts_by_key: dict[str, int] = {}
+    for finding in findings:
+        key = str(finding.get("check_key") or "")
+        counts_by_key[key] = counts_by_key.get(key, 0) + int(finding.get("count", 0) or 0)
+    rows = []
+    for item in _check_catalog():
+        rows.append(
+            {
+                "check_key": item["check_key"],
+                "check_name": item["check_name"],
+                "severity": item["severity"],
+                "count": counts_by_key.get(item["check_key"], 0),
+            }
+        )
+    return rows
+
+
 def _issue_strings(findings: list[dict]) -> list[str]:
     out = []
     for finding in findings:
@@ -431,12 +1013,17 @@ def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
                 "count": 0,
                 "description": finding["description"],
                 "sample_rows": [],
+                "group_rows": [],
             }
         grouped[key]["count"] += int(finding.get("count", 0))
         for row in finding.get("sample_rows", []):
             if len(grouped[key]["sample_rows"]) >= 5:
                 break
             grouped[key]["sample_rows"].append(row)
+        for row in finding.get("group_rows", []):
+            if len(grouped[key]["group_rows"]) >= 20:
+                break
+            grouped[key]["group_rows"].append(row)
     return list(grouped.values())
 
 
@@ -481,12 +1068,36 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     dup_df, dup_summary, dup_findings = _detect_duplicates(df, config["duplicate_check_fields"])
     suspicious = _detect_suspicious(df, config)
     active_zero_findings = _detect_active_zero_salary(df)
+    impossible_date_findings = _detect_impossible_dates(df)
+    status_mismatch_findings = _detect_status_hire_date_mismatch(df)
+    missing_manager_findings = _detect_missing_manager(df)
+    manager_loop_findings = _detect_manager_loops(df, config["manager_loop_check"])
+    salary_outlier_findings = _detect_salary_outliers(df, config)
+    pay_equity_findings = _detect_pay_equity_flags(df, config)
+    ghost_employee_findings = _detect_ghost_employees(df, config["ghost_employee_check"])
+    duplicate_name_findings = _detect_duplicate_name_different_id(df)
+    suspicious_round_salary_findings = _detect_suspicious_round_salary(df)
     completeness, completeness_findings = _field_completeness(df, config["high_blank_rate_threshold"])
     salary_dist = _salary_distribution(df)
     status_dist = _status_distribution(df)
 
-    findings = dup_findings + active_zero_findings + suspicious + completeness_findings
+    findings = (
+        dup_findings
+        + active_zero_findings
+        + suspicious
+        + impossible_date_findings
+        + status_mismatch_findings
+        + missing_manager_findings
+        + manager_loop_findings
+        + salary_outlier_findings
+        + pay_equity_findings
+        + ghost_employee_findings
+        + duplicate_name_findings
+        + suspicious_round_salary_findings
+        + completeness_findings
+    )
     severity_counts = _severity_counts(findings)
+    check_counts = _check_counts(findings)
 
     total_blank_fields = sum(r["blank_count"] for r in completeness)
     total_possible = total_rows * total_cols
@@ -503,6 +1114,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         "issues": _issue_strings(findings),
         "columns": list(df.columns),
         "severity_counts": severity_counts,
+        "check_counts": check_counts,
         "findings": findings,
         "findings_for_pdf": _group_findings_for_pdf(findings),
     }
@@ -564,6 +1176,17 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
             "severity": "LOW",
         },
     ]
+
+    for row in check_counts:
+        report_rows.append(
+            {
+                "section": "CHECKS",
+                "field": row["check_name"],
+                "value": str(row["count"]),
+                "note": "No findings" if int(row["count"]) == 0 else "Findings present",
+                "severity": row["severity"],
+            }
+        )
 
     for finding in findings:
         report_rows.append(
