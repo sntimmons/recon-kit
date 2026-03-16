@@ -26,6 +26,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from datetime import datetime
@@ -161,7 +162,47 @@ def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
     return df[mask_status & mask_zero].copy()
 
 
-def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str, unmatched_old: int = 0, unmatched_new: int = 0) -> None:
+def _load_salary_parse_stats() -> dict[str, object]:
+    """Read salary parse failure counts/samples from mapping reports if present."""
+    _run_outs = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
+
+    def _one(side: str) -> tuple[int, list[str]]:
+        p = _run_outs / f"mapping_report_mapped_{side}.json"
+        if not p.exists():
+            return 0, []
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            count = int(data.get("salary_parse_failures", 0) or 0)
+            samples = [str(x) for x in (data.get("salary_parse_failure_samples", []) or [])]
+            return count, samples
+        except Exception:
+            return 0, []
+
+    old_count, old_samples = _one("old")
+    new_count, new_samples = _one("new")
+    return {
+        "old_count": old_count,
+        "new_count": new_count,
+        "old_samples": old_samples,
+        "new_samples": new_samples,
+    }
+
+
+def _fix_types_text(df: pd.DataFrame) -> pd.Series | None:
+    if "fix_types" not in df.columns:
+        return None
+    return df["fix_types"].fillna("").astype("string")
+
+
+def _write_summary_sheet(
+    ws,
+    all_df: pd.DataFrame,
+    db_path: Path,
+    wide_src: str,
+    unmatched_old: int = 0,
+    unmatched_new: int = 0,
+    salary_parse_stats: dict[str, object] | None = None,
+) -> None:
     """Write the Summary sheet as a key-value table (write_only compatible)."""
 
     def _kv(label: str = "", value="", bold: bool = False, font=None) -> None:
@@ -179,6 +220,7 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
     _kv()
 
     total = len(all_df)
+    fix_types_text = _fix_types_text(all_df)
     _kv("MATCHED PAIRS", "", bold=True)
     _kv("  Total rows", total)
     if "action" in all_df.columns:
@@ -196,6 +238,12 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
     _kv("  Unmatched new system records", unmatched_new)
     _kv()
 
+    salary_parse_stats = salary_parse_stats or {}
+    _kv("DATA PARSE CHECKS", "", bold=True)
+    _kv("  Salary parse failures (old system)", int(salary_parse_stats.get("old_count", 0) or 0))
+    _kv("  Salary parse failures (new system)", int(salary_parse_stats.get("new_count", 0) or 0))
+    _kv()
+
     if "match_source" in all_df.columns:
         _kv("BY MATCH SOURCE", "", bold=True)
         for src, cnt in all_df["match_source"].value_counts().items():
@@ -207,7 +255,7 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
             _kv("  Fuzzy (confidence < 1.0)", n_fuzzy)
         _kv()
 
-    if "fix_types" in all_df.columns:
+    if fix_types_text is not None:
         _kv("MISMATCH TYPES", "", bold=True)
         for ft, label in [
             ("salary",    "Salary changes"),
@@ -215,16 +263,16 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
             ("hire_date", "Hire-date changes"),
             ("job_org",   "Job/org changes"),
         ]:
-            cnt = int(all_df["fix_types"].str.contains(ft, na=False).sum())
+            cnt = int(fix_types_text.str.contains(ft, na=False).sum())
             _kv(f"  {label}", cnt)
-        no_change = int((all_df["fix_types"].fillna("") == "").sum())
+        no_change = int((fix_types_text == "").sum())
         _kv("  No changes", no_change)
         _kv()
 
     if "salary_delta" in all_df.columns:
         # Fix 5: count rows where fix_types contains "salary" (not just non-null salary_delta)
-        if "fix_types" in all_df.columns:
-            sal_rows_count = int(all_df["fix_types"].str.contains("salary", na=False).sum())
+        if fix_types_text is not None:
+            sal_rows_count = int(fix_types_text.str.contains("salary", na=False).sum())
         else:
             sal_rows_count = None
 
@@ -263,10 +311,10 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
     _kv("SHEETS", "", bold=True)
     sheet_info = [
         ("All_Matches",         total),
-        ("Salary_Mismatches",   int(all_df["fix_types"].str.contains("salary",    na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("Status_Mismatches",   int(all_df["fix_types"].str.contains("status",    na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("HireDate_Mismatches", int(all_df["fix_types"].str.contains("hire_date", na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("JobOrg_Mismatches",   int(all_df["fix_types"].str.contains("job_org",   na=False).sum()) if "fix_types" in all_df.columns else "?"),
+        ("Salary_Mismatches",   int(fix_types_text.str.contains("salary",    na=False).sum()) if fix_types_text is not None else "?"),
+        ("Status_Mismatches",   int(fix_types_text.str.contains("status",    na=False).sum()) if fix_types_text is not None else "?"),
+        ("HireDate_Mismatches", int(fix_types_text.str.contains("hire_date", na=False).sum()) if fix_types_text is not None else "?"),
+        ("JobOrg_Mismatches",   int(fix_types_text.str.contains("job_org",   na=False).sum()) if fix_types_text is not None else "?"),
     ]
     for name, cnt in sheet_info:
         _kv(f"  {name}", cnt)
@@ -519,9 +567,10 @@ def main(argv: list[str] | None = None) -> None:
     # Build mismatch filter sheets
     # ------------------------------------------------------------------
     def _fix_filter(ft: str) -> pd.DataFrame:
-        if "fix_types" not in all_df.columns:
+        fix_types_text = _fix_types_text(all_df)
+        if fix_types_text is None:
             return pd.DataFrame(columns=all_df.columns)
-        return all_df[all_df["fix_types"].str.contains(ft, na=False)].copy()
+        return all_df[fix_types_text.str.contains(ft, na=False)].copy()
 
     salary_df  = _fix_filter("salary")
     status_df  = _fix_filter("status")
@@ -583,6 +632,7 @@ def main(argv: list[str] | None = None) -> None:
                 unmatched_new_count = max(0, sum(1 for _ in _f) - 1)
         except Exception:
             pass
+    salary_parse_stats = _load_salary_parse_stats()
 
     # ------------------------------------------------------------------
     # Build workbook (write_only streaming - no MemoryError on large sets)
@@ -591,7 +641,15 @@ def main(argv: list[str] | None = None) -> None:
     wb = Workbook(write_only=True)
 
     ws_sum = wb.create_sheet("Summary")
-    _write_summary_sheet(ws_sum, all_df, db_path, wide_src, unmatched_old_count, unmatched_new_count)
+    _write_summary_sheet(
+        ws_sum,
+        all_df,
+        db_path,
+        wide_src,
+        unmatched_old_count,
+        unmatched_new_count,
+        salary_parse_stats=salary_parse_stats,
+    )
     print(f"  wrote: Summary")
 
     data_sheets = [

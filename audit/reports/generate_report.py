@@ -354,6 +354,43 @@ def _callout(doc: Document, text: str, level: str = "warning") -> None:
     run.font.color.rgb = _RED if level == "critical" else (_ORANGE if level == "warning" else _GREEN)
 
 
+def _load_salary_parse_stats(db_path: Path, wide_path: Path) -> dict[str, object]:
+    """Read salary parse failure counts and samples from nearby mapping reports."""
+    candidate_dirs: list[Path] = []
+    candidate_dirs.append(wide_path.parent / "outputs")
+    candidate_dirs.append(db_path.parent.parent / "outputs")
+    candidate_dirs.append(ROOT / "outputs")
+
+    def _one(side: str) -> tuple[int, list[str]]:
+        for out_dir in candidate_dirs:
+            p = out_dir / f"mapping_report_mapped_{side}.json"
+            if not p.exists():
+                continue
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                count = int(data.get("salary_parse_failures", 0) or 0)
+                samples = [str(x) for x in (data.get("salary_parse_failure_samples", []) or [])]
+                return count, samples
+            except Exception:
+                continue
+        return 0, []
+
+    old_count, old_samples = _one("old")
+    new_count, new_samples = _one("new")
+    return {
+        "old_count": old_count,
+        "new_count": new_count,
+        "old_samples": old_samples,
+        "new_samples": new_samples,
+    }
+
+
+def _fix_types_text(df: pd.DataFrame) -> pd.Series | None:
+    if "fix_types" not in df.columns:
+        return None
+    return df["fix_types"].fillna("").astype("string")
+
+
 # ---------------------------------------------------------------------------
 # Data loader
 # ---------------------------------------------------------------------------
@@ -534,8 +571,9 @@ def _section_match_quality(doc: Document, df: pd.DataFrame) -> None:
             )
 
 
-def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
+def _section_data_quality(doc: Document, df: pd.DataFrame, salary_parse_stats: dict[str, object] | None = None) -> None:
     _add_heading(doc, "3. Data Quality Findings", 1)
+    salary_parse_stats = salary_parse_stats or {}
 
     # Active/$0 salary
     _add_heading(doc, "3.1 Active Employees with $0 Salary", 2)
@@ -565,6 +603,23 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
                 _data_table(doc, ["Employee", "Old Salary", "New Salary"][:len(sample_cols)], sample.values.tolist())
     else:
         doc.add_paragraph("(Status/salary columns not available for this check)")
+
+    old_parse_count = int(salary_parse_stats.get("old_count", 0) or 0)
+    new_parse_count = int(salary_parse_stats.get("new_count", 0) or 0)
+    if old_parse_count > 0:
+        old_samples = ", ".join([str(x) for x in (salary_parse_stats.get("old_samples", []) or [])[:10]])
+        doc.add_paragraph(
+            f"{old_parse_count:,} salary values in the old system could not be parsed and were treated "
+            f"as missing. Sample unparseable values: {old_samples or '(none captured)'}. "
+            f"These records may have salary corrections blocked or require manual review."
+        )
+    if new_parse_count > 0:
+        new_samples = ", ".join([str(x) for x in (salary_parse_stats.get("new_samples", []) or [])[:10]])
+        doc.add_paragraph(
+            f"{new_parse_count:,} salary values in the new system could not be parsed and were treated "
+            f"as missing. Sample unparseable values: {new_samples or '(none captured)'}. "
+            f"These records may have salary corrections blocked or require manual review."
+        )
     doc.add_paragraph()
 
     # Wave dates
@@ -664,7 +719,8 @@ def _section_data_quality(doc: Document, df: pd.DataFrame) -> None:
 def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     _add_heading(doc, "4. Field Change Analysis", 1)
 
-    if "fix_types" not in df.columns:
+    fix_types_text = _fix_types_text(df)
+    if fix_types_text is None:
         doc.add_paragraph("(fix_types column not available)")
         return
 
@@ -679,14 +735,14 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
         ("hire_date", "Hire Date"),
         ("job_org",   "Job / Organization"),
     ]:
-        cnt = int(df["fix_types"].str.contains(ft, na=False).sum())
+        cnt = int(fix_types_text.str.contains(ft, na=False).sum())
         change_rows.append([label, f"{cnt:,}", f"{cnt/total*100:.1f}%"])
     _data_table(doc, ["Change Type", "Count", "% of Total"], change_rows)
     doc.add_paragraph()
 
     # Payrate conversion summary
     _add_heading(doc, "4.1 Payrate Conversion Detection", 2)
-    pr_total = int(df["fix_types"].str.contains("payrate", na=False).sum()) if "fix_types" in df.columns else 0
+    pr_total = int(fix_types_text.str.contains("payrate", na=False).sum())
     if pr_total == 0:
         doc.add_paragraph("No payrate differences detected in this run.")
     elif "conversion_type" in df.columns:
@@ -729,7 +785,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     # Salary details
     _add_heading(doc, "4.2 Salary Changes", 2)
     if "salary_delta" in df.columns:
-        sal_df_all = df[df["fix_types"].str.contains("salary", na=False)].copy()
+        sal_df_all = df[fix_types_text.str.contains("salary", na=False)].copy()
 
         # Exclude Active/$0 records: these are data quality issues (missing salary
         # in source data), not real salary changes.  Including them collapses
@@ -779,7 +835,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
     # Status changes
     _add_heading(doc, "4.3 Status Changes", 2)
     if "old_worker_status" in df.columns and "new_worker_status" in df.columns:
-        st_df = df[df["fix_types"].str.contains("status", na=False)].copy()
+        st_df = df[fix_types_text.str.contains("status", na=False)].copy()
         if st_df.empty:
             doc.add_paragraph("No status changes detected.")
         else:
@@ -796,8 +852,7 @@ def _section_field_changes(doc: Document, df: pd.DataFrame) -> None:
 
     # Hire date changes - plain-English summary (no technical pattern table)
     _add_heading(doc, "4.4 Hire Date Changes", 2)
-    hd_df = df[df["fix_types"].str.contains("hire_date", na=False)].copy() \
-        if "fix_types" in df.columns else pd.DataFrame()
+    hd_df = df[fix_types_text.str.contains("hire_date", na=False)].copy()
     if hd_df.empty:
         doc.add_paragraph("No hire date differences detected.")
     else:
@@ -1032,6 +1087,8 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
     """Serialize the full run dataset into a JSON-serialisable dict for build_report.js."""
     total  = len(df)
     az_mask = _active_zero_mask(df)
+    salary_parse_stats = _load_salary_parse_stats(db_path, wide_path)
+    fix_types_text = _fix_types_text(df)
 
     # Actions
     def _n(col_val: str) -> int:
@@ -1071,8 +1128,8 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
 
     # Salary stats (Active/$0 excluded)
     salary: dict | None = None
-    if "salary_delta" in df.columns and "fix_types" in df.columns:
-        sal_all  = df[df["fix_types"].str.contains("salary", na=False)].copy()
+    if "salary_delta" in df.columns and fix_types_text is not None:
+        sal_all  = df[fix_types_text.str.contains("salary", na=False)].copy()
         az_in    = az_mask.reindex(sal_all.index, fill_value=False)
         sal_incl = sal_all[~az_in]
         sal_d    = pd.to_numeric(sal_incl["salary_delta"], errors="coerce").dropna()
@@ -1091,8 +1148,8 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
 
     # Status transitions
     status_transitions: list = []
-    if all(c in df.columns for c in ["old_worker_status", "new_worker_status", "fix_types"]):
-        st_df = df[df["fix_types"].str.contains("status", na=False)]
+    if all(c in df.columns for c in ["old_worker_status", "new_worker_status"]) and fix_types_text is not None:
+        st_df = df[fix_types_text.str.contains("status", na=False)]
         trans = (
             st_df["old_worker_status"].fillna("blank").str.lower().str.strip()
             + " → "
@@ -1102,8 +1159,8 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
 
     # Hire date stats
     hire_date_stats: dict = {}
-    if "fix_types" in df.columns:
-        hd_df = df[df["fix_types"].str.contains("hire_date", na=False)]
+    if fix_types_text is not None:
+        hd_df = df[fix_types_text.str.contains("hire_date", na=False)]
         hire_date_stats["total"] = int(len(hd_df))
         if "reason" in df.columns:
             hire_date_stats["n_wave"] = int(df["reason"].fillna("").str.contains("hire_date_wave").sum())
@@ -1165,6 +1222,14 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
         findings.append({"severity": "CRITICAL", "count": active_zero_count,
                          "title":  "Active Employees with $0 Salary",
                          "impact": "Salary corrections blocked; source data correction required"})
+    if int(salary_parse_stats.get("old_count", 0) or 0) > 0:
+        findings.append({"severity": "MEDIUM", "count": int(salary_parse_stats["old_count"]),
+                         "title":  "Old-System Salary Parse Failures",
+                         "impact": "Some old-system salary values were treated as missing during normalization"})
+    if int(salary_parse_stats.get("new_count", 0) or 0) > 0:
+        findings.append({"severity": "MEDIUM", "count": int(salary_parse_stats["new_count"]),
+                         "title":  "New-System Salary Parse Failures",
+                         "impact": "Some new-system salary values were treated as missing during normalization"})
     if reject_matches["total"] > 0:
         findings.append({"severity": "HIGH", "count": reject_matches["total"],
                          "title":  "Wrong-Person Pairings (REJECT_MATCH)",
@@ -1184,11 +1249,11 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
 
     # Change summary
     change_summary: list = []
-    if "fix_types" in df.columns:
+    if fix_types_text is not None:
         for ft, label in [("salary", "Salary"), ("payrate", "Payrate"),
                           ("status", "Worker Status"), ("hire_date", "Hire Date"),
                           ("job_org", "Job / Organization")]:
-            cnt = int(df["fix_types"].str.contains(ft, na=False).sum())
+            cnt = int(fix_types_text.str.contains(ft, na=False).sum())
             change_summary.append([label, f"{cnt:,}", f"{cnt/total*100:.1f}%" if total > 0 else "0.0%"])
 
     # Sanity gate - try per-run path first, then promotion-path fallback
@@ -1214,13 +1279,19 @@ def _serialize_run_data(df: pd.DataFrame, db_path: Path, wide_path: Path) -> dic
         "db_name":            db_path.name,
         "total_records":      total,
         "actions":            actions,
-        "n_with_changes":     int((df["fix_types"].fillna("") != "").sum()) if "fix_types" in df.columns else 0,
-        "n_clean":            int((df["fix_types"].fillna("") == "").sum()) if "fix_types" in df.columns else 0,
+        "n_with_changes":     int((fix_types_text != "").sum()) if fix_types_text is not None else 0,
+        "n_clean":            int((fix_types_text == "").sum()) if fix_types_text is not None else 0,
         "sanity_gate":        sanity_gate,
         "match_sources":      match_sources,
         "confidence_bands":   confidence_bands,
         "active_zero_count":  active_zero_count,
         "active_zero_sample": active_zero_sample,
+        "salary_parse_failures": {
+            "old_count": int(salary_parse_stats.get("old_count", 0) or 0),
+            "new_count": int(salary_parse_stats.get("new_count", 0) or 0),
+            "old_samples": [str(x) for x in (salary_parse_stats.get("old_samples", []) or [])[:10]],
+            "new_samples": [str(x) for x in (salary_parse_stats.get("new_samples", []) or [])[:10]],
+        },
         "salary":             salary,
         "status_transitions": status_transitions,
         "hire_date_stats":    hire_date_stats,
@@ -1334,6 +1405,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(2)
 
     df = _load_data(db_path, wide_path)
+    salary_parse_stats = _load_salary_parse_stats(db_path, wide_path)
 
     # Ensure numeric columns
     for col in ["salary_delta", "confidence", "priority_score"]:
@@ -1377,7 +1449,7 @@ def main(argv: list[str] | None = None) -> None:
     doc.add_page_break()
     _section_match_quality(doc, df)
     doc.add_page_break()
-    _section_data_quality(doc, df)
+    _section_data_quality(doc, df, salary_parse_stats=salary_parse_stats)
     doc.add_page_break()
     _section_field_changes(doc, df)
     doc.add_page_break()

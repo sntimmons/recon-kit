@@ -439,6 +439,67 @@ def _to_num_series(s: pd.Series) -> pd.Series:
     return s.apply(_clean)
 
 
+def _parse_salary_series(s: pd.Series) -> tuple[pd.Series, int, list[str]]:
+    """Parse salary values, counting non-numeric or blank inputs as failures.
+
+    Returns:
+      parsed_series  - float-or-None values for downstream logic
+      fail_count     - number of rows treated as missing because parsing failed
+      fail_samples   - up to 10 unique raw values that failed to parse
+    """
+    fail_count = 0
+    fail_samples: list[str] = []
+    seen_samples: set[str] = set()
+    parsed: list[float | None] = []
+
+    def _record_failure(raw_text: str) -> None:
+        nonlocal fail_count
+        fail_count += 1
+        sample = raw_text if raw_text != "" else "(blank)"
+        if sample not in seen_samples and len(fail_samples) < 10:
+            seen_samples.add(sample)
+            fail_samples.append(sample)
+
+    for v in s:
+        if v is None:
+            _record_failure("")
+            parsed.append(None)
+            continue
+        if isinstance(v, float):
+            try:
+                if pd.isna(v):
+                    _record_failure("")
+                    parsed.append(None)
+                    continue
+            except Exception:
+                _record_failure("")
+                parsed.append(None)
+                continue
+        try:
+            is_na = pd.isna(v)
+            if isinstance(is_na, bool) and is_na:
+                _record_failure("")
+                parsed.append(None)
+                continue
+        except Exception:
+            pass
+
+        raw_text = str(v).strip()
+        if raw_text == "":
+            _record_failure("")
+            parsed.append(None)
+            continue
+
+        cleaned = raw_text.replace("$", "").replace(",", "")
+        try:
+            parsed.append(float(cleaned))
+        except Exception:
+            _record_failure(raw_text)
+            parsed.append(None)
+
+    return pd.Series(parsed, index=s.index, dtype="float64"), fail_count, fail_samples
+
+
 def _ensure_columns(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     for c in cols:
         if c not in df.columns:
@@ -608,7 +669,7 @@ def map_file(
     df["worker_status"] = df["worker_status"].apply(_norm_str).str.lower().astype("string")
     df["worker_type"] = df["worker_type"].apply(_norm_str).str.lower().astype("string")
 
-    df["salary"] = _to_num_series(df["salary"])
+    df["salary"], salary_parse_failures, salary_parse_failure_samples = _parse_salary_series(df["salary"])
     df["payrate"] = _to_num_series(df["payrate"])
 
     report: Dict[str, Any] = {
@@ -619,6 +680,8 @@ def map_file(
         "worker_id_nulls": int(df["worker_id"].apply(lambda v: _norm_id_for_match(v) == "").sum()),
         "recon_id_nulls": int(df["recon_id"].apply(lambda v: _norm_id_for_match(v) == "").sum()),
         "salary_nulls": int(pd.isna(df["salary"]).sum()),
+        "salary_parse_failures": int(salary_parse_failures),
+        "salary_parse_failure_samples": salary_parse_failure_samples,
         "hire_date_nulls": int(df["hire_date"].isna().sum()),
         "location_state_nulls": int(df["location_state"].isna().sum()),
     }

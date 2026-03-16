@@ -671,6 +671,26 @@ function buildDataQuality (data) {
     elems.push(new Paragraph({ children: [txt('No active employees with $0 or missing salary detected.', { color: GREEN, bold: true, size: 20 })] }));
   }
 
+  const spf = data.salary_parse_failures || {};
+  if ((spf.old_count || 0) > 0) {
+    const samples = (spf.old_samples || []).slice(0, 10).join(', ') || '(none captured)';
+    elems.push(spacer());
+    elems.push(callout(
+      `${Number(spf.old_count).toLocaleString()} salary values in the old system could not be parsed and were treated as missing. ` +
+      `Sample unparseable values: ${samples}. These records may have salary corrections blocked or require manual review.`,
+      'warning'
+    ));
+  }
+  if ((spf.new_count || 0) > 0) {
+    const samples = (spf.new_samples || []).slice(0, 10).join(', ') || '(none captured)';
+    elems.push(spacer());
+    elems.push(callout(
+      `${Number(spf.new_count).toLocaleString()} salary values in the new system could not be parsed and were treated as missing. ` +
+      `Sample unparseable values: ${samples}. These records may have salary corrections blocked or require manual review.`,
+      'warning'
+    ));
+  }
+
   elems.push(spacer());
   elems.push(h2('4.2 Hire Date Wave Detection'));
   elems.push(spacer());
