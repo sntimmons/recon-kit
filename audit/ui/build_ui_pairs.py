@@ -44,8 +44,9 @@ from confidence_policy import is_auto_approve_source  # noqa: E402
 from config_loader import load_policy, load_extra_fields, load_pii_config, load_audit_config  # noqa: E402
 
 ROOT    = _HERE.parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_CSV = _HERE / "ui_pairs.csv"
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+DB_PATH = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_CSV = (_rk_work / "ui" / "ui_pairs.csv") if _rk_work else (_HERE / "ui_pairs.csv")
 
 # Contract version written into every row so consumers can detect schema changes.
 _CONTRACT_VERSION = "v1"

@@ -60,6 +60,9 @@ _DEFAULT_POLICY: dict = {
     "ui_contract": {
         "version": "v1",
     },
+    "retention": {
+        "run_output_hours": 72,
+    },
     "extra_fields": {
         "enabled": False,
         "fields":  [],
@@ -204,6 +207,18 @@ def load_confidence_policy(policy: dict | None = None) -> dict:
     if policy is None:
         policy = load_policy()
     return policy.get("confidence_policy", _DEFAULT_CONFIDENCE_POLICY)
+
+
+def load_retention_config(policy: dict | None = None) -> dict:
+    """
+    Return retention configuration.
+
+    Keys:
+        run_output_hours (int) - hours to retain dashboard_runs output folders
+    """
+    if policy is None:
+        policy = load_policy()
+    return policy.get("retention", {"run_output_hours": 72})
 
 
 def load_pii_config(policy: dict | None = None) -> dict:

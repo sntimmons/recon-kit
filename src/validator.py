@@ -1,4 +1,25 @@
+from __future__ import annotations
+
+from pathlib import Path
+
 import pandas as pd
+
+
+_REQUIRED_STANDARD_COLS = [
+    "first_name",
+    "last_name",
+    "dob",
+    "hire_date",
+    "worker_status",
+]
+
+_DISPLAY_COLS = {
+    "first_name": "First_Name",
+    "last_name": "Last_Name",
+    "dob": "Date_of_Birth",
+    "hire_date": "Hire_Date",
+    "worker_status": "Worker_Status",
+}
 
 
 def _pct(n: int, d: int) -> str:
@@ -167,3 +188,79 @@ def format_preflight_report(result: dict) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _read_uploaded_file(path: str | Path, sheet_name: int | str = 0) -> pd.DataFrame:
+    p = Path(path)
+    ext = p.suffix.lower()
+    if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
+        return pd.read_excel(p, sheet_name=sheet_name, dtype=str)
+    return pd.read_csv(p, dtype=str)
+
+
+def validate_uploaded_file(
+    path: str | Path,
+    *,
+    sheet_name: int | str = 0,
+) -> dict:
+    """
+    Validate a single uploaded source file before mapping begins.
+
+    Returns:
+      {
+        "ok": bool,
+        "error": str | None,
+        "warnings": [str, ...],
+        "row_count": int,
+      }
+    """
+    try:
+        df = _read_uploaded_file(path, sheet_name=sheet_name)
+    except pd.errors.EmptyDataError:
+        return {
+            "ok": False,
+            "error": "The uploaded file appears to be empty. Please check the file and try again.",
+            "warnings": [],
+            "row_count": 0,
+        }
+    except Exception:
+        return {
+            "ok": False,
+            "error": "The uploaded file could not be read. Please check the file and try again.",
+            "warnings": [],
+            "row_count": 0,
+        }
+
+    if df is None or df.empty:
+        return {
+            "ok": False,
+            "error": "The uploaded file appears to be empty. Please check the file and try again.",
+            "warnings": [],
+            "row_count": 0,
+        }
+
+    try:
+        from src.mapping import _apply_aliases  # noqa: PLC0415
+
+        df = df.copy()
+        df.columns = [str(c).strip() for c in df.columns]
+        df = _apply_aliases(df)
+    except Exception:
+        pass
+
+    missing = [c for c in _REQUIRED_STANDARD_COLS if c not in df.columns]
+    if missing:
+        display = _DISPLAY_COLS.get(missing[0], missing[0])
+        return {
+            "ok": False,
+            "error": f"Required column '{display}' is missing from the uploaded file.",
+            "warnings": [],
+            "row_count": int(len(df)),
+        }
+
+    return {
+        "ok": True,
+        "error": None,
+        "warnings": [],
+        "row_count": int(len(df)),
+    }

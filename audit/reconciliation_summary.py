@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -7,7 +8,8 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+DB_PATH = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
 
 # Allow importing gating modules from audit/summary/
 _SUMMARY_DIR = Path(__file__).resolve().parent / "summary"
@@ -134,29 +136,7 @@ def main() -> None:
         print(f"    p90    : {d.quantile(0.90):>12,.2f}")
         print(f"    max    : {d.max():>12,.2f}")
 
-        print(f"\n  top 10 largest absolute salary deltas:")
-        top10 = mismatch_rows.nlargest(10, "_delta", keep="all")[
-            ["old_worker_id", "new_worker_id", "old_full_name_norm", "old_salary", "new_salary", "_delta"]
-        ]
-        bot10 = mismatch_rows.nsmallest(10, "_delta", keep="all")[
-            ["old_worker_id", "new_worker_id", "old_full_name_norm", "old_salary", "new_salary", "_delta"]
-        ]
-        top10_abs = pd.concat([top10, bot10]).drop_duplicates()
-        top10_abs = top10_abs.reindex(
-            top10_abs["_delta"].abs().sort_values(ascending=False).index
-        ).head(10)
-        print(
-            f"  {'old_worker_id':<14}  {'new_worker_id':<14}  {'name':<30}  "
-            f"{'old_salary':>12}  {'new_salary':>12}  {'delta':>12}"
-        )
-        print("  " + "-" * 100)
-        for _, row in top10_abs.iterrows():
-            print(
-                f"  {str(row['old_worker_id']):<14}  {str(row['new_worker_id']):<14}  "
-                f"  {str(row['old_full_name_norm'])[:30]:<30}  "
-                f"  {str(row['old_salary']):>12}  {str(row['new_salary']):>12}  "
-                f"  {row['_delta']:>12,.2f}"
-            )
+        print(f"\n  top 10 largest absolute salary deltas: suppressed in logs")
     else:
         print("  no salary mismatches found.")
 
@@ -171,20 +151,7 @@ def main() -> None:
     ]
     print(f"  total status mismatches : {len(status_diff):,}")
     if len(status_diff) > 0:
-        print(f"\n  top 10 examples:")
-        cols_show = ["old_worker_id", "new_worker_id", "old_full_name_norm", "old_worker_status", "new_worker_status"]
-        cols_show = [c for c in cols_show if c in mp.columns]
-        top = status_diff[cols_show].head(10)
-        print(f"  {'old_worker_id':<14}  {'new_worker_id':<14}  {'name':<30}  {'old_status':<20}  {'new_status':<20}")
-        print("  " + "-" * 104)
-        for _, row in top.iterrows():
-            print(
-                f"  {str(row.get('old_worker_id', '')):<14}  "
-                f"{str(row.get('new_worker_id', '')):<14}  "
-                f"  {str(row.get('old_full_name_norm', ''))[:30]:<30}  "
-                f"  {str(row.get('old_worker_status', '')):<20}  "
-                f"  {str(row.get('new_worker_status', '')):<20}"
-            )
+        print("  sample status mismatch rows: suppressed in logs")
 
     # ------------------------------------------------------------------
     # Hire date mismatches
@@ -197,20 +164,7 @@ def main() -> None:
     ]
     print(f"  total hire date mismatches : {len(hire_diff):,}")
     if len(hire_diff) > 0:
-        print(f"\n  top 10 examples:")
-        cols_show = ["old_worker_id", "new_worker_id", "old_full_name_norm", "old_hire_date", "new_hire_date"]
-        cols_show = [c for c in cols_show if c in mp.columns]
-        top = hire_diff[cols_show].head(10)
-        print(f"  {'old_worker_id':<14}  {'new_worker_id':<14}  {'name':<30}  {'old_hire_date':<14}  {'new_hire_date':<14}")
-        print("  " + "-" * 96)
-        for _, row in top.iterrows():
-            print(
-                f"  {str(row.get('old_worker_id', '')):<14}  "
-                f"{str(row.get('new_worker_id', '')):<14}  "
-                f"  {str(row.get('old_full_name_norm', ''))[:30]:<30}  "
-                f"  {str(row.get('old_hire_date', '')):<14}  "
-                f"  {str(row.get('new_hire_date', '')):<14}"
-            )
+        print("  sample hire date mismatch rows: suppressed in logs")
 
     # ------------------------------------------------------------------
     # Confidence gating policy

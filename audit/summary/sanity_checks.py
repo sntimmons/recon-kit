@@ -408,11 +408,7 @@ def _print_report(
             print(f"    {issue_type:<40} : {cnt:>6,} rows")
             examples = [s for s in suspicious if s["issue_type"] == issue_type][:3]
             for ex in examples:
-                print(
-                    f"      pair_id={ex['pair_id']}"
-                    f"  old_wid={ex['old_worker_id']}"
-                    f"  new_wid={ex['new_worker_id']}"
-                )
+                print(f"      pair_id={ex['pair_id']}")
 
     print()
     print("=" * W)

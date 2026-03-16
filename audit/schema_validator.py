@@ -14,12 +14,14 @@ Import:
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
 ROOT    = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+DB_PATH = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
 
 # Columns that every downstream step depends on.
 # confidence is required because gating.classify_row reads it directly.

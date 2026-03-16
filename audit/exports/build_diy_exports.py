@@ -19,6 +19,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -42,8 +43,9 @@ from explanation import generate_explanation
 from sanity_checks import detect_wave_dates
 
 ROOT    = _HERE.parents[1]
-DB_PATH = ROOT / "audit" / "audit.db"
-OUT_DIR = _HERE / "out"
+_rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+DB_PATH = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
+OUT_DIR = (_rk_work / "exports") if _rk_work else (_HERE / "out")
 
 _REQUIRED_DB_COLS = [
     "pair_id", "match_source",

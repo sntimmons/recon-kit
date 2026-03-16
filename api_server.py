@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import hashlib
 import os
 import shutil
 import subprocess
@@ -23,9 +24,11 @@ import sys
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory, abort
+from werkzeug.exceptions import HTTPException
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -48,6 +51,11 @@ _RECON_SEMAPHORE = threading.BoundedSemaphore(1)
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=str(SITE_DIR), static_url_path="")
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+class ValidationError(Exception):
+    """User-facing validation error for uploaded files."""
 
 
 def _warn_if_policy_unavailable() -> None:
@@ -98,6 +106,146 @@ def _make_run_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _load_policy() -> dict:
+    try:
+        from audit.summary.config_loader import load_policy
+        return load_policy()
+    except Exception as exc:
+        logger.warning("policy.yaml unreadable - using internal defaults (%s)", type(exc).__name__)
+        return {"retention": {"run_output_hours": 72}}
+
+
+def _retention_hours(policy: dict | None = None) -> float:
+    policy = policy or _load_policy()
+    try:
+        return float(policy.get("retention", {}).get("run_output_hours", 72) or 72)
+    except Exception:
+        return 72.0
+
+
+def _is_audit_trail_only(run_dir: Path) -> bool:
+    files = [p for p in run_dir.rglob("*") if p.is_file()]
+    if not files:
+        return False
+    if len(files) != 1:
+        return False
+    return files[0].name == "audit_trail.json"
+
+
+def _purge_run_dir_preserving_audit_trail(run_dir: Path) -> bool:
+    trail = run_dir / "audit_trail.json"
+    if trail.exists():
+        removed_any = False
+        for child in list(run_dir.iterdir()):
+            if child == trail:
+                continue
+            try:
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+                removed_any = True
+            except Exception:
+                continue
+        return removed_any
+    try:
+        shutil.rmtree(run_dir)
+        return True
+    except Exception:
+        return False
+
+
+def _cleanup_expired_runs(policy: dict | None = None) -> None:
+    retention_hours = _retention_hours(policy)
+    now_ts = time.time()
+    for run_dir in RUNS_DIR.iterdir():
+        if not run_dir.is_dir():
+            continue
+        try:
+            created_ts = run_dir.stat().st_ctime
+            child_times = []
+            for child in run_dir.rglob("*"):
+                try:
+                    child_times.append(child.stat().st_mtime)
+                except Exception:
+                    continue
+            if child_times:
+                created_ts = min([created_ts, *child_times])
+        except Exception:
+            continue
+        if not created_ts:
+            continue
+        age_hours = (now_ts - created_ts) / 3600.0
+        if age_hours < retention_hours:
+            continue
+        if _is_audit_trail_only(run_dir):
+            continue
+        if _purge_run_dir_preserving_audit_trail(run_dir):
+            logger.info(
+                "Run output %s deleted after %.1f hours (retention policy)",
+                run_dir.name,
+                age_hours,
+            )
+
+
+def _hash_file_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _write_upload(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+def _write_input_manifest(run_dir: Path, manifest: dict) -> Path:
+    manifest_path = run_dir / "input_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest_path
+
+
+def _delete_uploaded_source_files(run_id: str, paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception:
+            continue
+    logger.info("Uploaded source files deleted after processing - run %s", run_id)
+
+
+def _sanitize_log_lines(output: str) -> list[str]:
+    lines: list[str] = []
+    skipping_traceback = False
+    for raw_line in output.splitlines():
+        line = raw_line.rstrip()
+        if line.startswith("Traceback (most recent call last):"):
+            if not skipping_traceback:
+                lines.append("[internal traceback omitted]")
+            skipping_traceback = True
+            continue
+        if skipping_traceback:
+            if line.startswith("  File ") or line.startswith("    "):
+                continue
+            if ":" in line:
+                skipping_traceback = False
+                continue
+            continue
+        lines.append(line)
+    return lines
+
+
+def _validate_uploaded_source(path: Path, *, sheet_name: int | str = 0) -> None:
+    from src.validator import validate_uploaded_file
+
+    result = validate_uploaded_file(path, sheet_name=sheet_name)
+    if not result.get("ok", False):
+        raise ValidationError(result.get("error") or "The uploaded file could not be validated.")
+
+
 def _set_step(run_id: str, step: str, status: str = "running"):
     with _jobs_lock:
         _jobs[run_id]["steps"].append({"step": step, "status": status, "ts": time.time()})
@@ -142,9 +290,10 @@ def _run_cmd(
     lines = []
     for line in proc.stdout:
         lines.append(line.rstrip())
-        with _jobs_lock:
-            _jobs[run_id].setdefault("log", []).append(line.rstrip())
     proc.wait()
+    safe_lines = _sanitize_log_lines("\n".join(lines))
+    with _jobs_lock:
+        _jobs[run_id].setdefault("log", []).extend(safe_lines)
     return proc.returncode, "\n".join(lines)
 
 
@@ -345,6 +494,9 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
     run_summary = run_audit / "summary"
     run_corr    = run_audit / "corrections" / "out"
     run_db      = run_audit / "audit.db"
+    uploaded_paths = [Path(p) for p in options.get("uploaded_paths", [])]
+    input_manifest_path = options.get("input_manifest_path")
+    run_start_timestamp = options.get("run_start_timestamp", _utcnow_iso())
 
     try:
         _RECON_SEMAPHORE.acquire()
@@ -529,19 +681,19 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
 
         # 14. Build immutable audit trail log
         _set_step(run_id, "audit_trail")
-        # Find the actual old/new input files (may be .csv or .xlsx)
-        _old_inputs = list(run_dir.glob("old_input.*"))
-        _new_inputs = list(run_dir.glob("new_input.*"))
-        _old_arg = ["--old", str(_old_inputs[0])] if _old_inputs else []
-        _new_arg = ["--new", str(_new_inputs[0])] if _new_inputs else []
+        run_complete_timestamp = _utcnow_iso()
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/summary/build_audit_trail.py",
              "--run-id", run_id,
              "--wide",   str(run_dir / "wide_compare.csv"),
              "--gate",   str(run_dir / "sanity_gate.json"),
+             "--old",    str(old_path),
+             "--new",    str(new_path),
+             "--run-start-ts", run_start_timestamp,
+             "--run-complete-ts", run_complete_timestamp,
+             "--inputs-manifest", str(input_manifest_path) if input_manifest_path else "",
              "--out",    str(run_dir / "audit_trail.json"),
-             *_old_arg,
-             *_new_arg],
+            ],
             HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "audit_trail", "done" if rc == 0 else "warn")
@@ -555,11 +707,13 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             _jobs[run_id]["stats"] = stats
 
     except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
         with _jobs_lock:
             _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = str(exc)
+            _jobs[run_id]["error"] = "Processing failed. Please try again or contact support."
 
     finally:
+        _delete_uploaded_source_files(run_id, uploaded_paths)
         _RECON_SEMAPHORE.release()
 
 
@@ -607,6 +761,7 @@ def _promote_run_outputs(run_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
     """Run a single-file internal data quality audit."""
+    uploaded_paths = [file_path]
     try:
         with _jobs_lock:
             _jobs[run_id]["status"] = "running"
@@ -639,9 +794,12 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
             _jobs[run_id]["stats"] = stats
 
     except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
         with _jobs_lock:
             _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = str(exc)
+            _jobs[run_id]["error"] = "Processing failed. Please try again or contact support."
+    finally:
+        _delete_uploaded_source_files(run_id, uploaded_paths)
 
 
 # ---------------------------------------------------------------------------
@@ -658,178 +816,245 @@ def _safe_ext(filename: str) -> str:
 
 @app.post("/api/run/recon")
 def api_run_recon():
-    old_file = request.files.get("old_file")
-    new_file = request.files.get("new_file")
-    if not old_file or not new_file:
-        return jsonify({"error": "Both old_file and new_file are required"}), 400
-
-    old_ext = _safe_ext(old_file.filename)
-    new_ext = _safe_ext(new_file.filename)
-
-    # sheet_name: int index or sheet name string; default to first sheet (0)
-    raw_sn = request.form.get("sheet_name", "0").strip()
-    sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
-
-    # min_approve_rate: per-run sanity gate threshold override (default 0.75)
-    raw_mar = request.form.get("min_approve_rate", "0.75").strip()
+    run_dir: Path | None = None
     try:
-        min_approve_rate: float = float(raw_mar)
-        # Accept percentages like "75" as well as decimals like "0.75"
-        if min_approve_rate > 1.0:
-            min_approve_rate = min_approve_rate / 100.0
-        min_approve_rate = max(0.0, min(1.0, min_approve_rate))
-    except (ValueError, TypeError):
-        min_approve_rate = 0.75
+        _cleanup_expired_runs(_load_policy())
 
-    # Optional compensation bands file
-    bands_file = request.files.get("bands_file")
+        old_file = request.files.get("old_file")
+        new_file = request.files.get("new_file")
+        if not old_file or not new_file:
+            return jsonify({"error": "Both old_file and new_file are required"}), 400
 
-    options = {
-        "sanity_gate":      request.form.get("sanity_gate", "true").lower() == "true",
-        "corrections":      request.form.get("corrections", "true").lower() == "true",
-        "workbook":         request.form.get("workbook",    "true").lower() == "true",
-        "old_ext":          old_ext,
-        "new_ext":          new_ext,
-        "sheet_name":       sheet_name,
-        "min_approve_rate": min_approve_rate,
-        "has_bands":        bands_file is not None,
-    }
+        old_ext = _safe_ext(old_file.filename)
+        new_ext = _safe_ext(new_file.filename)
 
-    run_id  = _make_run_id()
-    run_dir = RUNS_DIR / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+        raw_sn = request.form.get("sheet_name", "0").strip()
+        sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
 
-    old_path = run_dir / f"old_input{old_ext}"
-    new_path = run_dir / f"new_input{new_ext}"
-    old_file.save(str(old_path))
-    new_file.save(str(new_path))
+        raw_mar = request.form.get("min_approve_rate", "0.75").strip()
+        try:
+            min_approve_rate: float = float(raw_mar)
+            if min_approve_rate > 1.0:
+                min_approve_rate = min_approve_rate / 100.0
+            min_approve_rate = max(0.0, min(1.0, min_approve_rate))
+        except (ValueError, TypeError):
+            min_approve_rate = 0.75
 
-    if bands_file:
-        bands_ext  = _safe_ext(bands_file.filename) or ".csv"
-        bands_path = run_dir / f"compensation_bands{bands_ext}"
-        bands_file.save(str(bands_path))
-        options["bands_path"] = str(bands_path)
+        bands_file = request.files.get("bands_file")
 
-    with _jobs_lock:
-        _jobs[run_id] = {
-            "run_id": run_id,
-            "mode": "recon",
-            "status": "queued",
-            "steps": [],
-            "log": [],
-            "outputs": [],
-            "stats": {},
-            "error": None,
-            "started": time.time(),
+        options = {
+            "sanity_gate":      request.form.get("sanity_gate", "true").lower() == "true",
+            "corrections":      request.form.get("corrections", "true").lower() == "true",
+            "workbook":         request.form.get("workbook",    "true").lower() == "true",
+            "old_ext":          old_ext,
+            "new_ext":          new_ext,
+            "sheet_name":       sheet_name,
+            "min_approve_rate": min_approve_rate,
+            "has_bands":        bands_file is not None,
+            "run_start_timestamp": _utcnow_iso(),
         }
 
-    t = threading.Thread(
-        target=_run_recon_pipeline,
-        args=(run_id, run_dir, old_path, new_path, options),
-        daemon=True,
-    )
-    t.start()
+        run_id  = _make_run_id()
+        run_dir = RUNS_DIR / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
 
-    return jsonify({"run_id": run_id, "mode": "recon"})
+        old_path = run_dir / f"old_input{old_ext}"
+        new_path = run_dir / f"new_input{new_ext}"
+        old_bytes = old_file.read()
+        new_bytes = new_file.read()
+        _write_upload(old_path, old_bytes)
+        _write_upload(new_path, new_bytes)
+
+        _validate_uploaded_source(old_path, sheet_name=sheet_name)
+        _validate_uploaded_source(new_path, sheet_name=sheet_name)
+
+        input_manifest = {
+            "old_system": {
+                "filename": old_file.filename or old_path.name,
+                "sha256": _hash_file_bytes(old_bytes),
+            },
+            "new_system": {
+                "filename": new_file.filename or new_path.name,
+                "sha256": _hash_file_bytes(new_bytes),
+            },
+        }
+
+        uploaded_paths = [old_path, new_path]
+
+        if bands_file:
+            bands_ext  = _safe_ext(bands_file.filename) or ".csv"
+            bands_path = run_dir / f"compensation_bands{bands_ext}"
+            bands_bytes = bands_file.read()
+            _write_upload(bands_path, bands_bytes)
+            input_manifest["compensation_bands"] = {
+                "filename": bands_file.filename or bands_path.name,
+                "sha256": _hash_file_bytes(bands_bytes),
+            }
+            options["bands_path"] = str(bands_path)
+            uploaded_paths.append(bands_path)
+
+        manifest_path = _write_input_manifest(run_dir, input_manifest)
+        options["input_manifest_path"] = str(manifest_path)
+        options["uploaded_paths"] = [str(p) for p in uploaded_paths]
+
+        with _jobs_lock:
+            _jobs[run_id] = {
+                "run_id": run_id,
+                "mode": "recon",
+                "status": "queued",
+                "steps": [],
+                "log": [],
+                "outputs": [],
+                "stats": {},
+                "error": None,
+                "started": time.time(),
+            }
+
+        t = threading.Thread(
+            target=_run_recon_pipeline,
+            args=(run_id, run_dir, old_path, new_path, options),
+            daemon=True,
+        )
+        t.start()
+
+        return jsonify({"run_id": run_id, "mode": "recon"})
+    except ValidationError as exc:
+        if run_dir and run_dir.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
+        logger.info("Upload validation failed: %s", str(exc))
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        if run_dir and run_dir.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 @app.post("/api/run/audit")
 def api_run_audit():
-    audit_file = request.files.get("audit_file")
-    if not audit_file:
-        return jsonify({"error": "audit_file is required"}), 400
+    run_dir: Path | None = None
+    try:
+        _cleanup_expired_runs(_load_policy())
 
-    run_id  = _make_run_id()
-    run_dir = RUNS_DIR / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+        audit_file = request.files.get("audit_file")
+        if not audit_file:
+            return jsonify({"error": "audit_file is required"}), 400
 
-    file_path = run_dir / "audit_input.csv"
-    audit_file.save(str(file_path))
+        run_id  = _make_run_id()
+        run_dir = RUNS_DIR / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
 
-    with _jobs_lock:
-        _jobs[run_id] = {
-            "run_id": run_id,
-            "mode": "audit",
-            "status": "queued",
-            "steps": [],
-            "log": [],
-            "outputs": [],
-            "stats": {},
-            "error": None,
-            "started": time.time(),
-        }
+        file_path = run_dir / "audit_input.csv"
+        audit_bytes = audit_file.read()
+        _write_upload(file_path, audit_bytes)
 
-    t = threading.Thread(
-        target=_run_internal_audit,
-        args=(run_id, run_dir, file_path),
-        daemon=True,
-    )
-    t.start()
+        with _jobs_lock:
+            _jobs[run_id] = {
+                "run_id": run_id,
+                "mode": "audit",
+                "status": "queued",
+                "steps": [],
+                "log": [],
+                "outputs": [],
+                "stats": {},
+                "error": None,
+                "started": time.time(),
+            }
 
-    return jsonify({"run_id": run_id, "mode": "audit"})
+        t = threading.Thread(
+            target=_run_internal_audit,
+            args=(run_id, run_dir, file_path),
+            daemon=True,
+        )
+        t.start()
+
+        return jsonify({"run_id": run_id, "mode": "audit"})
+    except Exception as exc:
+        if run_dir and run_dir.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 @app.get("/api/status/<run_id>")
 def api_status(run_id: str):
-    with _jobs_lock:
-        job = _jobs.get(run_id)
-    if not job:
-        return jsonify({"error": "Unknown run_id"}), 404
-    # Return a safe copy (don't include full log by default)
-    out = {k: v for k, v in job.items() if k != "log"}
-    return jsonify(out)
+    try:
+        with _jobs_lock:
+            job = _jobs.get(run_id)
+        if not job:
+            return jsonify({"error": "Unknown run_id"}), 404
+        out = {k: v for k, v in job.items() if k != "log"}
+        return jsonify(out)
+    except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 @app.get("/api/log/<run_id>")
 def api_log(run_id: str):
-    with _jobs_lock:
-        job = _jobs.get(run_id)
-    if not job:
-        return jsonify({"error": "Unknown run_id"}), 404
-    return jsonify({"log": job.get("log", [])})
+    try:
+        with _jobs_lock:
+            job = _jobs.get(run_id)
+        if not job:
+            return jsonify({"error": "Unknown run_id"}), 404
+        return jsonify({"log": job.get("log", [])})
+    except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 @app.get("/api/download/<run_id>/<path:filename>")
 def api_download(run_id: str, filename: str):
-    run_dir = RUNS_DIR / run_id
-    if not run_dir.exists():
-        abort(404)
-    # Security: only allow files within run_dir (resolve symlinks)
     try:
+        run_dir = RUNS_DIR / run_id
+        if not run_dir.exists():
+            abort(404)
         target = (run_dir / filename).resolve()
         base   = run_dir.resolve()
+    except HTTPException:
+        raise
     except Exception:
         abort(403)
-    if not str(target).startswith(str(base) + os.sep) and str(target) != str(base):
-        abort(403)
-    if not target.exists():
-        abort(404)
-    if target.stat().st_size == 0:
-        abort(404)   # empty file - treat as not yet generated
+    try:
+        if not str(target).startswith(str(base) + os.sep) and str(target) != str(base):
+            abort(403)
+        if not target.exists():
+            abort(404)
+        if target.stat().st_size == 0:
+            abort(404)
 
-    # Explicit MIME types for Office formats (some systems don't register these)
-    _MIME = {
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".csv":  "text/csv",
-        ".json": "application/json",
-        ".pdf":  "application/pdf",
-    }
-    ext      = os.path.splitext(filename)[1].lower()
-    mimetype = _MIME.get(ext)
-
-    # serve the file relative to run_dir (handles subdirectories like corrections/)
-    rel_dir  = str(target.parent)
-    basename = target.name
-    return send_from_directory(rel_dir, basename,
-                               as_attachment=True,
-                               mimetype=mimetype,
-                               download_name=basename)
+        _MIME = {
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".csv":  "text/csv",
+            ".json": "application/json",
+            ".pdf":  "application/pdf",
+        }
+        ext      = os.path.splitext(filename)[1].lower()
+        mimetype = _MIME.get(ext)
+        rel_dir  = str(target.parent)
+        basename = target.name
+        return send_from_directory(
+            rel_dir,
+            basename,
+            as_attachment=True,
+            mimetype=mimetype,
+            download_name=basename,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 @app.get("/api/ping")
 def api_ping():
-    return jsonify({"ok": True, "server": "recon-kit-api"})
+    try:
+        return jsonify({"ok": True, "server": "recon-kit-api"})
+    except Exception as exc:
+        logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
+        return jsonify({"error": "Processing failed. Please try again or contact support."}), 500
 
 
 # ---------------------------------------------------------------------------

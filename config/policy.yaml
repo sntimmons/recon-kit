@@ -13,6 +13,9 @@ gating:
   status_min_confidence: 0.98
   hire_date_job_org_min_confidence: 0.95
 
+retention:
+  run_output_hours: 72
+
 # ---------------------------------------------------------------------------
 # Confidence gating policy
 # ---------------------------------------------------------------------------

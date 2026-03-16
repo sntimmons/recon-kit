@@ -61,7 +61,8 @@ from gating import classify_all, salary_delta, _parse_confidence, _norm
 from sanity_checks import detect_wave_dates
 
 ROOT         = _HERE.parents[2]
-DB_PATH      = ROOT / "audit" / "audit.db"
+_rk_work     = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+DB_PATH      = (_rk_work / "audit" / "audit.db") if _rk_work else (ROOT / "audit" / "audit.db")
 WIDE_CSV     = ROOT / "audit" / "exports" / "out" / "wide_compare.csv"
 REVIEW_CSV   = ROOT / "audit" / "summary" / "review_queue.csv"
 SANITY_GATE  = ROOT / "audit" / "summary" / "sanity_gate.json"

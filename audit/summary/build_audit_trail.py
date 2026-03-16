@@ -27,6 +27,7 @@ import csv
 import json
 import os
 import stat
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,56 @@ def _file_meta(path: Path | None) -> dict:
         "size_bytes":  st.st_size,
         "exists":      True,
     }
+
+
+def _engine_version() -> str:
+    version_file = Path(__file__).resolve().parents[2] / "VERSION"
+    if version_file.exists():
+        try:
+            return version_file.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            cwd=str(Path(__file__).resolve().parents[2]),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _load_input_manifest(path: Path | None) -> dict:
+    if path is None or not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _corrections_staged_count(out_path: Path) -> int:
+    candidates = [
+        out_path.parent / "corrections_manifest.csv",
+        out_path.parent / "audit" / "corrections" / "out" / "corrections_manifest.csv",
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            with candidate.open(encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                next(reader)
+                return sum(1 for _ in reader)
+        except Exception:
+            continue
+    return 0
 
 
 def _parse_wide(wide_path: Path) -> tuple[list[dict], dict]:
@@ -138,12 +189,21 @@ def build_audit_trail(
     old_path:  Path | None,
     new_path:  Path | None,
     out_path:  Path,
+    run_start_ts: str | None = None,
+    run_complete_ts: str | None = None,
+    inputs_manifest_path: Path | None = None,
 ) -> None:
     """Build and write the immutable audit_trail.json."""
     created_at = _utcnow()
 
     decisions, counts = _parse_wide(wide_path)
     gate_section      = _parse_gate(gate_path)
+    input_manifest    = _load_input_manifest(inputs_manifest_path)
+    corrections_count = _corrections_staged_count(out_path)
+    gate_result       = "PASS" if gate_section.get("passed") else "FAIL"
+
+    old_input = input_manifest.get("old_system", {}) if isinstance(input_manifest.get("old_system"), dict) else {}
+    new_input = input_manifest.get("new_system", {}) if isinstance(input_manifest.get("new_system"), dict) else {}
 
     trail = {
         "_schema_version": _VERSION,
@@ -153,6 +213,25 @@ def build_audit_trail(
         ),
         "run_id":        run_id,
         "created_at":    created_at,
+        "run_start_timestamp": run_start_ts or created_at,
+        "run_complete_timestamp": run_complete_ts or created_at,
+        "total_records_processed": counts["total"],
+        "gate_result": gate_result,
+        "corrections_staged_count": corrections_count,
+        "approve_count": counts["approve"],
+        "review_count": counts["review"],
+        "reject_count": counts["reject_match"],
+        "engine_version": _engine_version(),
+        "input_files": {
+            "old_system": {
+                "filename": old_input.get("filename", old_path.name if old_path else ""),
+                "sha256": old_input.get("sha256"),
+            },
+            "new_system": {
+                "filename": new_input.get("filename", new_path.name if new_path else ""),
+                "sha256": new_input.get("sha256"),
+            },
+        },
         "source_files":  {
             "old": _file_meta(old_path),
             "new": _file_meta(new_path),
@@ -191,6 +270,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--gate",   default=None,  help="Path to sanity_gate.json")
     parser.add_argument("--old",    default=None,  help="Path to old input file (metadata only)")
     parser.add_argument("--new",    default=None,  help="Path to new input file (metadata only)")
+    parser.add_argument("--run-start-ts", default=None, help="Run start timestamp (UTC ISO-8601)")
+    parser.add_argument("--run-complete-ts", default=None, help="Run complete timestamp (UTC ISO-8601)")
+    parser.add_argument("--inputs-manifest", default=None, help="Path to input_manifest.json")
     parser.add_argument("--out",    required=True, help="Output path for audit_trail.json")
     args = parser.parse_args(argv)
 
@@ -201,6 +283,9 @@ def main(argv: list[str] | None = None) -> None:
         old_path  = Path(args.old)  if args.old  else None,
         new_path  = Path(args.new)  if args.new  else None,
         out_path  = Path(args.out),
+        run_start_ts = args.run_start_ts,
+        run_complete_ts = args.run_complete_ts,
+        inputs_manifest_path = Path(args.inputs_manifest) if args.inputs_manifest else None,
     )
 
 
