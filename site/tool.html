@@ -33,8 +33,6 @@
 
     .mode-card:hover        { border-color: var(--border-hi); }
     .mode-card--active      { border-color: var(--accent); background: var(--accent-ghost); }
-    .mode-card--coming-soon { opacity: 0.55; cursor: default; }
-    .mode-card--coming-soon:hover { border-color: var(--border); }
 
     .mode-card__badge {
       display: inline-flex;
@@ -53,12 +51,6 @@
       color: var(--accent);
       background: rgba(79,142,247,0.1);
       border: 1px solid rgba(79,142,247,0.25);
-    }
-
-    .mode-card__badge--yellow {
-      color: var(--yellow);
-      background: rgba(232,184,75,0.08);
-      border: 1px solid rgba(232,184,75,0.22);
     }
 
     .mode-card__icon {
@@ -408,11 +400,11 @@
         <div class="mode-card__title">Cross-System Reconciliation</div>
         <div class="mode-card__desc">Match employees between a legacy HRIS and a new system. Detect field-level discrepancies and generate Workday-ready correction files.</div>
       </div>
-      <div class="mode-card mode-card--coming-soon">
-        <span class="mode-card__badge mode-card__badge--yellow">Coming soon</span>
+      <div class="mode-card">
+        <span class="mode-card__badge mode-card__badge--blue">&#9679; Available</span>
         <span class="mode-card__icon">&#128202;</span>
         <div class="mode-card__title">Internal Data Audit</div>
-        <div class="mode-card__desc">Audit a single HRIS export against itself for data quality issues: duplicate IDs, missing fields, suspicious defaults, and outlier detection.</div>
+        <div class="mode-card__desc">Upload a single HR file. The engine checks for duplicate IDs, suspicious default values, missing critical fields, salary anomalies, and data completeness issues. Results download as a PDF audit report with severity-rated findings.</div>
       </div>
     </div>
 

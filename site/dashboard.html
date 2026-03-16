@@ -959,8 +959,16 @@
             <div class="results-stat__label">Completeness</div>
           </div>
           <div class="results-stat">
-            <div class="results-stat__val results-stat__val--yellow" id="astat-issues">0</div>
-            <div class="results-stat__label">Issues Found</div>
+            <div class="results-stat__val results-stat__val--red" id="astat-critical">0</div>
+            <div class="results-stat__label">CRITICAL</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val results-stat__val--yellow" id="astat-high">0</div>
+            <div class="results-stat__label">HIGH</div>
+          </div>
+          <div class="results-stat">
+            <div class="results-stat__val" id="astat-medium">0</div>
+            <div class="results-stat__label">MEDIUM</div>
           </div>
         </div>
 
@@ -1469,15 +1477,18 @@
 
     } else {
       var s = job.stats || {};
+      var sev = s.severity_counts || {};
       document.getElementById('recon-stats').style.display = 'none';
       document.getElementById('audit-stats').style.display = '';
       document.getElementById('astat-rows').textContent     = (s.total_rows || 0).toLocaleString();
       document.getElementById('astat-complete').textContent = (s.overall_completeness || 0) + '%';
-      document.getElementById('astat-issues').textContent   = (s.issue_count || 0);
+      document.getElementById('astat-critical').textContent = (sev.CRITICAL || 0).toLocaleString();
+      document.getElementById('astat-high').textContent     = (sev.HIGH || 0).toLocaleString();
+      document.getElementById('astat-medium').textContent   = (sev.MEDIUM || 0).toLocaleString();
 
       document.getElementById('results-label').textContent   = 'Audit complete';
       document.getElementById('results-headline').textContent = 'Your audit is ready. Here is what we found.';
-      document.getElementById('results-sub').textContent      = 'Download your reports below. Review the issues CSV for details.';
+      document.getElementById('results-sub').textContent      = 'Download your PDF and CSV outputs below. Severity counts show which findings need attention first.';
     }
 
     // Build download list
@@ -1488,6 +1499,7 @@
     var FILE_LABELS = {
       'audit_report.docx':              'Audit report - executive summary (Word)',
       'audit_report.pdf':               'Audit report (PDF) - locked for compliance',
+      'internal_audit_report.pdf':      'Audit Report (PDF)',
       'chro_approval_document.pdf':     'CHRO Approval Document (PDF)',
       'audit_trail.json':               'Audit trail (JSON) - compliance log',
       'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
@@ -1509,6 +1521,7 @@
       'internal_audit_duplicates.csv':  'Duplicate records',
       'internal_audit_blanks.csv':      'Field completeness breakdown',
       'internal_audit_suspicious.csv':  'Suspicious default values',
+      'internal_audit_distributions.csv': 'Salary and Status Distributions',
     };
 
     // Primary files always shown at top (in this order)
@@ -1516,6 +1529,7 @@
       'recon_workbook.xlsx',
       'audit_report.docx',
       'audit_report.pdf',
+      'internal_audit_report.pdf',
       'chro_approval_document.pdf',
       'corrections_manifest.csv',
       'held_corrections.csv',
@@ -1535,6 +1549,7 @@
       'corrections_job_org.csv',
       'sanity_results.json',
       'sanity_gate.json',
+      'internal_audit_distributions.csv',
     ];
 
     function _makeDownloadRow(f) {

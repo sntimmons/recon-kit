@@ -52,6 +52,11 @@ _DEFAULT_CONFIDENCE_POLICY: dict = {
 # sanity_gate.enabled=False so the gate is a no-op without a config file.
 _DEFAULT_POLICY: dict = {
     "client_name": "Your Organization",
+    "client": {
+        "name": "Your Organization",
+        "chro_name": "",
+        "chro_title": "Chief Human Resources Officer",
+    },
     "gating": {
         "salary_payrate_min_confidence": 0.97,
         "status_min_confidence":         0.98,
@@ -63,6 +68,10 @@ _DEFAULT_POLICY: dict = {
     },
     "retention": {
         "run_output_hours": 72,
+    },
+    "systems": {
+        "old_system": "ADP Workforce Now",
+        "new_system": "Workday",
     },
     "extra_fields": {
         "enabled": False,
@@ -92,6 +101,13 @@ _DEFAULT_POLICY: dict = {
             "hire_date_default_months":  ["2026-02", "2026-03"],
             "salary_suspicious_values":  [40000, 40003, 40013, 40073],
         },
+    },
+    "internal_audit": {
+        "high_blank_rate_threshold": 0.20,
+        "suspicious_salary_values": [40000, 40003, 40013, 40073, 50000, 60000, 99999, 100000],
+        "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
+        "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
+        "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
     },
 }
 
@@ -236,6 +252,31 @@ def load_pii_config(policy: dict | None = None) -> dict:
     if policy is None:
         policy = load_policy()
     return policy.get("pii", {"include_dob_in_ui": False, "include_dob_in_exports": False})
+
+
+def load_internal_audit_config(policy: dict | None = None) -> dict:
+    """
+    Return the internal-audit configuration dict.
+
+    Keys:
+        high_blank_rate_threshold (float)
+        suspicious_salary_values (list[int | float])
+        suspicious_hire_date_prefixes (list[str])
+        suspicious_status_values (list[str])
+        duplicate_check_fields (list[str])
+    """
+    if policy is None:
+        policy = load_policy()
+    return policy.get(
+        "internal_audit",
+        {
+            "high_blank_rate_threshold": 0.20,
+            "suspicious_salary_values": [40000, 40003, 40013, 40073, 50000, 60000, 99999, 100000],
+            "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
+            "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
+            "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
+        },
+    )
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

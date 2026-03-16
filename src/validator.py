@@ -264,3 +264,76 @@ def validate_uploaded_file(
         "warnings": [],
         "row_count": int(len(df)),
     }
+
+
+def validate_internal_audit_file(
+    path: str | Path,
+    *,
+    sheet_name: int | str = 0,
+) -> dict:
+    """
+    Validate a single uploaded file for Internal Data Audit mode.
+
+    Requirements:
+    - File must be readable as CSV/Excel
+    - Must contain at least 1 data row beyond the header
+    - Must contain at least 2 columns
+    """
+    p = Path(path)
+    ext = p.suffix.lower()
+    if ext not in (".csv", ".xlsx", ".xls", ".xlsm", ".xlsb"):
+        return {
+            "ok": False,
+            "error": "The uploaded file must be a CSV or Excel workbook.",
+            "warnings": [],
+            "row_count": 0,
+            "column_count": 0,
+        }
+
+    try:
+        df = _read_uploaded_file(p, sheet_name=sheet_name)
+    except pd.errors.EmptyDataError:
+        return {
+            "ok": False,
+            "error": "The uploaded file appears to be empty. Please check the file and try again.",
+            "warnings": [],
+            "row_count": 0,
+            "column_count": 0,
+        }
+    except Exception:
+        return {
+            "ok": False,
+            "error": "The uploaded file could not be read. Please check the file and try again.",
+            "warnings": [],
+            "row_count": 0,
+            "column_count": 0,
+        }
+
+    row_count = int(len(df)) if df is not None else 0
+    column_count = int(len(df.columns)) if df is not None else 0
+
+    if df is None or row_count == 0:
+        return {
+            "ok": False,
+            "error": "The uploaded file appears to be empty. Please check the file and try again.",
+            "warnings": [],
+            "row_count": row_count,
+            "column_count": column_count,
+        }
+
+    if column_count < 2:
+        return {
+            "ok": False,
+            "error": "The uploaded file must contain at least 2 columns for an internal audit.",
+            "warnings": [],
+            "row_count": row_count,
+            "column_count": column_count,
+        }
+
+    return {
+        "ok": True,
+        "error": None,
+        "warnings": [],
+        "row_count": row_count,
+        "column_count": column_count,
+    }

@@ -8,6 +8,15 @@
 
 client_name: Your Organization
 
+client:
+  name: "Your Organization"
+  chro_name: ""
+  chro_title: "Chief Human Resources Officer"
+
+systems:
+  old_system: "ADP Workforce Now"
+  new_system: "Workday"
+
 gating:
   # Legacy reference values - kept for documentation only.
   # Active thresholds are now in confidence_policy below.
@@ -17,6 +26,13 @@ gating:
 
 retention:
   run_output_hours: 72
+
+internal_audit:
+  high_blank_rate_threshold: 0.20
+  suspicious_salary_values: [40000, 40003, 40013, 40073, 50000, 60000, 99999, 100000]
+  suspicious_hire_date_prefixes: ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"]
+  suspicious_status_values: ["unknown", "n/a", "na", "null", "none", "test"]
+  duplicate_check_fields: ["worker_id", "email", "last4_ssn"]
 
 # ---------------------------------------------------------------------------
 # Confidence gating policy

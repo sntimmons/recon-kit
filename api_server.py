@@ -321,9 +321,11 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "sanity_results.json",
         "sanity_gate.json",
         "internal_audit_report.csv",
+        "internal_audit_report.pdf",
         "internal_audit_duplicates.csv",
         "internal_audit_blanks.csv",
         "internal_audit_suspicious.csv",
+        "internal_audit_distributions.csv",
     ]
     found = []
     for name in wanted:
@@ -771,8 +773,9 @@ def _promote_run_outputs(run_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Internal audit runner (background thread)
 # ---------------------------------------------------------------------------
-def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
+def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: dict | None = None):
     """Run a single-file internal data quality audit."""
+    options = options or {}
     uploaded_paths = [file_path]
     try:
         with _jobs_lock:
@@ -785,12 +788,24 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path):
         rc, _ = _run_cmd(
             [str(PYTHON), "audit/internal_audit.py",
              "--file", str(file_path),
-             "--out-dir", str(run_dir)],
+             "--out-dir", str(run_dir),
+             "--source-name", str(options.get("source_name", "")),
+             "--sheet-name", str(options.get("sheet_name", 0))],
             HERE, run_id
         )
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
         if rc != 0:
             raise RuntimeError("Internal audit failed")
+
+        _set_step(run_id, "audit_report")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/build_internal_audit_report.py",
+             "--run-id", run_id,
+             "--run-dir", str(run_dir),
+             "--out", str(run_dir / "internal_audit_report.pdf")],
+            HERE, run_id,
+        )
+        _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
 
         stats = {}
         report = run_dir / "internal_audit_report.json"
@@ -952,13 +967,31 @@ def api_run_audit():
         if not audit_file:
             return jsonify({"error": "audit_file is required"}), 400
 
+        audit_ext = _safe_ext(audit_file.filename)
+        if audit_ext not in (".csv", ".xlsx", ".xls", ".xlsm", ".xlsb"):
+            return jsonify({"error": "The uploaded file must be a CSV or Excel workbook."}), 400
+
+        raw_sn = request.form.get("sheet_name", "0").strip()
+        sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
+
         run_id  = _make_run_id()
         run_dir = RUNS_DIR / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        file_path = run_dir / "audit_input.csv"
+        file_path = run_dir / f"audit_input{audit_ext}"
         audit_bytes = audit_file.read()
+        if not audit_bytes:
+            shutil.rmtree(run_dir, ignore_errors=True)
+            return jsonify({"error": "The uploaded file appears to be empty. Please check the file and try again."}), 400
         _write_upload(file_path, audit_bytes)
+
+        from src.validator import validate_internal_audit_file
+
+        result = validate_internal_audit_file(file_path, sheet_name=sheet_name)
+        if not result.get("ok", False):
+            shutil.rmtree(run_dir, ignore_errors=True)
+            logger.info("Upload validation failed: %s", result.get("error"))
+            return jsonify({"error": result.get("error") or "The uploaded file could not be validated."}), 400
 
         with _jobs_lock:
             _jobs[run_id] = {
@@ -975,7 +1008,7 @@ def api_run_audit():
 
         t = threading.Thread(
             target=_run_internal_audit,
-            args=(run_id, run_dir, file_path),
+            args=(run_id, run_dir, file_path, {"source_name": audit_file.filename or file_path.name, "sheet_name": sheet_name}),
             daemon=True,
         )
         t.start()
