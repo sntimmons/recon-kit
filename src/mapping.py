@@ -252,6 +252,35 @@ def _norm_str(x) -> str:
     return s
 
 
+def _raw_str_preserve(x) -> str:
+    """Return a string value without stripping or case changes.
+
+    Used for ID columns whose original formatting should survive into outputs.
+    Null-like values still become "" so callers can mark them missing.
+    """
+    if x is None:
+        return ""
+    if isinstance(x, float):
+        try:
+            if pd.isna(x):
+                return ""
+        except Exception:
+            return ""
+    try:
+        is_na = pd.isna(x)
+        if isinstance(is_na, bool) and is_na:
+            return ""
+    except Exception:
+        pass
+    return str(x)
+
+
+def _norm_id_for_match(x) -> str:
+    """Return a trimmed, lowercase ID string for matching and dedupe only."""
+    raw = _raw_str_preserve(x)
+    return raw.strip().lower()
+
+
 def _norm_name(x, *, strip_accents: bool = False) -> str:
     s = _norm_str(x)
     if s and strip_accents:
@@ -480,38 +509,41 @@ def _dedupe_option_a(df: pd.DataFrame, report: Dict[str, Any]) -> pd.DataFrame:
     )
 
     # Dedupe worker_id (worker_id nulls are allowed; do NOT collapse nulls)
-    wid = df["worker_id"].astype("string")
+    wid = df["worker_id"].apply(_norm_id_for_match).astype("string")
     wid_nonnull = wid.notna() & (wid != "")
     worker_id_dupe_rows_before = int(wid[wid_nonnull].duplicated(keep=False).sum())
 
     keep_df = pd.concat(
         [
             df[~wid_nonnull],  # keep all null/blank worker_id rows
-            df[wid_nonnull].drop_duplicates(subset=["worker_id"], keep="first"),
+            df.assign(_worker_id_key=wid)[wid_nonnull].drop_duplicates(subset=["_worker_id_key"], keep="first"),
         ],
         ignore_index=True,
     )
 
     # Dedupe recon_id only where recon_id present (do NOT collapse nulls)
-    rid = keep_df["recon_id"].astype("string")
+    rid = keep_df["recon_id"].apply(_norm_id_for_match).astype("string")
     rid_nonnull = rid.notna() & (rid != "")
     recon_dupe_rows_before = int(rid[rid_nonnull].duplicated(keep=False).sum())
 
     keep_df = pd.concat(
         [
             keep_df[~rid_nonnull],  # keep all null/blank recon_id rows
-            keep_df[rid_nonnull].sort_values(
+            keep_df.assign(_recon_id_key=rid)[rid_nonnull].sort_values(
                 by=["_is_active", "_hd", "_sal_val", "_sal_nn", "_pr_nn", "_orig_order"],
                 ascending=[False, False, False, False, False, True],
                 na_position="last",
                 kind="mergesort",
-            ).drop_duplicates(subset=["recon_id"], keep="first"),
+            ).drop_duplicates(subset=["_recon_id_key"], keep="first"),
         ],
         ignore_index=True,
     )
 
     keep_df = keep_df.drop(
-        columns=["_orig_order", "_hd", "_is_active", "_sal_val", "_sal_nn", "_pr_nn"],
+        columns=[
+            "_orig_order", "_hd", "_is_active", "_sal_val", "_sal_nn", "_pr_nn",
+            "_worker_id_key", "_recon_id_key",
+        ],
         errors="ignore",
     )
 
@@ -555,8 +587,8 @@ def map_file(
     ]
     df = _ensure_columns(df, expected)
 
-    df["worker_id"] = df["worker_id"].apply(_norm_str).replace("", pd.NA).astype("string")
-    df["recon_id"] = df["recon_id"].apply(_norm_str).replace("", pd.NA).astype("string")
+    df["worker_id"] = df["worker_id"].apply(_raw_str_preserve).replace("", pd.NA).astype("string")
+    df["recon_id"] = df["recon_id"].apply(_raw_str_preserve).replace("", pd.NA).astype("string")
 
     df["first_name"] = df["first_name"].apply(_norm_str).astype("string")
     df["last_name"] = df["last_name"].apply(_norm_str).astype("string")
@@ -584,8 +616,8 @@ def map_file(
         "input": str(input_path),
         "output": str(output_path),
         "rows_in": int(len(df)),
-        "worker_id_nulls": int(df["worker_id"].isna().sum()),
-        "recon_id_nulls": int(df["recon_id"].isna().sum()),
+        "worker_id_nulls": int(df["worker_id"].apply(lambda v: _norm_id_for_match(v) == "").sum()),
+        "recon_id_nulls": int(df["recon_id"].apply(lambda v: _norm_id_for_match(v) == "").sum()),
         "salary_nulls": int(pd.isna(df["salary"]).sum()),
         "hire_date_nulls": int(df["hire_date"].isna().sum()),
         "location_state_nulls": int(df["location_state"].isna().sum()),

@@ -162,12 +162,26 @@ def _ascii_fold_name_part(value: object) -> str:
     )
 
 
+def _norm_id_for_match(value: object) -> str:
+    raw = "" if pd.isna(value) else str(value)
+    return raw.strip().lower()
+
+
 def main() -> None:
     old = _load("old")
     new = _load("new")
 
+    if "worker_id" in old.columns:
+        old["_match_worker_id"] = old["worker_id"].apply(_norm_id_for_match).astype("string")
+    if "worker_id" in new.columns:
+        new["_match_worker_id"] = new["worker_id"].apply(_norm_id_for_match).astype("string")
+    if "recon_id" in old.columns:
+        old["_match_recon_id"] = old["recon_id"].apply(_norm_id_for_match).astype("string")
+    if "recon_id" in new.columns:
+        new["_match_recon_id"] = new["recon_id"].apply(_norm_id_for_match).astype("string")
+
     def _is_missing_id(v: object) -> bool:
-        return bool(pd.isna(v) or str(v).strip() == "")
+        return _norm_id_for_match(v) == ""
 
     old_no_id = pd.DataFrame(columns=old.columns)
     new_no_id = pd.DataFrame(columns=new.columns)
@@ -192,14 +206,14 @@ def main() -> None:
 
     all_matches = []
 
-    # Tier 1: worker_id exact
-    m, old, new = _one_to_one_join(old, new, ["worker_id"], "worker_id")
+    # Tier 1: worker_id exact (case-insensitive, trimmed comparison only)
+    m, old, new = _one_to_one_join(old, new, ["_match_worker_id"], "worker_id")
     report["matched_by_worker_id"] = int(len(m))
     all_matches.append(m)
 
     # Tier 2: recon_id exact (only if column present on both sides)
-    if "recon_id" in old.columns and "recon_id" in new.columns:
-        m, old, new = _one_to_one_join(old, new, ["recon_id"], "recon_id")
+    if "_match_recon_id" in old.columns and "_match_recon_id" in new.columns:
+        m, old, new = _one_to_one_join(old, new, ["_match_recon_id"], "recon_id")
         report["matched_by_recon_id"] = int(len(m))
         all_matches.append(m)
 
@@ -333,17 +347,17 @@ def main() -> None:
 
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
-    old = old.copy()
+    old = old.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
     old["unmatched_reason"] = "no_match_found"
     if not old_no_id.empty:
-        old_no_id = old_no_id.copy()
+        old_no_id = old_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
         old_no_id["unmatched_reason"] = "no_id"
         old = pd.concat([old, old_no_id], ignore_index=True)
 
-    new = new.copy()
+    new = new.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
     new["unmatched_reason"] = "no_match_found"
     if not new_no_id.empty:
-        new_no_id = new_no_id.copy()
+        new_no_id = new_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
         new_no_id["unmatched_reason"] = "no_id"
         new = pd.concat([new, new_no_id], ignore_index=True)
 
