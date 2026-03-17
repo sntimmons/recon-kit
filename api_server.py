@@ -320,10 +320,10 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "audit_report.csv",
         "sanity_results.json",
         "sanity_gate.json",
-        "internal_audit_report.csv",
+        "internal_audit_data.csv",
         "internal_audit_report.pdf",
         "internal_audit_duplicates.csv",
-        "internal_audit_blanks.csv",
+        "internal_audit_completeness.csv",
         "internal_audit_suspicious.csv",
         "internal_audit_distributions.csv",
     ]

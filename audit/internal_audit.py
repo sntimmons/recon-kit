@@ -42,6 +42,43 @@ DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE = 3
 
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
+# Column alias map: normalized_source_name -> canonical_name
+# All checks use df_norm (built from this map). Original df used only for raw CSV output.
+ALIASES: dict[str, str] = {
+    "employee_id": "worker_id",
+    "emp_id": "worker_id",
+    "associate_id": "worker_id",
+    "staff_id": "worker_id",
+    "status": "worker_status",
+    "employment_status": "worker_status",
+    "emp_status": "worker_status",
+    "salary": "salary",
+    "annual_salary": "salary",
+    "base_salary": "salary",
+    "annual_base_pay": "salary",
+    "email": "email",
+    "email_address": "email",
+    "join_date": "hire_date",
+    "start_date": "hire_date",
+    "date_hired": "hire_date",
+    "original_hire_date": "hire_date",
+    "phone": "phone",
+    "phone_number": "phone",
+    "mobile": "phone",
+    "age": "age",
+    "dob": "date_of_birth",
+    "department": "department",
+    "dept": "department",
+    "business_unit": "department",
+    "department_region": "department",
+    "manager_id": "manager_id",
+    "manager_worker_id": "manager_id",
+    "first_name": "first_name",
+    "fname": "first_name",
+    "last_name": "last_name",
+    "lname": "last_name",
+}
+
 
 def _norm_str(x) -> str:
     if x is None:
@@ -81,6 +118,11 @@ def _check_catalog() -> list[dict]:
         {"check_key": "ghost_employee_indicator", "check_name": "Ghost employee indicators", "severity": "CRITICAL"},
         {"check_key": "duplicate_name_different_id", "check_name": "Duplicate names with different IDs", "severity": "MEDIUM"},
         {"check_key": "suspicious_round_salary", "check_name": "Suspicious round number salaries", "severity": "LOW"},
+        {"check_key": "phone_invalid", "check_name": "Invalid phone numbers", "severity": "HIGH"},
+        {"check_key": "status_no_terminated", "check_name": "No terminated employees found", "severity": "MEDIUM"},
+        {"check_key": "status_high_pending", "check_name": "Unusually high Pending status rate", "severity": "MEDIUM"},
+        {"check_key": "age_uniformity", "check_name": "Age uniformity - possible placeholder data", "severity": "MEDIUM"},
+        {"check_key": "combined_field", "check_name": "Combined field detected", "severity": "LOW"},
     ]
 
 
@@ -230,9 +272,14 @@ def _check_severity(check_key: str, field: str | None = None) -> str:
         "pay_equity_flag",
     }:
         return "HIGH"
-    if check_key in {"duplicate_email", "missing_manager", "salary_outlier", "duplicate_name_different_id"}:
+    if check_key in {
+        "duplicate_email", "missing_manager", "salary_outlier", "duplicate_name_different_id",
+        "status_no_terminated", "status_high_pending", "age_uniformity",
+    }:
         return "MEDIUM"
-    if check_key == "suspicious_round_salary":
+    if check_key == "phone_invalid":
+        return "HIGH"
+    if check_key in {"suspicious_round_salary", "combined_field"}:
         return "LOW"
     if check_key == "high_blank_rate":
         if field == "worker_id":
@@ -860,6 +907,180 @@ def _detect_suspicious(df: pd.DataFrame, config: dict) -> list[dict]:
     return rows
 
 
+def _detect_phone_invalid(df: pd.DataFrame) -> list[dict]:
+    """Flag phone numbers that are impossible values (negative, zero, wrong digit count, repeated)."""
+    findings: list[dict] = []
+    if "phone" not in df.columns:
+        return findings
+    blank = _blank_mask(df["phone"])
+    col = df["phone"].astype(str).str.strip()
+    nonnull = col[~blank]
+    if nonnull.empty:
+        return findings
+
+    flagged_idx: list[int] = []
+    for idx, val in nonnull.items():
+        try:
+            num = float(val)
+            digits = val.replace("-", "").replace("+", "").replace(".", "").replace(" ", "")
+            digit_only = "".join(c for c in digits if c.isdigit())
+            n_digits = len(digit_only)
+            is_negative = num < 0
+            is_zero = num == 0
+            too_short = n_digits < 7
+            too_long = n_digits > 15
+            all_same = len(set(digit_only)) == 1 if digit_only else False
+            if is_negative or is_zero or too_short or too_long or all_same:
+                flagged_idx.append(idx)
+        except (ValueError, TypeError):
+            pass
+
+    if flagged_idx:
+        mask = df.index.isin(flagged_idx)
+        # get sample value for description
+        sample_val = df.at[flagged_idx[0], "phone"] if flagged_idx else ""
+        findings.append(
+            {
+                "section": "CONTACT_CHECKS",
+                "check_key": "phone_invalid",
+                "check_name": "Invalid phone numbers",
+                "field": "phone",
+                "severity": "HIGH",
+                "count": len(flagged_idx),
+                "pct": round(len(flagged_idx) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": f"{len(flagged_idx)} phone numbers contain impossible values (e.g. {sample_val}). Cannot be real phone numbers.",
+                "sample_rows": _sample_rows(df, mask, extra=["phone"]),
+                "_sample_value": str(sample_val),
+            }
+        )
+    return findings
+
+
+def _detect_status_no_terminated(df: pd.DataFrame) -> list[dict]:
+    """Flag if a file of 50+ records has zero terminated employees."""
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    if not status_col or len(df) <= 50:
+        return findings
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    term_keywords = {"terminated", "term", "separated", "resigned", "dismissed"}
+    has_terminated = statuses.isin(term_keywords).any()
+    if not has_terminated:
+        n = len(df)
+        findings.append(
+            {
+                "section": "STATUS_CHECKS",
+                "check_key": "status_no_terminated",
+                "check_name": "No terminated employees found",
+                "field": status_col,
+                "severity": "MEDIUM",
+                "count": 1,
+                "pct": 0.0,
+                "description": f"No terminated employees found in {n:,} records. File may be incomplete or limited to active/pending only.",
+                "sample_rows": [],
+            }
+        )
+    return findings
+
+
+def _detect_status_high_pending(df: pd.DataFrame) -> list[dict]:
+    """Flag if more than 25% of records have status = Pending."""
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    if not status_col:
+        return findings
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    total = len(statuses)
+    if total == 0:
+        return findings
+    pending_count = int((statuses == "pending").sum())
+    pct = round(pending_count / total * 100, 1)
+    if pct > 25:
+        findings.append(
+            {
+                "section": "STATUS_CHECKS",
+                "check_key": "status_high_pending",
+                "check_name": "Unusually high Pending status rate",
+                "field": status_col,
+                "severity": "MEDIUM",
+                "count": pending_count,
+                "pct": pct,
+                "description": f"{pct}% of employees ({pending_count:,} of {total:,}) have Pending status - unusually high. Indicates incomplete data entry.",
+                "sample_rows": _sample_rows(df, statuses == "pending", extra=[status_col]),
+            }
+        )
+    return findings
+
+
+def _detect_age_uniformity(df: pd.DataFrame) -> list[dict]:
+    """Flag if age column has suspiciously few distinct values - likely placeholder data."""
+    findings: list[dict] = []
+    if "age" not in df.columns:
+        return findings
+    blank = _blank_mask(df["age"])
+    age_raw = df["age"].astype(str).str.strip()[~blank]
+    nonnull = age_raw
+    if len(nonnull) < 50:
+        return findings
+    unique_count = nonnull.nunique()
+    if unique_count / len(nonnull) < 0.05:
+        value_list = sorted(nonnull.unique().tolist())[:10]
+        value_str = ", ".join(str(v) for v in value_list)
+        findings.append(
+            {
+                "section": "DATA_QUALITY",
+                "check_key": "age_uniformity",
+                "check_name": "Age uniformity - possible placeholder data",
+                "field": "age",
+                "severity": "MEDIUM",
+                "count": len(nonnull),
+                "pct": round(len(nonnull) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": f"Only {unique_count} distinct age values across {len(nonnull):,} employees. Values: {value_str}. Likely placeholder data.",
+                "sample_rows": [],
+                "_unique_count": unique_count,
+                "_value_list": value_list,
+            }
+        )
+    return findings
+
+
+def _detect_combined_field(df: pd.DataFrame) -> list[dict]:
+    """Flag text columns where 80%+ of values use a hyphen to combine two categorical fields."""
+    findings: list[dict] = []
+    for col in df.columns:
+        blank = _blank_mask(df[col])
+        series = df[col].astype(str).str.strip()
+        nonnull = series[~blank]
+        if len(nonnull) < 20:
+            continue
+        has_hyphen = nonnull.str.contains("-", regex=False)
+        if has_hyphen.mean() < 0.80:
+            continue
+        # Both parts must be categorical (< 20 unique values each)
+        with_hyphen = nonnull[has_hyphen]
+        left_parts = with_hyphen.str.split("-", n=1).str[0].str.strip()
+        right_parts = with_hyphen.str.split("-", n=1).str[1].str.strip()
+        if left_parts.nunique() >= 20 or right_parts.nunique() >= 20:
+            continue
+        example = with_hyphen.iloc[0] if not with_hyphen.empty else ""
+        findings.append(
+            {
+                "section": "DATA_QUALITY",
+                "check_key": "combined_field",
+                "check_name": f"Combined field detected - {col}",
+                "field": col,
+                "severity": "LOW",
+                "count": int(has_hyphen.sum()),
+                "pct": round(has_hyphen.mean() * 100, 1),
+                "description": f"Column '{col}' appears to combine two fields using a hyphen separator (e.g. '{example}'). Must be split before system load.",
+                "sample_rows": [],
+                "_example": str(example),
+                "_col": col,
+            }
+        )
+    return findings
+
+
 def _field_completeness(df: pd.DataFrame, threshold_pct: float) -> tuple[list[dict], list[dict]]:
     rows: list[dict] = []
     findings: list[dict] = []
@@ -1061,32 +1282,47 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         print(f"[internal_audit] ERROR reading file: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    total_rows = len(df)
-    total_cols = len(df.columns)
+    # Build normalized column map: source col -> canonical name
+    _col_norm_map: dict[str, str] = {}
+    for _col in df.columns:
+        _cn = str(_col).strip().lower().replace(" ", "_")
+        _col_norm_map[_col] = ALIASES.get(_cn, _cn)
+    df_norm = df.rename(columns=_col_norm_map)
+
+    total_rows = len(df_norm)
+    total_cols = len(df_norm.columns)
     print(f"[internal_audit] loaded {total_rows} rows x {total_cols} columns")
 
-    dup_df, dup_summary, dup_findings = _detect_duplicates(df, config["duplicate_check_fields"])
-    suspicious = _detect_suspicious(df, config)
-    active_zero_findings = _detect_active_zero_salary(df)
-    impossible_date_findings = _detect_impossible_dates(df)
-    status_mismatch_findings = _detect_status_hire_date_mismatch(df)
-    missing_manager_findings = _detect_missing_manager(df)
-    manager_loop_findings = _detect_manager_loops(df, config["manager_loop_check"])
-    salary_outlier_findings = _detect_salary_outliers(df, config)
-    pay_equity_findings = _detect_pay_equity_flags(df, config)
-    ghost_employee_findings = _detect_ghost_employees(df, config["ghost_employee_check"])
-    duplicate_name_findings = _detect_duplicate_name_different_id(df)
-    suspicious_round_salary_findings = _detect_suspicious_round_salary(df)
-    completeness, completeness_findings = _field_completeness(df, config["high_blank_rate_threshold"])
-    salary_dist = _salary_distribution(df)
-    status_dist = _status_distribution(df)
+    dup_df, dup_summary, dup_findings = _detect_duplicates(df_norm, config["duplicate_check_fields"])
+    suspicious = _detect_suspicious(df_norm, config)
+    active_zero_findings = _detect_active_zero_salary(df_norm)
+    impossible_date_findings = _detect_impossible_dates(df_norm)
+    status_mismatch_findings = _detect_status_hire_date_mismatch(df_norm)
+    missing_manager_findings = _detect_missing_manager(df_norm)
+    manager_loop_findings = _detect_manager_loops(df_norm, config["manager_loop_check"])
+    salary_outlier_findings = _detect_salary_outliers(df_norm, config)
+    pay_equity_findings = _detect_pay_equity_flags(df_norm, config)
+    ghost_employee_findings = _detect_ghost_employees(df_norm, config["ghost_employee_check"])
+    duplicate_name_findings = _detect_duplicate_name_different_id(df_norm)
+    suspicious_round_salary_findings = _detect_suspicious_round_salary(df_norm)
+    phone_findings = _detect_phone_invalid(df_norm)
+    status_no_term_findings = _detect_status_no_terminated(df_norm)
+    status_high_pending_findings = _detect_status_high_pending(df_norm)
+    age_uniformity_findings = _detect_age_uniformity(df_norm)
+    combined_field_findings = _detect_combined_field(df_norm)
+    completeness, completeness_findings = _field_completeness(df_norm, config["high_blank_rate_threshold"])
+    salary_dist = _salary_distribution(df_norm)
+    status_dist = _status_distribution(df_norm)
 
     findings = (
         dup_findings
         + active_zero_findings
+        + phone_findings
         + suspicious
         + impossible_date_findings
         + status_mismatch_findings
+        + status_no_term_findings
+        + status_high_pending_findings
         + missing_manager_findings
         + manager_loop_findings
         + salary_outlier_findings
@@ -1094,6 +1330,8 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         + ghost_employee_findings
         + duplicate_name_findings
         + suspicious_round_salary_findings
+        + age_uniformity_findings
+        + combined_field_findings
         + completeness_findings
     )
     severity_counts = _severity_counts(findings)
@@ -1102,6 +1340,12 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     total_blank_fields = sum(r["blank_count"] for r in completeness)
     total_possible = total_rows * total_cols
     overall_completeness = round((total_possible - total_blank_fields) / total_possible * 100, 1) if total_possible > 0 else 0.0
+
+    # Build status distribution dict for PDF workforce snapshot
+    status_col = _status_column(df_norm)
+    status_breakdown: dict[str, int] = {}
+    if status_col:
+        status_breakdown = df_norm[status_col].astype(str).str.strip().value_counts().to_dict()
 
     summary = {
         "source_filename": source_name or file_path.name,
@@ -1112,24 +1356,27 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         "suspicious_count": len(suspicious),
         "issue_count": len(findings),
         "issues": _issue_strings(findings),
-        "columns": list(df.columns),
+        "columns": list(df_norm.columns),
         "severity_counts": severity_counts,
         "check_counts": check_counts,
         "findings": findings,
         "findings_for_pdf": _group_findings_for_pdf(findings),
+        "completeness_rows": completeness,
+        "status_breakdown": status_breakdown,
     }
 
     report_json = out_dir / "internal_audit_report.json"
     report_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"[internal_audit] wrote: {report_json}")
 
-    blanks_csv = out_dir / "internal_audit_blanks.csv"
+    # C-1: renamed from internal_audit_blanks.csv
+    completeness_csv = out_dir / "internal_audit_completeness.csv"
     _write_csv(
-        blanks_csv,
+        completeness_csv,
         completeness,
         fieldnames=["field", "total", "blank_count", "blank_pct", "filled_pct", "severity"],
     )
-    print(f"[internal_audit] wrote: {blanks_csv}")
+    print(f"[internal_audit] wrote: {completeness_csv}")
 
     if not dup_df.empty:
         dup_csv = out_dir / "internal_audit_duplicates.csv"
@@ -1147,7 +1394,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
             "severity": row["severity"],
             "description": row["description"],
         }
-        for row in suspicious + active_zero_findings
+        for row in suspicious + active_zero_findings + phone_findings
     ]
     _write_csv(
         suspicious_csv,
@@ -1164,55 +1411,70 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     )
     print(f"[internal_audit] wrote: {distributions_csv}")
 
-    report_rows = [
-        {"section": "SUMMARY", "field": "total_rows", "value": str(total_rows), "note": "", "severity": "LOW"},
-        {"section": "SUMMARY", "field": "total_columns", "value": str(total_cols), "note": "", "severity": "LOW"},
-        {"section": "SUMMARY", "field": "overall_completeness_pct", "value": str(overall_completeness), "note": "", "severity": "LOW"},
-        {
-            "section": "SUMMARY",
-            "field": "severity_counts",
-            "value": json.dumps(severity_counts),
-            "note": "",
-            "severity": "LOW",
-        },
+    # C-2: Rebuild internal_audit_data.csv with 3 clearly labeled sections
+    # Section 1: AUDIT SUMMARY
+    data_rows: list[dict] = [
+        {"section": "=== AUDIT SUMMARY ===", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""},
+        {"section": "Run ID", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": summary.get("source_filename", ""), "issue_description": "", "recommended_action": ""},
+        {"section": "Date", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": datetime.now().strftime("%Y-%m-%d"), "issue_description": "", "recommended_action": ""},
+        {"section": "Total Records", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(total_rows), "issue_description": "", "recommended_action": ""},
+        {"section": "CRITICAL Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("CRITICAL", 0)), "issue_description": "", "recommended_action": ""},
+        {"section": "HIGH Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("HIGH", 0)), "issue_description": "", "recommended_action": ""},
+        {"section": "MEDIUM Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("MEDIUM", 0)), "issue_description": "", "recommended_action": ""},
+        {"section": "LOW Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("LOW", 0)), "issue_description": "", "recommended_action": ""},
+        {"section": "", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""},
+        # Section 2: ALL FINDINGS
+        {"section": "=== ALL FINDINGS ===", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""},
     ]
-
-    for row in check_counts:
-        report_rows.append(
-            {
-                "section": "CHECKS",
-                "field": row["check_name"],
-                "value": str(row["count"]),
-                "note": "No findings" if int(row["count"]) == 0 else "Findings present",
-                "severity": row["severity"],
-            }
-        )
-
     for finding in findings:
-        report_rows.append(
-            {
-                "section": finding["section"],
-                "field": finding["check_name"],
-                "value": f"{finding['count']} ({finding['pct']}%)",
-                "note": finding["description"],
-                "severity": finding["severity"],
-            }
-        )
+        for srow in (finding.get("sample_rows") or []):
+            data_rows.append({
+                "section": "FINDING",
+                "check_name": finding.get("check_name", ""),
+                "severity": finding.get("severity", ""),
+                "employee_id": str(srow.get("worker_id", srow.get("employee_id", ""))),
+                "first_name": str(srow.get("first_name", "")),
+                "last_name": str(srow.get("last_name", "")),
+                "field_flagged": finding.get("field", ""),
+                "value_found": str(srow.get(finding.get("field", ""), "")),
+                "issue_description": finding.get("description", ""),
+                "recommended_action": "",
+            })
+    # Section 3: CLEAN RECORDS - records with no findings
+    flagged_indices: set = set()
+    for finding in findings:
+        for srow in (finding.get("sample_rows") or []):
+            if "row_number" in srow:
+                flagged_indices.add(int(srow["row_number"]) - 2)
+    data_rows.append({"section": "", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""})
+    data_rows.append({"section": "=== CLEAN RECORDS (sample - passed all checks) ===", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""})
+    status_col_n = _status_column(df_norm)
+    hire_col_n = _first_present(df_norm, ["hire_date"])
+    clean_count = 0
+    for idx in df_norm.index:
+        if clean_count >= 50:
+            break
+        data_rows.append({
+            "section": "CLEAN",
+            "check_name": "",
+            "severity": "PASS",
+            "employee_id": str(df_norm.at[idx, "worker_id"]) if "worker_id" in df_norm.columns else "",
+            "first_name": str(df_norm.at[idx, "first_name"]) if "first_name" in df_norm.columns else "",
+            "last_name": str(df_norm.at[idx, "last_name"]) if "last_name" in df_norm.columns else "",
+            "field_flagged": "",
+            "value_found": "",
+            "issue_description": "",
+            "recommended_action": "",
+        })
+        clean_count += 1
 
-    for row in completeness:
-        report_rows.append(
-            {
-                "section": "COMPLETENESS",
-                "field": row["field"],
-                "value": f"{row['filled_pct']}% filled",
-                "note": f"{row['blank_count']} blank of {row['total']}",
-                "severity": row["severity"],
-            }
-        )
-
-    report_csv = out_dir / "internal_audit_report.csv"
-    _write_csv(report_csv, report_rows, fieldnames=["section", "field", "value", "note", "severity"])
-    print(f"[internal_audit] wrote: {report_csv}")
+    data_csv = out_dir / "internal_audit_data.csv"
+    _write_csv(
+        data_csv,
+        data_rows,
+        fieldnames=["section", "check_name", "severity", "employee_id", "first_name", "last_name", "field_flagged", "value_found", "issue_description", "recommended_action"],
+    )
+    print(f"[internal_audit] wrote: {data_csv}")
     print(f"[internal_audit] complete. {len(findings)} issues found.")
     return summary
 
