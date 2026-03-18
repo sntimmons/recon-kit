@@ -41,6 +41,8 @@ DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD = 0.30
 DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE = 3
 
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+GATE_BLOCKED_MESSAGE = "CRITICAL issues detected. Dataset is NOT safe for payroll or production use."
+GATE_OVERRIDDEN_MESSAGE = "WARNING: Gate overridden. CRITICAL issues still exist."
 
 # Column alias map: normalized_source_name -> canonical_name
 # All checks use df_norm (built from this map). Original df used only for raw CSV output.
@@ -103,6 +105,9 @@ def _safe_json_value(x):
 def _check_catalog() -> list[dict]:
     return [
         {"check_key": "duplicate_worker_id", "check_name": "Duplicate worker_id", "severity": "CRITICAL"},
+        {"check_key": "invalid_date_logic", "check_name": "Invalid date logic", "severity": "CRITICAL"},
+        {"check_key": "active_with_termination_date", "check_name": "Active employees with termination date", "severity": "CRITICAL"},
+        {"check_key": "missing_required_identity", "check_name": "Missing required identity fields", "severity": "CRITICAL"},
         {"check_key": "duplicate_email", "check_name": "Duplicate email", "severity": "MEDIUM"},
         {"check_key": "duplicate_last4_ssn", "check_name": "Duplicate last4_ssn", "severity": "CRITICAL"},
         {"check_key": "active_zero_salary", "check_name": "Active employees with $0 or missing salary", "severity": "CRITICAL"},
@@ -123,6 +128,7 @@ def _check_catalog() -> list[dict]:
         {"check_key": "status_high_pending", "check_name": "Unusually high Pending status rate", "severity": "MEDIUM"},
         {"check_key": "age_uniformity", "check_name": "Age uniformity - possible placeholder data", "severity": "MEDIUM"},
         {"check_key": "combined_field", "check_name": "Combined field detected", "severity": "LOW"},
+        {"check_key": "duplicate_canonical_conflict", "check_name": "Duplicate canonical field with conflicting values", "severity": "HIGH"},
     ]
 
 
@@ -242,6 +248,199 @@ def _date_series(df: pd.DataFrame, col: str | None) -> pd.Series:
     return pd.to_datetime(df[col], errors="coerce")
 
 
+def _collapse_duplicate_columns(df: pd.DataFrame) -> pd.DataFrame:
+    if not df.columns.duplicated().any():
+        return df
+
+    cols: list[pd.Series] = []
+    names: list[str] = []
+    seen: set[str] = set()
+    for col in df.columns:
+        if col in seen:
+            continue
+        seen.add(col)
+        subset = df.loc[:, df.columns == col]
+        if isinstance(subset, pd.Series) or subset.shape[1] == 1:
+            series = subset if isinstance(subset, pd.Series) else subset.iloc[:, 0]
+        else:
+            series = subset.bfill(axis=1).iloc[:, 0]
+        cols.append(series.rename(col))
+        names.append(col)
+    return pd.concat(cols, axis=1)
+
+
+def analyze_duplicate_canonical_fields(
+    df: pd.DataFrame,
+    canonical_map: dict[str, str],
+) -> tuple[list[dict], dict, list[dict]]:
+    """Detect canonical field conflicts arising when multiple source columns map to the same
+    canonical name.
+
+    Must be called AFTER alias normalization (df already has canonical column names, possibly
+    duplicated) and BEFORE _collapse_duplicate_columns().
+
+    Args:
+        df:            DataFrame with potentially duplicate column names (post-rename).
+        canonical_map: Mapping of original source column name -> canonical name.
+
+    Returns:
+        findings:         Finding dicts (HIGH severity) for duplicate_conflicting_values only.
+        dup_canonical_summary: Aggregate counts for duplicate_canonical_summary in report JSON.
+        row_annotations:  Per-row annotation dicts keyed by (row_index, canonical_field).
+    """
+    from collections import defaultdict as _dd
+
+    # Position index: canonical_name -> [col_positions in df]
+    col_positions: dict[str, list[int]] = _dd(list)
+    for i, col in enumerate(df.columns):
+        col_positions[col].append(i)
+
+    dup_canonicals: dict[str, list[int]] = {
+        col: positions for col, positions in col_positions.items() if len(positions) > 1
+    }
+
+    _empty_summary: dict = {
+        "canonical_fields_checked": [],
+        "same_value_rows": 0,
+        "blank_vs_value_rows": 0,
+        "conflicting_rows": 0,
+        "by_field": {},
+    }
+    if not dup_canonicals:
+        return [], _empty_summary, []
+
+    # Reverse map: canonical -> [source col names in order of appearance]
+    canonical_to_sources: dict[str, list[str]] = _dd(list)
+    for src_col, canon in canonical_map.items():
+        canonical_to_sources[canon].append(src_col)
+
+    total_rows = len(df)
+    findings: list[dict] = []
+    # row_annotations[row_idx] = { canonical_field: {classification, ...} }
+    row_annotations: list[dict] = [{} for _ in range(total_rows)]
+
+    total_same = 0
+    total_blank_vs_value = 0
+    total_conflicting = 0
+    summary_by_field: dict[str, dict] = {}
+
+    for canonical, positions in dup_canonicals.items():
+        source_cols = canonical_to_sources.get(canonical, [canonical] * len(positions))
+        # Pad source_cols list to match number of positions if needed
+        while len(source_cols) < len(positions):
+            source_cols.append(canonical)
+
+        same_count = 0
+        blank_vs_count = 0
+        conflict_count = 0
+        conflict_sample: list[dict] = []
+
+        for row_idx in range(total_rows):
+            values = [_norm_str(df.iloc[row_idx, pos]) for pos in positions]
+            non_blank = [v for v in values if v]
+
+            if len(non_blank) == 0:
+                # All blank - no conflict
+                classification = "duplicate_same_value"
+                retained_reason = "identical_values"
+                same_count += 1
+
+            elif len(non_blank) == len(values) and len({v.lower() for v in non_blank}) == 1:
+                # All copies non-blank and equal
+                classification = "duplicate_same_value"
+                retained_reason = "identical_values"
+                same_count += 1
+
+            elif len(non_blank) < len(values) and len({v.lower() for v in non_blank}) <= 1:
+                # Some blank, all populated copies are identical (or only one is populated)
+                classification = "duplicate_blank_vs_value"
+                retained_reason = "first_non_blank" if not values[0] else "identical_values"
+                blank_vs_count += 1
+
+            else:
+                # Multiple distinct non-blank values = conflict
+                classification = "duplicate_conflicting_values"
+                retained_reason = "conflict_primary_wins" if values[0] else "first_non_blank"
+                conflict_count += 1
+
+                if len(conflict_sample) < 8:
+                    sample: dict = {"row_number": row_idx + 2}
+                    if "worker_id" in col_positions:
+                        sample["worker_id"] = _norm_str(df.iloc[row_idx, col_positions["worker_id"][0]])
+                    if "first_name" in col_positions:
+                        sample["first_name"] = _norm_str(df.iloc[row_idx, col_positions["first_name"][0]])
+                    if "last_name" in col_positions:
+                        sample["last_name"] = _norm_str(df.iloc[row_idx, col_positions["last_name"][0]])
+                    for src, val in zip(source_cols, values):
+                        sample[f"source_{src}"] = val
+                    # Carry the 4 new CSV columns into the sample row
+                    sample["duplicate_classification"] = classification
+                    sample["duplicate_canonical_field"] = canonical
+                    sample["duplicate_source_columns"] = "|".join(source_cols)
+                    sample["duplicate_values"] = "|".join(values)
+                    sample["retained_value_reason"] = retained_reason
+                    conflict_sample.append(sample)
+
+            row_annotations[row_idx][canonical] = {
+                "duplicate_classification": classification,
+                "duplicate_canonical_field": canonical,
+                "duplicate_source_columns": "|".join(source_cols),
+                "duplicate_values": "|".join(values),
+                "retained_value_reason": retained_reason,
+            }
+
+        total_same += same_count
+        total_blank_vs_value += blank_vs_count
+        total_conflicting += conflict_count
+
+        summary_by_field[canonical] = {
+            "source_columns": source_cols,
+            "same_value": same_count,
+            "blank_vs_value": blank_vs_count,
+            "conflicting_values": conflict_count,
+        }
+
+        if conflict_count > 0:
+            pct = round(conflict_count / total_rows * 100, 1) if total_rows else 0.0
+            src_label = " and ".join(f'"{s}"' for s in source_cols)
+            findings.append({
+                "check_key": "duplicate_canonical_conflict",
+                "check_name": "Duplicate canonical field with conflicting values",
+                "severity": "HIGH",
+                "count": conflict_count,
+                "pct": pct,
+                "field": canonical,
+                "description": (
+                    f"{conflict_count} row(s) have conflicting values for '{canonical}' "
+                    f"across source columns {src_label}. "
+                    "Column collapse will silently discard the non-primary value."
+                ),
+                "rule_name": "duplicate_canonical_conflict",
+                "impact": (
+                    "Reconciliation uses the primary (leftmost) column value, "
+                    "silently discarding the alternative. This may mask data entry errors."
+                ),
+                "recommended_action": (
+                    f"Review rows with conflicting '{canonical}' values and resolve "
+                    "before migration. Deduplicate source columns or choose the authoritative value explicitly."
+                ),
+                "_source_columns": source_cols,
+                "_conflicting_count": conflict_count,
+                "sample_rows": conflict_sample,
+                "retained_value_reason": "conflict_primary_wins",
+            })
+
+    dup_canonical_summary: dict = {
+        "canonical_fields_checked": list(dup_canonicals.keys()),
+        "same_value_rows": total_same,
+        "blank_vs_value_rows": total_blank_vs_value,
+        "conflicting_rows": total_conflicting,
+        "by_field": summary_by_field,
+    }
+
+    return findings, dup_canonical_summary, row_annotations
+
+
 def _completeness_severity(field: str, blank_pct: float, threshold_pct: float) -> str:
     if blank_pct <= 0:
         return "LOW"
@@ -257,6 +456,9 @@ def _completeness_severity(field: str, blank_pct: float, threshold_pct: float) -
 def _check_severity(check_key: str, field: str | None = None) -> str:
     if check_key in {
         "duplicate_worker_id",
+        "invalid_date_logic",
+        "active_with_termination_date",
+        "missing_required_identity",
         "duplicate_last4_ssn",
         "active_zero_salary",
         "ghost_employee_indicator",
@@ -270,6 +472,7 @@ def _check_severity(check_key: str, field: str | None = None) -> str:
         "status_hire_date_mismatch",
         "manager_loop",
         "pay_equity_flag",
+        "duplicate_canonical_conflict",
     }:
         return "HIGH"
     if check_key in {
@@ -296,6 +499,8 @@ def _detect_duplicates(df: pd.DataFrame, duplicate_fields: list[str]) -> tuple[p
     findings: list[dict] = []
 
     for col in duplicate_fields:
+        if col == "worker_id":
+            continue
         if col not in df.columns:
             continue
         col_data = df[col].astype(str).str.strip()
@@ -330,6 +535,33 @@ def _detect_duplicates(df: pd.DataFrame, duplicate_fields: list[str]) -> tuple[p
     return dup_df, results, findings
 
 
+def _detect_duplicate_worker_id(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    if "worker_id" not in df.columns:
+        return findings
+
+    worker_ids = df["worker_id"].astype(str).str.strip()
+    nonnull = worker_ids[(worker_ids != "") & (worker_ids.str.lower() != "nan")]
+    dupes = nonnull[nonnull.duplicated(keep=False)]
+    if dupes.empty:
+        return findings
+
+    findings.append(
+        {
+            "section": "CRITICAL_CHECKS",
+            "check_key": "duplicate_worker_id",
+            "check_name": "Duplicate worker_id",
+            "field": "worker_id",
+            "severity": "CRITICAL",
+            "count": int(len(dupes)),
+            "pct": round(len(dupes) / len(df) * 100, 2) if len(df) else 0.0,
+            "description": f"{len(dupes)} records share duplicate worker_id values across {dupes.nunique()} repeated values.",
+            "sample_rows": _sample_rows(df, df.index.isin(dupes.index), extra=["worker_id"]),
+        }
+    )
+    return findings
+
+
 def _detect_active_zero_salary(df: pd.DataFrame) -> list[dict]:
     findings: list[dict] = []
     status_col = _status_column(df)
@@ -357,6 +589,60 @@ def _detect_active_zero_salary(df: pd.DataFrame) -> list[dict]:
     return findings
 
 
+def _detect_invalid_date_logic(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    hire_col = _first_present(df, ["hire_date", "start_date", "date_hired"])
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not hire_col:
+        return findings
+
+    today = pd.Timestamp(datetime.now().date())
+    hire_dates = _date_series(df, hire_col)
+    term_dates = _date_series(df, term_col)
+    invalid_rows: list[dict] = []
+
+    future_hire = hire_dates > today
+    for idx in df.index[future_hire.fillna(False)]:
+        invalid_rows.append(
+            {
+                "row_number": int(idx) + 2,
+                "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                "field_name": hire_col,
+                "field_value": _safe_json_value(df.at[idx, hire_col]),
+                "why_flagged": "Hire date is in the future",
+            }
+        )
+
+    if term_col:
+        term_before_hire = term_dates < hire_dates
+        for idx in df.index[term_before_hire.fillna(False)]:
+            invalid_rows.append(
+                {
+                    "row_number": int(idx) + 2,
+                    "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                    "field_name": term_col,
+                    "field_value": _safe_json_value(df.at[idx, term_col]),
+                    "why_flagged": "Termination date is before hire date",
+                }
+            )
+
+    if invalid_rows:
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "invalid_date_logic",
+                "check_name": "Invalid date logic",
+                "field": hire_col,
+                "severity": "CRITICAL",
+                "count": len(invalid_rows),
+                "pct": round(len(invalid_rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Hire date is in the future or termination date is before hire date.",
+                "sample_rows": invalid_rows[:8],
+            }
+        )
+    return findings
+
+
 def _detect_impossible_dates(df: pd.DataFrame) -> list[dict]:
     findings: list[dict] = []
     hire_col = _first_present(df, ["hire_date", "start_date", "date_hired"])
@@ -373,7 +659,6 @@ def _detect_impossible_dates(df: pd.DataFrame) -> list[dict]:
     rows: list[dict] = []
     if hire_col:
         masks = [
-            (hire_dates > today, hire_col, "Hire date is in the future"),
             (hire_dates < pd.Timestamp("1950-01-01"), hire_col, "Hire date is before 1950-01-01"),
         ]
         for mask, field_name, reason in masks:
@@ -409,8 +694,6 @@ def _detect_impossible_dates(df: pd.DataFrame) -> list[dict]:
                 )
     if term_col:
         masks = []
-        if hire_col:
-            masks.append((term_dates < hire_dates, term_col, "Termination date is before hire date"))
         if status_col:
             masks.append(((term_dates > today) & (status_norm == "terminated"), term_col, "Termination date is in the future while status is Terminated"))
         for mask, field_name, reason in masks:
@@ -451,23 +734,8 @@ def _detect_status_hire_date_mismatch(df: pd.DataFrame) -> list[dict]:
 
     statuses = df[status_col].astype(str).str.strip().str.lower()
     term_blank = _blank_mask(df[term_col])
-    active_with_term = (statuses == "active") & ~term_blank
     terminated_without_term = (statuses == "terminated") & term_blank
 
-    if active_with_term.any():
-        findings.append(
-            {
-                "section": "STATUS_CHECKS",
-                "check_key": "status_hire_date_mismatch",
-                "check_name": "Termination date but Active status",
-                "field": status_col,
-                "severity": "HIGH",
-                "count": int(active_with_term.sum()),
-                "pct": round(active_with_term.sum() / len(df) * 100, 2) if len(df) else 0.0,
-                "description": "Employee has termination date but is marked Active",
-                "sample_rows": _sample_rows(df, active_with_term, extra=[status_col, term_col]),
-            }
-        )
     if terminated_without_term.any():
         findings.append(
             {
@@ -483,6 +751,127 @@ def _detect_status_hire_date_mismatch(df: pd.DataFrame) -> list[dict]:
             }
         )
     return findings
+
+
+def _detect_active_with_termination_date(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not term_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    term_blank = _blank_mask(df[term_col])
+    active_with_term = (statuses == "active") & ~term_blank
+    if active_with_term.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "active_with_termination_date",
+                "check_name": "Active employees with termination date",
+                "field": term_col,
+                "severity": "CRITICAL",
+                "count": int(active_with_term.sum()),
+                "pct": round(active_with_term.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Employee is marked active but has a termination date.",
+                "sample_rows": _sample_rows(df, active_with_term, extra=[status_col, term_col]),
+            }
+        )
+    return findings
+
+
+def _detect_missing_required_identity(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    required_fields = [field for field in ["worker_id", "first_name", "last_name"] if field in df.columns]
+    if not required_fields:
+        return findings
+
+    missing_masks = [_blank_mask(df[field]) for field in required_fields]
+    combined_mask = missing_masks[0].copy()
+    for mask in missing_masks[1:]:
+        combined_mask = combined_mask | mask
+    if not combined_mask.any():
+        return findings
+
+    missing_fields = []
+    for idx in df.index[combined_mask.fillna(False)]:
+        row_missing = [field for field in required_fields if bool(_blank_mask(df.loc[[idx], field]).iloc[0])]
+        missing_fields.append(
+            {
+                "row_number": int(idx) + 2,
+                "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                "first_name": _safe_json_value(df.at[idx, "first_name"]) if "first_name" in df.columns else "",
+                "last_name": _safe_json_value(df.at[idx, "last_name"]) if "last_name" in df.columns else "",
+                "missing_fields": ", ".join(row_missing),
+            }
+        )
+
+    findings.append(
+        {
+            "section": "CRITICAL_CHECKS",
+            "check_key": "missing_required_identity",
+            "check_name": "Missing required identity fields",
+            "field": ",".join(required_fields),
+            "severity": "CRITICAL",
+            "count": int(combined_mask.sum()),
+            "pct": round(combined_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Required identity fields are missing for one or more records.",
+            "sample_rows": missing_fields[:8],
+        }
+    )
+    return findings
+
+
+def _standardize_finding(finding: dict, total_rows: int) -> dict:
+    finding = dict(finding)
+    severity = str(finding.get("severity") or "LOW").upper()
+    row_count = int(finding.get("row_count", finding.get("count", 0)) or 0)
+    pct = finding.get("percent_of_population", finding.get("pct", 0.0))
+    try:
+        pct = round(float(pct), 2)
+    except Exception:
+        pct = round(row_count / total_rows * 100, 2) if total_rows else 0.0
+
+    finding["severity"] = severity
+    finding["count"] = row_count
+    finding["pct"] = pct
+    finding.setdefault("rule_name", str(finding.get("check_key") or ""))
+    finding["row_count"] = row_count
+    finding["percent_of_population"] = pct
+    finding.setdefault("impact", "This issue may affect data integrity and should be reviewed before downstream use.")
+    finding.setdefault("recommended_action", "Review and correct the flagged records before production use.")
+    return finding
+
+
+def _standardize_findings(findings: list[dict], total_rows: int) -> list[dict]:
+    return [_standardize_finding(finding, total_rows) for finding in findings]
+
+
+def _evaluate_gate(findings: list[dict], *, override_gate: bool) -> dict:
+    critical_findings = [finding for finding in findings if str(finding.get("severity", "")).upper() == "CRITICAL"]
+    if not critical_findings:
+        return {
+            "gate_status": "PASSED",
+            "gate_message": "",
+            "override_gate": bool(override_gate),
+            "critical_findings_present": False,
+            "downstream_actions": {
+                "corrections_generation_skipped": False,
+                "approved_status_allowed": True,
+            },
+        }
+
+    gate_status = "OVERRIDDEN" if override_gate else "BLOCKED"
+    return {
+        "gate_status": gate_status,
+        "gate_message": GATE_OVERRIDDEN_MESSAGE if override_gate else GATE_BLOCKED_MESSAGE,
+        "override_gate": bool(override_gate),
+        "critical_findings_present": True,
+        "downstream_actions": {
+            "corrections_generation_skipped": gate_status == "BLOCKED",
+            "approved_status_allowed": gate_status != "BLOCKED",
+        },
+    }
 
 
 def _detect_missing_manager(df: pd.DataFrame) -> list[dict]:
@@ -1230,11 +1619,16 @@ def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
             grouped[key] = {
                 "check_key": finding["check_key"],
                 "check_name": finding["check_name"],
+                "rule_name": finding.get("rule_name", finding["check_key"]),
                 "severity": finding["severity"],
                 "count": 0,
+                "row_count": 0,
                 "pct": finding.get("pct", 0),
+                "percent_of_population": finding.get("percent_of_population", finding.get("pct", 0)),
                 "field": finding.get("field", ""),
                 "description": finding["description"],
+                "impact": finding.get("impact", ""),
+                "recommended_action": finding.get("recommended_action", ""),
                 "_unique_count": finding.get("_unique_count"),
                 "_example": finding.get("_example"),
                 "_sample_value": finding.get("_sample_value"),
@@ -1243,6 +1637,7 @@ def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
                 "group_rows": [],
             }
         grouped[key]["count"] += int(finding.get("count", 0))
+        grouped[key]["row_count"] += int(finding.get("row_count", finding.get("count", 0)) or 0)
         for row in finding.get("sample_rows", []):
             if len(grouped[key]["sample_rows"]) >= 8:
                 break
@@ -1269,7 +1664,14 @@ def _write_csv(path: Path, rows: list[dict], fieldnames: list[str] | None = None
         writer.writerows(rows)
 
 
-def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | None = None, sheet_name: int | str = 0) -> dict:
+def run_internal_audit(
+    file_path: Path,
+    out_dir: Path,
+    *,
+    source_name: str | None = None,
+    sheet_name: int | str = 0,
+    override_gate: bool = False,
+) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     config = _load_config()
 
@@ -1294,16 +1696,25 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         _cn = str(_col).strip().lower().replace(" ", "_")
         _col_norm_map[_col] = ALIASES.get(_cn, _cn)
     df_norm = df.rename(columns=_col_norm_map)
+    # Detect duplicate canonical field conflicts BEFORE collapsing
+    dup_canon_findings, dup_canonical_summary, _dup_row_annotations = analyze_duplicate_canonical_fields(
+        df_norm, _col_norm_map
+    )
+    df_norm = _collapse_duplicate_columns(df_norm)
 
     total_rows = len(df_norm)
     total_cols = len(df_norm.columns)
     print(f"[internal_audit] loaded {total_rows} rows x {total_cols} columns")
 
     dup_df, dup_summary, dup_findings = _detect_duplicates(df_norm, config["duplicate_check_fields"])
+    duplicate_worker_findings = _detect_duplicate_worker_id(df_norm)
     suspicious = _detect_suspicious(df_norm, config)
     active_zero_findings = _detect_active_zero_salary(df_norm)
+    invalid_date_logic_findings = _detect_invalid_date_logic(df_norm)
     impossible_date_findings = _detect_impossible_dates(df_norm)
+    active_with_term_findings = _detect_active_with_termination_date(df_norm)
     status_mismatch_findings = _detect_status_hire_date_mismatch(df_norm)
+    missing_required_identity_findings = _detect_missing_required_identity(df_norm)
     missing_manager_findings = _detect_missing_manager(df_norm)
     manager_loop_findings = _detect_manager_loops(df_norm, config["manager_loop_check"])
     salary_outlier_findings = _detect_salary_outliers(df_norm, config)
@@ -1321,8 +1732,13 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     status_dist = _status_distribution(df_norm)
 
     findings = (
-        dup_findings
+        dup_canon_findings
+        + duplicate_worker_findings
+        + dup_findings
         + active_zero_findings
+        + invalid_date_logic_findings
+        + active_with_term_findings
+        + missing_required_identity_findings
         + phone_findings
         + suspicious
         + impossible_date_findings
@@ -1340,8 +1756,10 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         + combined_field_findings
         + completeness_findings
     )
+    findings = _standardize_findings(findings, total_rows)
     severity_counts = _severity_counts(findings)
     check_counts = _check_counts(findings)
+    gate_summary = _evaluate_gate(findings, override_gate=override_gate)
 
     total_blank_fields = sum(r["blank_count"] for r in completeness)
     total_possible = total_rows * total_cols
@@ -1378,6 +1796,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         "total_columns": total_cols,
         "overall_completeness": overall_completeness,
         "duplicate_checks": dup_summary,
+        "duplicate_canonical_summary": dup_canonical_summary,
         "suspicious_count": len(suspicious),
         "issue_count": len(findings),
         "issues": _issue_strings(findings),
@@ -1389,6 +1808,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         "completeness_rows": completeness,
         "status_breakdown": status_breakdown,
         "salary_stats": salary_stats,
+        **gate_summary,
     }
 
     report_json = out_dir / "internal_audit_report.json"
@@ -1444,6 +1864,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         {"section": "Run ID", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": summary.get("source_filename", ""), "issue_description": "", "recommended_action": ""},
         {"section": "Date", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": datetime.now().strftime("%Y-%m-%d"), "issue_description": "", "recommended_action": ""},
         {"section": "Total Records", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(total_rows), "issue_description": "", "recommended_action": ""},
+        {"section": "Gate Status", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": summary.get("gate_status", ""), "issue_description": summary.get("gate_message", ""), "recommended_action": ""},
         {"section": "CRITICAL Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("CRITICAL", 0)), "issue_description": "", "recommended_action": ""},
         {"section": "HIGH Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("HIGH", 0)), "issue_description": "", "recommended_action": ""},
         {"section": "MEDIUM Issues", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": str(severity_counts.get("MEDIUM", 0)), "issue_description": "", "recommended_action": ""},
@@ -1453,6 +1874,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         {"section": "=== ALL FINDINGS ===", "check_name": "", "severity": "", "employee_id": "", "first_name": "", "last_name": "", "field_flagged": "", "value_found": "", "issue_description": "", "recommended_action": ""},
     ]
     for finding in findings:
+        is_dup_canon = finding.get("check_key") == "duplicate_canonical_conflict"
         for srow in (finding.get("sample_rows") or []):
             data_rows.append({
                 "section": "FINDING",
@@ -1465,6 +1887,11 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
                 "value_found": str(srow.get(finding.get("field", ""), "")),
                 "issue_description": finding.get("description", ""),
                 "recommended_action": "",
+                "duplicate_classification": srow.get("duplicate_classification", "") if is_dup_canon else "",
+                "duplicate_canonical_field": srow.get("duplicate_canonical_field", "") if is_dup_canon else "",
+                "duplicate_source_columns": srow.get("duplicate_source_columns", "") if is_dup_canon else "",
+                "duplicate_values": srow.get("duplicate_values", "") if is_dup_canon else "",
+                "retained_value_reason": srow.get("retained_value_reason", "") if is_dup_canon else "",
             })
     # Section 3: CLEAN RECORDS - records with no findings
     flagged_indices: set = set()
@@ -1498,7 +1925,12 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     _write_csv(
         data_csv,
         data_rows,
-        fieldnames=["section", "check_name", "severity", "employee_id", "first_name", "last_name", "field_flagged", "value_found", "issue_description", "recommended_action"],
+        fieldnames=[
+            "section", "check_name", "severity", "employee_id", "first_name", "last_name",
+            "field_flagged", "value_found", "issue_description", "recommended_action",
+            "duplicate_classification", "duplicate_canonical_field",
+            "duplicate_source_columns", "duplicate_values", "retained_value_reason",
+        ],
     )
     print(f"[internal_audit] wrote: {data_csv}")
     print(f"[internal_audit] complete. {len(findings)} issues found.")
@@ -1511,6 +1943,7 @@ if __name__ == "__main__":
     parser.add_argument("--out-dir", required=True, help="Directory to write outputs to")
     parser.add_argument("--source-name", default="", help="Original uploaded filename for report display")
     parser.add_argument("--sheet-name", default="0", help="Excel sheet name or index (default: 0)")
+    parser.add_argument("--override-gate", action=argparse.BooleanOptionalAction, default=False, help="Override the critical audit gate")
     args = parser.parse_args()
 
     sheet_name: int | str = int(args.sheet_name) if str(args.sheet_name).lstrip("-").isdigit() else args.sheet_name
@@ -1519,5 +1952,6 @@ if __name__ == "__main__":
         Path(args.out_dir),
         source_name=args.source_name or None,
         sheet_name=sheet_name,
+        override_gate=bool(args.override_gate),
     )
     sys.exit(0)
