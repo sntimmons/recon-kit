@@ -785,12 +785,15 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
         _finish_step(run_id, "upload")
 
         _set_step(run_id, "audit")
+        audit_cmd = [str(PYTHON), "audit/internal_audit.py",
+                     "--file", str(file_path),
+                     "--out-dir", str(run_dir),
+                     "--source-name", str(options.get("source_name", "")),
+                     "--sheet-name", str(options.get("sheet_name", 0))]
+        if options.get("override_gate", False):
+            audit_cmd.append("--override-gate")
         rc, _ = _run_cmd(
-            [str(PYTHON), "audit/internal_audit.py",
-             "--file", str(file_path),
-             "--out-dir", str(run_dir),
-             "--source-name", str(options.get("source_name", "")),
-             "--sheet-name", str(options.get("sheet_name", 0))],
+            audit_cmd,
             HERE, run_id
         )
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
@@ -819,6 +822,8 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
             _jobs[run_id]["status"] = "done"
             _jobs[run_id]["outputs"] = _collect_outputs(run_dir)
             _jobs[run_id]["stats"] = stats
+            _jobs[run_id]["gate_status"] = stats.get("gate_status")
+            _jobs[run_id]["gate_message"] = stats.get("gate_message")
 
     except Exception as exc:
         logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
@@ -973,6 +978,7 @@ def api_run_audit():
 
         raw_sn = request.form.get("sheet_name", "0").strip()
         sheet_name: int | str = int(raw_sn) if raw_sn.lstrip("-").isdigit() else raw_sn
+        override_gate = request.form.get("override_gate", "false").lower() == "true"
 
         run_id  = _make_run_id()
         run_dir = RUNS_DIR / run_id
@@ -1008,7 +1014,7 @@ def api_run_audit():
 
         t = threading.Thread(
             target=_run_internal_audit,
-            args=(run_id, run_dir, file_path, {"source_name": audit_file.filename or file_path.name, "sheet_name": sheet_name}),
+            args=(run_id, run_dir, file_path, {"source_name": audit_file.filename or file_path.name, "sheet_name": sheet_name, "override_gate": override_gate}),
             daemon=True,
         )
         t.start()

@@ -292,6 +292,9 @@ def _draw_cover(c, run_id: str, summary: dict, org_name: str, date_str: str) -> 
     """Full-page navy cover. All y coords are ReportLab (from bottom)."""
     cx = PAGE_W / 2
     counts = summary.get("severity_counts", {}) or {}
+    gate_status = str(summary.get("gate_status") or "PASSED").upper()
+    gate_message = str(summary.get("gate_message") or "")
+    gate_color = GREEN if gate_status == "PASSED" else (ORANGE if gate_status == "OVERRIDDEN" else RED)
 
     # Full navy background
     c.setFillColor(NAVY)
@@ -335,6 +338,9 @@ def _draw_cover(c, run_id: str, summary: dict, org_name: str, date_str: str) -> 
     c.drawCentredString(cx, meta_rl - 19,  f"Records Analyzed: {total_rows:,}")
     c.drawCentredString(cx, meta_rl - 38,  f"Audit Date: {date_str}")
     c.drawCentredString(cx, meta_rl - 57,  f"Run ID: {run_id}")
+    c.setFillColor(gate_color)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(cx, meta_rl - 79, f"Gate Status: {gate_status}")
 
     # ---------- 2x2 SEVERITY GRID ----------
     grid_top_rl = meta_rl - 88   # top of grid in RL coords
@@ -407,14 +413,29 @@ def _finding_texts(check_key: str, finding: dict) -> tuple[str, str, str]:
             "errors, system import bugs, or incorrectly merged records. Assign a unique ID to each "
             "employee and update all references before using this data for migration or reporting.",
         ),
+        "invalid_date_logic": (
+            f"{count:,} records have critical date logic failures, including future hire dates or termination dates before hire dates.",
+            "These records can break service calculations, payroll timing, and compliance reporting. They are not safe for production use until corrected.",
+            "Verify the correct hire and termination dates in the source system and correct every flagged record before downstream processing.",
+        ),
+        "active_with_termination_date": (
+            f"{count:,} employees are marked Active while also carrying a termination date.",
+            "That contradiction can cause employees to be treated as active in payroll while also excluded from other HR workflows. It is a direct production-risk signal.",
+            "Confirm whether each employee should be active or terminated, then align status and termination date before using this dataset operationally.",
+        ),
+        "missing_required_identity": (
+            f"{count:,} records are missing a required identity field such as worker_id, first_name, or last_name.",
+            "Missing core identity data prevents reliable employee identification, creates downstream matching ambiguity, and can misroute payroll or HR actions.",
+            "Populate all required identity fields from the source system of record before using this file for payroll, migration, or reporting.",
+        ),
         "active_zero_salary": (
-            f"{count:,} employees are marked Active but have no salary or a $0 salary recorded. "
-            "These employees would receive no pay if this data were used for payroll processing.",
-            "An active employee with no salary will not receive correct pay if this data is loaded "
+            f"{count:,} employees are marked Active but have missing, zero, or negative salary/pay information recorded. "
+            "These employees are not safe to process for payroll as-is.",
+            "An active employee with missing, zero, or negative compensation will not receive correct pay if this data is loaded "
             "into a new system. This represents both a data integrity failure and a direct payroll "
             "risk that can result in missed pay, employee complaints, and regulatory exposure.",
-            f"Verify the correct salary for each of these {count:,} employees with their manager "
-            "or payroll records. Enter the correct salary before this data is used for any "
+            f"Verify the correct salary or pay rate for each of these {count:,} employees with their manager "
+            "or payroll records. Enter the correct compensation before this data is used for any "
             "operational purpose, migration, or reporting.",
         ),
         "phone_invalid": (
@@ -587,6 +608,8 @@ def _draw_exec_summary(c, y_start: float, page_num: int, total_pages: int,
     critical   = int(counts.get("CRITICAL", 0))
     high       = int(counts.get("HIGH", 0))
     medium     = int(counts.get("MEDIUM", 0))
+    gate_status = str(summary.get("gate_status") or "PASSED").upper()
+    gate_message = str(summary.get("gate_message") or "")
 
     # ---- What We Found ----
     y = _section_heading(c, y, "What We Found")
@@ -620,6 +643,12 @@ def _draw_exec_summary(c, y_start: float, page_num: int, total_pages: int,
             "<b>No critical or high severity issues were identified.</b> This dataset shows "
             "acceptable data quality for the checks performed. "
         )
+    if gate_status == "BLOCKED":
+        narrative += f"<br/><br/><b>Gate status: BLOCKED.</b> {gate_message}"
+    elif gate_status == "OVERRIDDEN":
+        narrative += f"<br/><br/><b>Gate status: OVERRIDDEN.</b> {gate_message}"
+    else:
+        narrative += "<br/><br/><b>Gate status: PASSED.</b> No critical gate conditions are currently blocking downstream use."
     y = _para(c, LM, y, narrative, PS_BODY, TW)
     y += 14
 

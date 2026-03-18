@@ -108,9 +108,10 @@ def _check_catalog() -> list[dict]:
         {"check_key": "invalid_date_logic", "check_name": "Invalid date logic", "severity": "CRITICAL"},
         {"check_key": "active_with_termination_date", "check_name": "Active employees with termination date", "severity": "CRITICAL"},
         {"check_key": "missing_required_identity", "check_name": "Missing required identity fields", "severity": "CRITICAL"},
+        {"check_key": "duplicate_canonical_worker_id_conflict", "check_name": "Duplicate canonical worker_id with conflicting values", "severity": "CRITICAL"},
         {"check_key": "duplicate_email", "check_name": "Duplicate email", "severity": "MEDIUM"},
         {"check_key": "duplicate_last4_ssn", "check_name": "Duplicate last4_ssn", "severity": "CRITICAL"},
-        {"check_key": "active_zero_salary", "check_name": "Active employees with $0 or missing salary", "severity": "CRITICAL"},
+        {"check_key": "active_zero_salary", "check_name": "Active employees with <= $0 or missing salary/payrate", "severity": "CRITICAL"},
         {"check_key": "salary_suspicious_default", "check_name": "Suspicious salary default values", "severity": "HIGH"},
         {"check_key": "hire_date_suspicious_default", "check_name": "Suspicious hire date defaults", "severity": "HIGH"},
         {"check_key": "status_suspicious_value", "check_name": "Suspicious status placeholders", "severity": "HIGH"},
@@ -181,6 +182,7 @@ def _sample_columns(df: pd.DataFrame, extra: list[str] | None = None) -> list[st
         "status",
         "employment_status",
         "salary",
+        "payrate",
         "hire_date",
         "start_date",
         "date_hired",
@@ -403,10 +405,11 @@ def analyze_duplicate_canonical_fields(
         if conflict_count > 0:
             pct = round(conflict_count / total_rows * 100, 1) if total_rows else 0.0
             src_label = " and ".join(f'"{s}"' for s in source_cols)
+            is_worker_id_conflict = canonical == "worker_id"
             findings.append({
-                "check_key": "duplicate_canonical_conflict",
-                "check_name": "Duplicate canonical field with conflicting values",
-                "severity": "HIGH",
+                "check_key": "duplicate_canonical_worker_id_conflict" if is_worker_id_conflict else "duplicate_canonical_conflict",
+                "check_name": "Duplicate canonical worker_id with conflicting values" if is_worker_id_conflict else "Duplicate canonical field with conflicting values",
+                "severity": "CRITICAL" if is_worker_id_conflict else "HIGH",
                 "count": conflict_count,
                 "pct": pct,
                 "field": canonical,
@@ -415,8 +418,11 @@ def analyze_duplicate_canonical_fields(
                     f"across source columns {src_label}. "
                     "Column collapse will silently discard the non-primary value."
                 ),
-                "rule_name": "duplicate_canonical_conflict",
+                "rule_name": "duplicate_canonical_worker_id_conflict" if is_worker_id_conflict else "duplicate_canonical_conflict",
                 "impact": (
+                    "Conflicting worker_id values create an identity integrity failure. "
+                    "Using the primary value can attach downstream changes to the wrong employee."
+                    if is_worker_id_conflict else
                     "Reconciliation uses the primary (leftmost) column value, "
                     "silently discarding the alternative. This may mask data entry errors."
                 ),
@@ -459,6 +465,7 @@ def _check_severity(check_key: str, field: str | None = None) -> str:
         "invalid_date_logic",
         "active_with_termination_date",
         "missing_required_identity",
+        "duplicate_canonical_worker_id_conflict",
         "duplicate_last4_ssn",
         "active_zero_salary",
         "ghost_employee_indicator",
@@ -565,25 +572,36 @@ def _detect_duplicate_worker_id(df: pd.DataFrame) -> list[dict]:
 def _detect_active_zero_salary(df: pd.DataFrame) -> list[dict]:
     findings: list[dict] = []
     status_col = _status_column(df)
-    if not status_col or "salary" not in df.columns:
+    has_salary = "salary" in df.columns
+    has_payrate = "payrate" in df.columns
+    if not status_col or (not has_salary and not has_payrate):
         return findings
 
     statuses = df[status_col].astype(str).str.strip().str.lower()
-    salaries = pd.to_numeric(df["salary"], errors="coerce")
-    salary_blank = _blank_mask(df["salary"])
-    mask = (statuses == "active") & ((salaries == 0) | salary_blank)
+    salary_values = pd.to_numeric(df["salary"], errors="coerce") if has_salary else pd.Series([float("nan")] * len(df), index=df.index, dtype="float64")
+    payrate_values = pd.to_numeric(df["payrate"], errors="coerce") if has_payrate else pd.Series([float("nan")] * len(df), index=df.index, dtype="float64")
+    salary_blank = _blank_mask(df["salary"]) if has_salary else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = _blank_mask(df["payrate"]) if has_payrate else pd.Series([True] * len(df), index=df.index)
+    effective_values = salary_values.where(~salary_blank, payrate_values)
+    compensation_blank = salary_blank & payrate_blank
+    mask = (statuses == "active") & (compensation_blank | (effective_values <= 0))
     if mask.any():
+        extra_cols = [status_col]
+        if has_salary:
+            extra_cols.append("salary")
+        if has_payrate:
+            extra_cols.append("payrate")
         findings.append(
             {
                 "section": "CRITICAL_CHECKS",
                 "check_key": "active_zero_salary",
-                "check_name": "Active employees with $0 or missing salary",
-                "field": "salary",
+                "check_name": "Active employees with <= $0 or missing salary/payrate",
+                "field": "salary" if has_salary else "payrate",
                 "severity": "CRITICAL",
                 "count": int(mask.sum()),
                 "pct": round(mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
-                "description": "Active employee has $0 or missing salary - likely a data entry error",
-                "sample_rows": _sample_rows(df, mask, extra=[status_col, "salary"]),
+                "description": "Active employee has missing, zero, or negative salary/payrate - likely a payroll data error.",
+                "sample_rows": _sample_rows(df, mask, extra=extra_cols),
             }
         )
     return findings

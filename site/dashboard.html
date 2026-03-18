@@ -481,6 +481,47 @@
     .results-header h2 { font-size: 1.4rem; margin-bottom: 6px; }
     .results-header p { font-size: 0.875rem; color: var(--text-secondary); margin: 0; }
 
+    .audit-gate-banner {
+      display: none;
+      margin-bottom: 20px;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--bg-2);
+    }
+    .audit-gate-banner__eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .audit-gate-banner__status {
+      font-size: 1.15rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .audit-gate-banner__message {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    .audit-gate-banner--passed {
+      border-color: rgba(80,200,120,0.28);
+      background: rgba(80,200,120,0.08);
+    }
+    .audit-gate-banner--passed .audit-gate-banner__status { color: var(--green); }
+    .audit-gate-banner--blocked {
+      border-color: rgba(224,92,92,0.34);
+      background: rgba(224,92,92,0.10);
+    }
+    .audit-gate-banner--blocked .audit-gate-banner__status { color: var(--red, #e05c5c); }
+    .audit-gate-banner--overridden {
+      border-color: rgba(232,184,75,0.34);
+      background: rgba(232,184,75,0.10);
+    }
+    .audit-gate-banner--overridden .audit-gate-banner__status { color: var(--yellow); }
+
     .results-stats {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -922,6 +963,12 @@
           <span class="label" id="results-label">Run complete</span>
           <h2 id="results-headline">Your run is ready. Here is what we found.</h2>
           <p id="results-sub"></p>
+        </div>
+
+        <div class="audit-gate-banner" id="audit-gate-banner">
+          <div class="audit-gate-banner__eyebrow">Audit Gate</div>
+          <div class="audit-gate-banner__status" id="audit-gate-status">PASSED</div>
+          <div class="audit-gate-banner__message" id="audit-gate-message">No critical issues are blocking this audit.</div>
         </div>
 
         <!-- Recon stats -->
@@ -1471,6 +1518,7 @@
       document.getElementById('results-label').textContent   = 'Reconciliation complete';
       document.getElementById('results-headline').textContent = 'Your run is ready. Here is what we found.';
       document.getElementById('results-sub').textContent      = 'Download your outputs below. Correction files are Workday-ready.';
+      document.getElementById('audit-gate-banner').style.display = 'none';
 
       // Build inline results summary card
       _buildSummaryCard(stats);
@@ -1486,9 +1534,24 @@
       document.getElementById('astat-high').textContent     = (sev.HIGH || 0).toLocaleString();
       document.getElementById('astat-medium').textContent   = (sev.MEDIUM || 0).toLocaleString();
 
+      var auditGateStatus = String(job.gate_status || s.gate_status || 'PASSED').toUpperCase();
+      var auditGateMessage = job.gate_message || s.gate_message || 'No critical issues are blocking this audit.';
+      var auditGateBanner = document.getElementById('audit-gate-banner');
+      var auditGateClass = 'audit-gate-banner--passed';
+      if (auditGateStatus === 'BLOCKED') {
+        auditGateClass = 'audit-gate-banner--blocked';
+      } else if (auditGateStatus === 'OVERRIDDEN') {
+        auditGateClass = 'audit-gate-banner--overridden';
+      }
+      auditGateBanner.className = 'audit-gate-banner ' + auditGateClass;
+      auditGateBanner.style.display = '';
+      document.getElementById('audit-gate-status').textContent = auditGateStatus;
+      document.getElementById('audit-gate-message').textContent = auditGateMessage;
+
       document.getElementById('results-label').textContent   = 'Audit complete';
       document.getElementById('results-headline').textContent = 'Your audit is ready. Here is what we found.';
-      document.getElementById('results-sub').textContent      = 'Download your PDF and CSV outputs below. Severity counts show which findings need attention first.';
+      document.getElementById('results-sub').textContent      = 'Download your PDF and CSV outputs below. The audit gate state is shown here so blocked datasets are immediately visible.';
+      document.getElementById('summary-card').style.display   = 'none';
     }
 
     // Build download list
