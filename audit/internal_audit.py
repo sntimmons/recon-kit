@@ -185,7 +185,7 @@ def _sample_columns(df: pd.DataFrame, extra: list[str] | None = None) -> list[st
     return cols[:6]
 
 
-def _sample_rows(df: pd.DataFrame, mask: pd.Series, extra: list[str] | None = None, limit: int = 5) -> list[dict]:
+def _sample_rows(df: pd.DataFrame, mask: pd.Series, extra: list[str] | None = None, limit: int = 8) -> list[dict]:
     sample_cols = _sample_columns(df, extra=extra)
     rows: list[dict] = []
     for idx, row in df.loc[mask, sample_cols].head(limit).iterrows():
@@ -436,7 +436,7 @@ def _detect_impossible_dates(df: pd.DataFrame) -> list[dict]:
                 "count": len(rows),
                 "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Dates were found that are impossible or internally inconsistent.",
-                "sample_rows": rows[:5],
+                "sample_rows": rows[:8],
             }
         )
     return findings
@@ -554,7 +554,7 @@ def _detect_manager_loops(df: pd.DataFrame, enabled: bool) -> list[dict]:
                 "cycle_length": len(cycle),
                 "employee_ids": " -> ".join(cycle + [cycle[0]]) if len(cycle) > 1 else cycle[0],
             }
-            for cycle in cycles[:5]
+            for cycle in cycles[:8]
         ]
         findings.append(
             {
@@ -619,7 +619,7 @@ def _detect_salary_outliers(df: pd.DataFrame, config: dict) -> list[dict]:
                 "count": len(rows),
                 "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Salary outliers were detected relative to department medians.",
-                "sample_rows": rows[:5],
+                "sample_rows": rows[:8],
             }
         )
     return findings
@@ -677,7 +677,7 @@ def _detect_pay_equity_flags(df: pd.DataFrame, config: dict) -> list[dict]:
                 "count": len(group_rows),
                 "pct": round(len(group_rows) / max(len(group_df), 1) * 100, 2),
                 "description": "Salary variance of more than 30% within the same title and department - review for pay equity compliance",
-                "sample_rows": group_rows[:5],
+                "sample_rows": group_rows[:8],
                 "group_rows": group_rows,
             }
         )
@@ -763,7 +763,7 @@ def _detect_duplicate_name_different_id(df: pd.DataFrame) -> list[dict]:
                 "count": len(rows),
                 "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Two employees share the same name with different IDs - verify these are different people",
-                "sample_rows": rows[:5],
+                "sample_rows": rows[:8],
             }
         )
     return findings
@@ -832,7 +832,7 @@ def _detect_suspicious_round_salary(df: pd.DataFrame) -> list[dict]:
                 "count": len(rows),
                 "pct": round(len(rows) / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Salary appears to be a placeholder value - verify this is correct",
-                "sample_rows": rows[:5],
+                "sample_rows": rows[:8],
             }
         )
     return findings
@@ -960,7 +960,7 @@ def _detect_status_no_terminated(df: pd.DataFrame) -> list[dict]:
     """Flag if a file of 50+ records has zero terminated employees."""
     findings: list[dict] = []
     status_col = _status_column(df)
-    if not status_col or len(df) <= 50:
+    if not status_col or len(df) <= 100:
         return findings
     statuses = df[status_col].astype(str).str.strip().str.lower()
     term_keywords = {"terminated", "term", "separated", "resigned", "dismissed"}
@@ -1143,12 +1143,12 @@ def _salary_distribution(df: pd.DataFrame) -> list[dict]:
     if len(sal) == 0:
         return []
     buckets = [
-        ("0-1k", 0, 1000),
-        ("1k-25k", 1000, 25000),
-        ("25k-60k", 25000, 60000),
-        ("60k-100k", 60000, 100000),
-        ("100k-200k", 100000, 200000),
-        ("200k+", 200000, float("inf")),
+        ("Under $30k", 0, 30000),
+        ("$30k-$60k", 30000, 60000),
+        ("$60k-$100k", 60000, 100000),
+        ("$100k-$150k", 100000, 150000),
+        ("$150k-$200k", 150000, 200000),
+        ("$200k+", 200000, float("inf")),
     ]
     rows = []
     for label, lo, hi in buckets:
@@ -1232,13 +1232,19 @@ def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
                 "check_name": finding["check_name"],
                 "severity": finding["severity"],
                 "count": 0,
+                "pct": finding.get("pct", 0),
+                "field": finding.get("field", ""),
                 "description": finding["description"],
+                "_unique_count": finding.get("_unique_count"),
+                "_example": finding.get("_example"),
+                "_sample_value": finding.get("_sample_value"),
+                "_col": finding.get("_col"),
                 "sample_rows": [],
                 "group_rows": [],
             }
         grouped[key]["count"] += int(finding.get("count", 0))
         for row in finding.get("sample_rows", []):
-            if len(grouped[key]["sample_rows"]) >= 5:
+            if len(grouped[key]["sample_rows"]) >= 8:
                 break
             grouped[key]["sample_rows"].append(row)
         for row in finding.get("group_rows", []):
@@ -1347,6 +1353,25 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
     if status_col:
         status_breakdown = df_norm[status_col].astype(str).str.strip().value_counts().to_dict()
 
+    # Salary statistics for report
+    salary_stats: dict = {}
+    if "salary" in df_norm.columns:
+        _sal_num = pd.to_numeric(df_norm["salary"], errors="coerce")
+        _sal_valid = _sal_num.dropna()
+        salary_stats = {
+            "count": int(len(_sal_valid)),
+            "missing": int(len(df_norm) - len(_sal_valid)),
+            "missing_pct": round((len(df_norm) - len(_sal_valid)) / len(df_norm) * 100, 1) if len(df_norm) else 0.0,
+            "min": float(_sal_valid.min()) if not _sal_valid.empty else 0.0,
+            "max": float(_sal_valid.max()) if not _sal_valid.empty else 0.0,
+            "mean": float(_sal_valid.mean()) if not _sal_valid.empty else 0.0,
+            "median": float(_sal_valid.median()) if not _sal_valid.empty else 0.0,
+            "under_50k": int((_sal_valid < 50000).sum()),
+            "under_50k_pct": round((_sal_valid < 50000).sum() / len(_sal_valid) * 100, 1) if not _sal_valid.empty else 0.0,
+            "over_150k": int((_sal_valid > 150000).sum()),
+            "over_150k_pct": round((_sal_valid > 150000).sum() / len(_sal_valid) * 100, 1) if not _sal_valid.empty else 0.0,
+        }
+
     summary = {
         "source_filename": source_name or file_path.name,
         "total_rows": total_rows,
@@ -1363,6 +1388,7 @@ def run_internal_audit(file_path: Path, out_dir: Path, *, source_name: str | Non
         "findings_for_pdf": _group_findings_for_pdf(findings),
         "completeness_rows": completeness,
         "status_breakdown": status_breakdown,
+        "salary_stats": salary_stats,
     }
 
     report_json = out_dir / "internal_audit_report.json"
