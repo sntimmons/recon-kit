@@ -321,6 +321,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "sanity_results.json",
         "sanity_gate.json",
         "internal_audit_data.csv",
+        "internal_audit_workbook.xlsx",
         "internal_audit_report.pdf",
         "internal_audit_duplicates.csv",
         "internal_audit_completeness.csv",
@@ -809,6 +810,17 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
             HERE, run_id,
         )
         _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
+
+        _set_step(run_id, "audit_workbook")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/build_internal_audit_workbook.py",
+             "--file", str(file_path),
+             "--run-dir", str(run_dir),
+             "--out", str(run_dir / "internal_audit_workbook.xlsx"),
+             "--sheet-name", str(options.get("sheet_name", 0))],
+            HERE, run_id,
+        )
+        _finish_step(run_id, "audit_workbook", "done" if rc == 0 else "warn")
 
         stats = {}
         report = run_dir / "internal_audit_report.json"
