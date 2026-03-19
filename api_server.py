@@ -327,6 +327,13 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "internal_audit_completeness.csv",
         "internal_audit_suspicious.csv",
         "internal_audit_distributions.csv",
+        "internal_audit_outputs.zip",
+        "fix_duplicates_full.csv",
+        "fix_salary_full.csv",
+        "fix_identity_full.csv",
+        "fix_dates_full.csv",
+        "fix_status_full.csv",
+        "fix_data_quality_full.csv",
     ]
     found = []
     for name in wanted:
@@ -821,6 +828,17 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
             HERE, run_id,
         )
         _finish_step(run_id, "audit_workbook", "done" if rc == 0 else "warn")
+
+        _set_step(run_id, "audit_exports")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/build_internal_audit_exports.py",
+             "--file", str(file_path),
+             "--run-dir", str(run_dir),
+             "--workbook", str(run_dir / "internal_audit_workbook.xlsx"),
+             "--sheet-name", str(options.get("sheet_name", 0))],
+            HERE, run_id,
+        )
+        _finish_step(run_id, "audit_exports", "done" if rc == 0 else "warn")
 
         stats = {}
         report = run_dir / "internal_audit_report.json"
