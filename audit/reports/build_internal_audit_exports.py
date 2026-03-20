@@ -8,6 +8,11 @@ Produces:
   fix_dates_full.csv        - All employees with invalid date logic
   fix_status_full.csv       - All employees with conflicting status or high pending rate
   fix_data_quality_full.csv - All employees with blank required fields (high_blank_rate check)
+  clean_data_ready_for_review.csv - Full dataset with review metadata columns added
+  review_required_rows.csv - Only rows that still require human review
+  correction_salary.csv - Salary correction template for upload preparation
+  correction_status.csv - Status correction template for upload preparation
+  correction_dates.csv - Date correction template for upload preparation
   internal_audit_outputs.zip - Workbook + all generated fix_*_full.csv files
 
 Coverage notes (printed to stdout after run):
@@ -62,6 +67,77 @@ CONTEXT_COLUMNS = [
     "Termination Date",
     "Email",
 ]
+
+REVIEW_METADATA_COLUMNS = [
+    "review_status",
+    "issue_count",
+    "issue_names",
+    "highest_severity",
+    "requires_manual_review",
+    "recommended_next_step",
+]
+
+SEVERITY_RANK = {
+    "CRITICAL": 1,
+    "HIGH": 2,
+    "MEDIUM": 3,
+    "LOW": 4,
+}
+
+REVIEW_REQUIRED_PRIORITY = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Department",
+    "Status",
+    "Salary",
+    "Payrate",
+    "Hire Date",
+    "Termination Date",
+]
+
+REVIEW_REQUIRED_ALWAYS_INCLUDE_SEVERITIES = {"CRITICAL", "HIGH"}
+
+REVIEW_REQUIRED_MEDIUM_INCLUDE_NAMES = {
+    "Duplicate Name - Different Worker ID",
+}
+
+REVIEW_REQUIRED_MEDIUM_INCLUDE_PREFIXES = (
+    "Missing Data -",
+)
+
+REVIEW_REQUIRED_MEDIUM_EXCLUDE_NAMES = {
+    "Duplicate Email",
+    "Age Data Issues",
+    "Combined Field",
+    "No Terminated Employees",
+}
+
+CORRECTION_BASE_COLUMNS = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Issue Name",
+    "Current Value",
+    "Corrected Value",
+    "Effective Date",
+    "Notes",
+]
+
+CORRECTION_FILE_CONFIG = {
+    "correction_salary.csv": {
+        "issue_names": {"Missing or Invalid Salary"},
+        "extra_columns": ["Salary", "Payrate"],
+    },
+    "correction_status.csv": {
+        "issue_names": {"Pending Status", "Active Employee with Termination Date"},
+        "extra_columns": ["Status"],
+    },
+    "correction_dates.csv": {
+        "issue_names": {"Invalid Dates"},
+        "extra_columns": ["Hire Date", "Termination Date"],
+    },
+}
 
 
 # ---------------------------------------------------------------------------
@@ -139,12 +215,275 @@ def _trim_context(df: pd.DataFrame) -> pd.DataFrame:
     return df[existing].reset_index(drop=True)
 
 
+def _unique_ordered(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        safe_value = _safe(value)
+        if not safe_value or safe_value in seen:
+            continue
+        seen.add(safe_value)
+        ordered.append(safe_value)
+    return ordered
+
+
+def _display_name(column: str) -> str:
+    direct = {
+        "worker_id": "Worker ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "department": "Department",
+        "worker_status": "Status",
+        "status": "Status",
+        "salary": "Salary",
+        "payrate": "Payrate",
+        "hire_date": "Hire Date",
+        "start_date": "Hire Date",
+        "date_hired": "Hire Date",
+        "termination_date": "Termination Date",
+        "term_date": "Termination Date",
+        "end_date": "Termination Date",
+    }
+    return direct.get(column, column.replace("_", " ").title())
+
+
+def _prepare_clean_base(df: pd.DataFrame) -> pd.DataFrame:
+    base = df.copy()
+    base["__row_number"] = [str(i + 2) for i in range(len(base))]
+    rename_map: dict[str, str] = {}
+    used: set[str] = set()
+    for col in base.columns:
+        if col == "__row_number":
+            continue
+        display = _display_name(col)
+        if display in used:
+            display = col.replace("_", " ").title()
+        suffix = 2
+        while display in used:
+            display = f"{col.replace('_', ' ').title()} {suffix}"
+            suffix += 1
+        used.add(display)
+        rename_map[col] = display
+    return base.rename(columns=rename_map)
+
+
+def _match_issue_rows_to_base(issue_rows: pd.DataFrame, clean_base: pd.DataFrame) -> pd.DataFrame:
+    if issue_rows.empty:
+        return issue_rows.iloc[0:0].copy()
+
+    matched = issue_rows.copy()
+    matched["__row_number"] = matched["Row Number"].map(_safe) if "Row Number" in matched.columns else ""
+
+    if "Worker ID" in matched.columns and "Worker ID" in clean_base.columns:
+        unique_worker_map: dict[str, str] = {}
+        worker_counts = clean_base["Worker ID"].map(_safe).value_counts()
+        for _, row in clean_base.iterrows():
+            worker_id = _safe(row.get("Worker ID", ""))
+            if worker_id and int(worker_counts.get(worker_id, 0)) == 1:
+                unique_worker_map[worker_id] = _safe(row.get("__row_number", ""))
+        missing_mask = matched["__row_number"].map(_safe) == ""
+        matched.loc[missing_mask, "__row_number"] = matched.loc[missing_mask, "Worker ID"].map(
+            lambda wid: unique_worker_map.get(_safe(wid), "")
+        )
+
+    valid_rows = set(clean_base["__row_number"].map(_safe))
+    matched = matched[matched["__row_number"].map(_safe).isin(valid_rows)].copy()
+    return matched.reset_index(drop=True)
+
+
+def _recommended_next_step(actions: list[str]) -> str:
+    ordered = _unique_ordered(actions)
+    if not ordered:
+        return "No action needed"
+    if len(ordered) == 1:
+        return ordered[0]
+    if len(ordered) == 2:
+        return "; ".join(ordered)
+    return "; ".join(ordered[:2]) + "; plus additional review items"
+
+
+def _split_issue_names(issue_names_text: object) -> list[str]:
+    return [part.strip() for part in _safe(issue_names_text).split(";") if _safe(part)]
+
+
+def _is_medium_review_issue(issue_name: str) -> bool:
+    safe_name = _safe(issue_name)
+    if not safe_name:
+        return False
+    if safe_name in REVIEW_REQUIRED_MEDIUM_EXCLUDE_NAMES:
+        return False
+    if safe_name in REVIEW_REQUIRED_MEDIUM_INCLUDE_NAMES:
+        return True
+    return any(safe_name.startswith(prefix) for prefix in REVIEW_REQUIRED_MEDIUM_INCLUDE_PREFIXES)
+
+
+def _should_include_in_review_required(highest_severity: object, issue_names_text: object) -> bool:
+    severity = _safe(highest_severity).upper()
+    issue_names = _split_issue_names(issue_names_text)
+
+    if severity in REVIEW_REQUIRED_ALWAYS_INCLUDE_SEVERITIES:
+        return True
+    if severity != "MEDIUM":
+        return False
+    return any(_is_medium_review_issue(issue_name) for issue_name in issue_names)
+
+
+def _aggregate_review_metadata(issue_rows: pd.DataFrame, clean_base: pd.DataFrame) -> pd.DataFrame:
+    matched = _match_issue_rows_to_base(issue_rows, clean_base)
+    if matched.empty:
+        return pd.DataFrame(columns=["__row_number", *REVIEW_METADATA_COLUMNS])
+
+    summaries: list[dict] = []
+    for row_number, group in matched.groupby("__row_number", sort=False):
+        issue_names = _unique_ordered(group["Issue Name"].tolist()) if "Issue Name" in group.columns else []
+        fix_needed = _unique_ordered(group["Fix Needed"].tolist()) if "Fix Needed" in group.columns else []
+        severities = _unique_ordered(group["Severity"].tolist()) if "Severity" in group.columns else []
+        highest = min(severities, key=lambda sev: SEVERITY_RANK.get(_safe(sev).upper(), 99)) if severities else ""
+        highest = _safe(highest).upper()
+        review_status = "BLOCKED" if highest in {"CRITICAL", "HIGH"} else "REVIEW"
+
+        summaries.append({
+            "__row_number": row_number,
+            "review_status": review_status,
+            "issue_count": len(issue_names),
+            "issue_names": "; ".join(issue_names),
+            "highest_severity": highest,
+            "requires_manual_review": "Yes",
+            "recommended_next_step": _recommended_next_step(fix_needed),
+        })
+
+    return pd.DataFrame(summaries)
+
+
+def _build_clean_review_exports(
+    df: pd.DataFrame,
+    category_frames: dict[str, pd.DataFrame],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    clean_base = _prepare_clean_base(df)
+    issue_frames = [frame for frame in category_frames.values() if frame is not None and not frame.empty]
+    if issue_frames:
+        issue_rows = pd.concat(issue_frames, ignore_index=True, sort=False)
+    else:
+        issue_rows = pd.DataFrame(columns=FIX_COLUMNS + CONTEXT_COLUMNS)
+
+    metadata = _aggregate_review_metadata(issue_rows, clean_base)
+    clean = clean_base.merge(metadata, on="__row_number", how="left")
+
+    clean["review_status"] = clean["review_status"].fillna("CLEAN")
+    clean["issue_count"] = clean["issue_count"].fillna(0).astype(int)
+    clean["issue_names"] = clean["issue_names"].fillna("")
+    clean["highest_severity"] = clean["highest_severity"].fillna("")
+    clean["requires_manual_review"] = clean["requires_manual_review"].fillna("No")
+    clean["recommended_next_step"] = clean["recommended_next_step"].fillna("No action needed")
+
+    source_columns = [c for c in clean.columns if c not in {"__row_number", *REVIEW_METADATA_COLUMNS}]
+    clean = clean[[
+        *source_columns,
+        *REVIEW_METADATA_COLUMNS,
+    ]].reset_index(drop=True)
+
+    review_required_mask = clean.apply(
+        lambda row: _should_include_in_review_required(
+            row.get("highest_severity", ""),
+            row.get("issue_names", ""),
+        ),
+        axis=1,
+    )
+    review_required = clean[review_required_mask].copy()
+    ordered_review_cols = [c for c in REVIEW_REQUIRED_PRIORITY if c in review_required.columns]
+    remaining_review_cols = [
+        c for c in review_required.columns
+        if c not in set(ordered_review_cols + REVIEW_METADATA_COLUMNS)
+    ]
+    review_required = review_required[[
+        *ordered_review_cols,
+        *REVIEW_METADATA_COLUMNS,
+        *remaining_review_cols,
+    ]].reset_index(drop=True)
+
+    return clean, review_required
+
+
 def _write_csv(df: pd.DataFrame, path: Path) -> int:
     """Write dataframe to CSV, return row count (excluding header)."""
     if df.empty:
         return 0
     df.to_csv(path, index=False, encoding="utf-8-sig")
     return len(df)
+
+
+def _write_required_csv(df: pd.DataFrame, path: Path) -> int:
+    """Always write required CSV outputs, even if only the header is present."""
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+    return len(df)
+
+
+def _remove_if_exists(path: Path) -> None:
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _group_issue_rows(issue_frame: pd.DataFrame) -> list[pd.DataFrame]:
+    if issue_frame.empty:
+        return []
+
+    keyed = issue_frame.copy()
+    keyed["__group_key"] = keyed["Row Number"].map(_safe)
+    missing_mask = keyed["__group_key"] == ""
+    keyed.loc[missing_mask, "__group_key"] = (
+        keyed.loc[missing_mask, "Worker ID"].map(_safe) + "|" +
+        keyed.loc[missing_mask, "First Name"].map(_safe) + "|" +
+        keyed.loc[missing_mask, "Last Name"].map(_safe)
+    )
+    return [group.copy() for _, group in keyed.groupby("__group_key", sort=False)]
+
+
+def _first_nonblank(group: pd.DataFrame, column: str) -> str:
+    if column not in group.columns:
+        return ""
+    for value in group[column].tolist():
+        safe_value = _safe(value)
+        if safe_value:
+            return safe_value
+    return ""
+
+
+def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.DataFrame:
+    config = CORRECTION_FILE_CONFIG[filename]
+    allowed_issue_names = config["issue_names"]
+    extra_columns = config["extra_columns"]
+
+    if issue_frame.empty:
+        return pd.DataFrame(columns=[*CORRECTION_BASE_COLUMNS, *extra_columns])
+
+    filtered = issue_frame[issue_frame["Issue Name"].isin(allowed_issue_names)].copy()
+    if filtered.empty:
+        return pd.DataFrame(columns=[*CORRECTION_BASE_COLUMNS, *extra_columns])
+
+    rows: list[dict] = []
+    for group in _group_issue_rows(filtered):
+        issue_names = _unique_ordered(group["Issue Name"].tolist())
+        current_values = _unique_ordered(group["Current Value"].tolist())
+        notes = _unique_ordered(group["Fix Needed"].tolist())
+
+        row = {
+            "Worker ID": _first_nonblank(group, "Worker ID"),
+            "First Name": _first_nonblank(group, "First Name"),
+            "Last Name": _first_nonblank(group, "Last Name"),
+            "Issue Name": "; ".join(issue_names),
+            "Current Value": "; ".join(current_values),
+            "Corrected Value": "",
+            "Effective Date": "",
+            "Notes": "; ".join(notes),
+        }
+        for column in extra_columns:
+            row[column] = _first_nonblank(group, column)
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=[*CORRECTION_BASE_COLUMNS, *extra_columns]).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -640,11 +979,13 @@ def main() -> None:
 
     generated_csvs: list[Path] = []
     coverage_report: list[str] = []
+    category_frames: dict[str, pd.DataFrame] = {}
 
     for filename, builder in categories.items():
         out_path = run_dir / filename
         try:
             frame = builder()
+            category_frames[filename] = frame if frame is not None else pd.DataFrame()
             if frame is not None and not frame.empty:
                 count = _write_csv(frame, out_path)
                 generated_csvs.append(out_path)
@@ -654,8 +995,51 @@ def main() -> None:
                 coverage_report.append(f"  {filename}: 0 rows - no issues found (file omitted from zip)")
                 print(f"[exports] {filename}: 0 rows (omitted)")
         except Exception as exc:
+            category_frames[filename] = pd.DataFrame()
             coverage_report.append(f"  {filename}: ERROR - {exc}")
             print(f"[exports] ERROR building {filename}: {exc}", file=sys.stderr)
+
+    clean_review_frames = {
+        "clean_data_ready_for_review.csv": None,
+        "review_required_rows.csv": None,
+    }
+    try:
+        clean_frame, review_frame = _build_clean_review_exports(df, category_frames)
+        clean_review_frames["clean_data_ready_for_review.csv"] = clean_frame
+        clean_review_frames["review_required_rows.csv"] = review_frame
+    except Exception as exc:
+        coverage_report.append(f"  clean review exports: ERROR - {exc}")
+        print(f"[exports] ERROR building clean review exports: {exc}", file=sys.stderr)
+
+    for filename, frame in clean_review_frames.items():
+        if frame is None:
+            continue
+        out_path = run_dir / filename
+        count = _write_required_csv(frame, out_path)
+        if out_path.exists() and out_path.stat().st_size > 0:
+            generated_csvs.append(out_path)
+        coverage_report.append(f"  {filename}: {count:,} rows written")
+        print(f"[exports] {filename}: {count:,} rows")
+
+    correction_sources = {
+        "correction_salary.csv": category_frames.get("fix_salary_full.csv", pd.DataFrame()),
+        "correction_status.csv": category_frames.get("fix_status_full.csv", pd.DataFrame()),
+        "correction_dates.csv": category_frames.get("fix_dates_full.csv", pd.DataFrame()),
+    }
+
+    for filename, source_frame in correction_sources.items():
+        out_path = run_dir / filename
+        template = _build_correction_template(source_frame, filename)
+        if template.empty:
+            _remove_if_exists(out_path)
+            coverage_report.append(f"  {filename}: 0 rows - no correction template generated")
+            print(f"[exports] {filename}: 0 rows (omitted)")
+            continue
+
+        count = _write_csv(template, out_path)
+        generated_csvs.append(out_path)
+        coverage_report.append(f"  {filename}: {count:,} rows written")
+        print(f"[exports] {filename}: {count:,} rows")
 
     # --- Create zip ---
     print("[exports] Creating internal_audit_outputs.zip...")
@@ -669,6 +1053,12 @@ def main() -> None:
     for line in coverage_report:
         print(f"[exports]{line}")
     print(f"[exports]  internal_audit_outputs.zip: {zip_size_kb:,} KB")
+    print("[exports]")
+    print("[exports] REVIEW REQUIRED ROW POLICY:")
+    print("[exports]   Always include severities: CRITICAL, HIGH")
+    print("[exports]   Include MEDIUM only for: Duplicate Name - Different Worker ID, Missing Data - <field>")
+    print("[exports]   Exclude MEDIUM broad or informational issues from review rows: Duplicate Email, Age Data Issues, Combined Field, No Terminated Employees")
+    print("[exports]   Exclude LOW findings from review rows by default")
     print("[exports]")
     print("[exports] FULL ROW COVERAGE:")
     print("[exports]   duplicate_worker_id            - FULL (mask on worker_id column)")

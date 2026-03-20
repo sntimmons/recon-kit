@@ -1,0 +1,13 @@
+worker_id,first_name,last_name,status,salary,payrate,hire_date,termination_date,department
+W1001,Alice,Bennett,active,,,2021-01-15,,Finance
+W1002,Brandon,Clark,active,0,,2020-06-01,,Operations
+W1003,Carla,Diaz,active,-5000,,2019-09-09,,Sales
+W1004,Daniel,Evans,active,72000,,2022-03-14,2024-12-31,HR
+W1005,Elena,Foster,active,68000,,2021-07-19,2023-05-01,IT
+W1006,Frank,Garcia,pending,55000,,2024-02-12,,Recruiting
+W1007,Grace,Hill,terminated,61000,,2020-04-20,,Legal
+W1008,Henry,Irwin,active,70000,,2099-01-01,,Marketing
+W1009,Ivy,Jordan,active,73000,,2030-05-10,,Operations
+W1010,Jack,Kim,terminated,80000,,2023-08-15,2022-08-15,Finance
+W1011,Lena,Morris,active,64000,,2021-11-01,,HR
+W1012,Noah,Parker,terminated,59000,,2018-02-01,2024-01-31,Sales
