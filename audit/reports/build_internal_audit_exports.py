@@ -985,10 +985,10 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
     salary_valid = ~sal_blank & sal_vals.gt(0)
     comp_present = ~sal_blank | ~pay_blank
     config = ia._load_config() if hasattr(ia, "_load_config") else {}
-    hourly_min = float(config.get("hourly_payrate_min", 7.25))
-    hourly_max = float(config.get("hourly_payrate_max", 250.0))
-    salary_min = float(config.get("salaried_salary_min", 10000.0))
-    salary_max = float(config.get("salaried_salary_max", 1000000.0))
+    hourly_min = float(config.get("hourly_payrate_min", ia.DEFAULT_HOURLY_PAYRATE_MIN))
+    hourly_max = float(config.get("hourly_payrate_max", ia.DEFAULT_HOURLY_PAYRATE_MAX))
+    salary_min = float(config.get("salaried_salary_min", ia.DEFAULT_SALARIED_SALARY_MIN))
+    salary_max = float(config.get("salaried_salary_max", ia.DEFAULT_SALARIED_SALARY_MAX))
 
     # --- active_zero_salary (CRITICAL) full mask ---
     if status_col and (has_salary or has_payrate):

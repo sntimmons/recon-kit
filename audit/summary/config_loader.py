@@ -108,6 +108,10 @@ _DEFAULT_POLICY: dict = {
         "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
         "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
         "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
+        "hourly_payrate_min": 7.25,
+        "hourly_payrate_max": 250.0,
+        "salaried_salary_min": 10000.0,
+        "salaried_salary_max": 1000000.0,
         "salary_outlier_threshold": 2.5,
         "salary_outlier_min_dept_size": 5,
         "pay_equity_variance_threshold": 0.30,
@@ -270,6 +274,10 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
         suspicious_hire_date_prefixes (list[str])
         suspicious_status_values (list[str])
         duplicate_check_fields (list[str])
+        hourly_payrate_min (float)
+        hourly_payrate_max (float)
+        salaried_salary_min (float)
+        salaried_salary_max (float)
         salary_outlier_threshold (float)
         salary_outlier_min_dept_size (int)
         pay_equity_variance_threshold (float)
@@ -287,6 +295,10 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
             "suspicious_hire_date_prefixes": ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"],
             "suspicious_status_values": ["unknown", "n/a", "na", "null", "none", "test"],
             "duplicate_check_fields": ["worker_id", "email", "last4_ssn"],
+            "hourly_payrate_min": 7.25,
+            "hourly_payrate_max": 250.0,
+            "salaried_salary_min": 10000.0,
+            "salaried_salary_max": 1000000.0,
             "salary_outlier_threshold": 2.5,
             "salary_outlier_min_dept_size": 5,
             "pay_equity_variance_threshold": 0.30,

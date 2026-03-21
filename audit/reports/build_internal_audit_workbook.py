@@ -100,6 +100,18 @@ _M = {
         "Align pay type with the required salary or pay rate field before payroll or migration.",
         "Findings_Comp_Type",
     ),
+    "hourly_implausible_payrate": (
+        "Implausible Hourly Pay Rate",
+        "Hourly compensation is not valid for payroll processing or falls outside the configured review range.",
+        "Correct zero or negative pay rates immediately and review outlier rates before payroll or migration.",
+        "Findings_Hourly_Rate",
+    ),
+    "salaried_implausible_salary": (
+        "Implausible Annual Salary",
+        "Annual salary is not valid for payroll processing or falls outside the configured review range.",
+        "Correct zero or negative salaries immediately and review outlier salaries before payroll or migration.",
+        "Findings_Impl_Salary",
+    ),
     "invalid_date_logic": (
         "Invalid Dates",
         "Service calculations, payroll timing, and benefits eligibility will produce wrong results.",
@@ -316,6 +328,11 @@ def _humanize(col: str) -> str:
         "fix_needed": "Recommended Action",
         "row_number": "Row Number",
         "department": "Department",
+        "district": "Department",
+        "job_title": "Job Title",
+        "title": "Job Title",
+        "position_title": "Job Title",
+        "position": "Job Title",
         "status": "Status",
         "worker_status": "Status",
         "pay_type": "Pay Type",
@@ -362,6 +379,7 @@ ROW_LEVEL_CORE_COLUMNS = [
 ROW_LEVEL_RELEVANT_COLUMNS = {
     "Fix_List_Detail": [
         "Department",
+        "Job Title",
         "Status",
         "Pay Type",
         "Salary",
@@ -377,6 +395,8 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
     "Findings_Comp_Type": ["Status", "Pay Type", "Salary", "Pay Rate"],
     "Findings_Comp_Conflict": ["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours"],
     "Findings_Std_Hours": ["Status", "Pay Type", "Pay Rate", "Standard Hours"],
+    "Findings_Hourly_Rate": ["Status", "Pay Type", "Pay Rate", "Department", "Job Title"],
+    "Findings_Impl_Salary": ["Status", "Pay Type", "Salary", "Department", "Job Title"],
     "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
@@ -493,6 +513,22 @@ def _executive_summary_sheet(summary: dict) -> pd.DataFrame:
             "Issue Name": "Priority",
             "Records Affected": "",
             "Description": "Informational",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+        {
+            "Severity": "CRITICAL",
+            "Issue Name": "Implausible pay findings",
+            "Records Affected": "",
+            "Description": "Clearly invalid compensation value such as zero or negative pay",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+        {
+            "Severity": "HIGH",
+            "Issue Name": "Implausible pay findings",
+            "Records Affected": "",
+            "Description": "Unusual compensation value that should be reviewed before payroll or migration",
             "Business Impact": "",
             "Required Action": "",
         },
@@ -789,7 +825,8 @@ def _execution_row(
         "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
         "Termination Date": _lookup_value(source_row, sample_row, "termination_date", "term_date", "end_date"),
-        "Department": _lookup_value(source_row, sample_row, "department"),
+        "Department": _lookup_value(source_row, sample_row, "department", "district"),
+        "Job Title": _lookup_value(source_row, sample_row, "job_title", "title", "position_title", "position"),
         "Row Number": row_number or _lookup_value(source_row, sample_row, "row_number"),
     }
     return result
@@ -811,7 +848,8 @@ def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, c
         "Standard Hours": ("standard_hours",),
         "Hire Date": ("hire_date", "start_date", "date_hired"),
         "Termination Date": ("termination_date", "term_date", "end_date"),
-        "Department": ("department",),
+        "Department": ("department", "district"),
+        "Job Title": ("job_title", "title", "position_title", "position"),
     }
     return _lookup_value(source_row, sample_row, *lookup_map.get(column, ()))
 
@@ -1465,6 +1503,91 @@ def _build_full_detail_payroll_phase1(df: pd.DataFrame, issue_name: str, sheet_n
     return _format_detail_sheet(result, sheet_name)
 
 
+def _build_full_detail_payroll_phase2(df: pd.DataFrame, issue_name: str, sheet_name: str) -> pd.DataFrame:
+    pay_type_col = ia._pay_type_column(df) if hasattr(ia, "_pay_type_column") else ia._first_present(df, ["pay_type", "worker_type"])
+    if not pay_type_col:
+        return pd.DataFrame()
+
+    config = ia._load_config() if hasattr(ia, "_load_config") else {}
+    hourly_min = float(config.get("hourly_payrate_min", ia.DEFAULT_HOURLY_PAYRATE_MIN))
+    hourly_max = float(config.get("hourly_payrate_max", ia.DEFAULT_HOURLY_PAYRATE_MAX))
+    salary_min = float(config.get("salaried_salary_min", ia.DEFAULT_SALARIED_SALARY_MIN))
+    salary_max = float(config.get("salaried_salary_max", ia.DEFAULT_SALARIED_SALARY_MAX))
+    pay_blank = ia._blank_mask(df["payrate"]) if "payrate" in df.columns else pd.Series([True] * len(df), index=df.index)
+    sal_blank = ia._blank_mask(df["salary"]) if "salary" in df.columns else pd.Series([True] * len(df), index=df.index)
+    pay_vals = pd.to_numeric(df["payrate"], errors="coerce") if "payrate" in df.columns else pd.Series([float("nan")] * len(df), index=df.index)
+    sal_vals = pd.to_numeric(df["salary"], errors="coerce") if "salary" in df.columns else pd.Series([float("nan")] * len(df), index=df.index)
+
+    rows: list[dict] = []
+    for orig_idx in df.index:
+        row = df.loc[orig_idx]
+        pay_class, invalid = ia._classify_pay_type(row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+        if invalid or not pay_class:
+            continue
+
+        if issue_name == "Implausible Hourly Pay Rate":
+            if pay_class != "hourly" or pay_blank.at[orig_idx]:
+                continue
+            value = pay_vals.at[orig_idx]
+            if pd.isna(value):
+                continue
+            if value <= 0:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="CRITICAL",
+                    current_value=f"Pay Rate: {_safe(row.get('payrate', ''))}",
+                    reason="Hourly worker has a zero or negative pay rate.",
+                    recommended_action="Enter a valid positive pay rate before payroll.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Pay Rate", "Department", "Job Title"],
+                ))
+            elif value < hourly_min or value > hourly_max:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="HIGH",
+                    current_value=f"Pay Rate: {_safe(row.get('payrate', ''))}",
+                    reason=f"Hourly worker pay rate is outside the configured review range of {hourly_min:g} to {hourly_max:g}.",
+                    recommended_action=f"Review the hourly pay rate and confirm it belongs within the configured range of {hourly_min:g} to {hourly_max:g}.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Pay Rate", "Department", "Job Title"],
+                ))
+        elif issue_name == "Implausible Annual Salary":
+            if pay_class != "salaried" or sal_blank.at[orig_idx]:
+                continue
+            value = sal_vals.at[orig_idx]
+            if pd.isna(value):
+                continue
+            if value <= 0:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="CRITICAL",
+                    current_value=f"Salary: {_safe(row.get('salary', ''))}",
+                    reason="Salaried worker has a zero or negative annual salary.",
+                    recommended_action="Enter a valid positive salary before payroll.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Salary", "Department", "Job Title"],
+                ))
+            elif value < salary_min or value > salary_max:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="HIGH",
+                    current_value=f"Salary: {_safe(row.get('salary', ''))}",
+                    reason=f"Salaried worker salary is outside the configured review range of {salary_min:g} to {salary_max:g}.",
+                    recommended_action=f"Review the salary and confirm it belongs within the configured range of {salary_min:g} to {salary_max:g}.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Salary", "Department", "Job Title"],
+                ))
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    if len(result) > DETAIL_ROW_CAP:
+        note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
+        result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
+
+
 def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     sheet_name = "Findings_Invalid_Dates"
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
@@ -1590,6 +1713,8 @@ _FULL_DETAIL_BUILDERS = {
     "active_zero_salary":                     lambda df, s, ra: _build_full_detail_salary(df),
     "pay_type_missing_or_invalid":            lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing or Invalid Pay Type", "Findings_Pay_Type"),
     "compensation_type_mismatch":             lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Compensation Type Mismatch", "Findings_Comp_Type"),
+    "hourly_implausible_payrate":             lambda df, s, ra: _build_full_detail_payroll_phase2(df, "Implausible Hourly Pay Rate", "Findings_Hourly_Rate"),
+    "salaried_implausible_salary":            lambda df, s, ra: _build_full_detail_payroll_phase2(df, "Implausible Annual Salary", "Findings_Impl_Salary"),
     "comp_dual_value_conflict":               lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Salary and Pay Rate Conflict", "Findings_Comp_Conflict"),
     "missing_standard_hours_hourly":          lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing Standard Hours for Hourly Worker", "Findings_Std_Hours"),
     "invalid_date_logic":                     lambda df, s, ra: _build_full_detail_invalid_dates(df),
