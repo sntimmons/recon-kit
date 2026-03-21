@@ -1,0 +1,13 @@
+worker_id,first_name,last_name,status,pay_type,salary,payrate,standard_hours,hire_date,termination_date,department
+P1001,Ava,North,active,,70000,,,2021-01-10,,Finance
+P1002,Ben,Owens,terminated,contract,,30,40,2019-03-15,2024-02-01,Operations
+P1003,Cara,Price,active,hourly,52000,,40,2022-05-01,,Retail
+P1004,Drew,Quinn,active,salaried,,42,40,2020-08-20,,HR
+P1005,Ella,Ross,terminated,hourly,40000,,40,2018-07-14,2023-12-31,Support
+P1006,Finn,Stone,active,hourly,60000,28,40,2021-11-11,,Warehouse
+P1007,Gina,Turner,terminated,salaried,85000,40,40,2017-04-09,2024-01-05,Legal
+P1008,Hugo,Underwood,active,hourly,,27,,2023-02-01,,Operations
+P1009,Iris,Valdez,terminated,hourly,,25,,2020-06-15,2024-03-10,Operations
+P1010,Jade,West,active,salaried,90000,,,2019-09-09,,Finance
+P1011,Kai,Xiong,active,hourly,,22,40,2024-01-08,,Retail
+P1012,Lena,Young,terminated,salaried,75000,,,2016-05-22,2023-11-30,HR

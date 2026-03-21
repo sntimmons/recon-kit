@@ -88,6 +88,18 @@ _M = {
         "Enter a valid positive salary or payrate for every flagged active employee before any payroll run.",
         "Findings_Missing_Salary",
     ),
+    "pay_type_missing_or_invalid": (
+        "Missing or Invalid Pay Type",
+        "Payroll cannot reliably determine whether to use salary or pay rate logic for the worker.",
+        "Populate a valid pay type from the controlled allowed list before payroll or migration.",
+        "Findings_Pay_Type",
+    ),
+    "compensation_type_mismatch": (
+        "Compensation Type Mismatch",
+        "The worker is missing the required compensation field for the stated pay type, creating payroll setup risk.",
+        "Align pay type with the required salary or pay rate field before payroll or migration.",
+        "Findings_Comp_Type",
+    ),
     "invalid_date_logic": (
         "Invalid Dates",
         "Service calculations, payroll timing, and benefits eligibility will produce wrong results.",
@@ -118,6 +130,18 @@ _M = {
         "Payroll will use incorrect compensation amounts, causing underpayment or overpayment.",
         "Verify the correct salary for each flagged employee from HR records or payroll before migrating.",
         "Findings_Salary_Defaults",
+    ),
+    "comp_dual_value_conflict": (
+        "Salary and Pay Rate Conflict",
+        "The worker record has conflicting compensation values and payroll teams may apply the wrong one.",
+        "Review the worker record and keep only the compensation field that matches the intended pay type.",
+        "Findings_Comp_Conflict",
+    ),
+    "missing_standard_hours_hourly": (
+        "Missing Standard Hours for Hourly Worker",
+        "Payroll teams cannot confidently annualize or validate hourly compensation without standard hours.",
+        "Populate standard hours for each hourly worker before migration.",
+        "Findings_Std_Hours",
     ),
     "hire_date_suspicious_default": (
         "Suspicious Hire Dates",
@@ -294,9 +318,12 @@ def _humanize(col: str) -> str:
         "department": "Department",
         "status": "Status",
         "worker_status": "Status",
+        "pay_type": "Pay Type",
+        "worker_type": "Pay Type",
         "salary": "Salary",
         "payrate": "Pay Rate",
         "salary_delta": "Salary Delta",
+        "standard_hours": "Standard Hours",
         "hire_date": "Hire Date",
         "termination_date": "Termination Date",
         "records_affected": "Records Affected",
@@ -336,14 +363,20 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
     "Fix_List_Detail": [
         "Department",
         "Status",
+        "Pay Type",
         "Salary",
         "Pay Rate",
         "Salary Delta",
+        "Standard Hours",
         "Hire Date",
         "Termination Date",
         "Row Number",
     ],
     "Findings_Missing_Salary": ["Salary", "Pay Rate", "Salary Delta"],
+    "Findings_Pay_Type": ["Status", "Pay Type", "Salary", "Pay Rate"],
+    "Findings_Comp_Type": ["Status", "Pay Type", "Salary", "Pay Rate"],
+    "Findings_Comp_Conflict": ["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours"],
+    "Findings_Std_Hours": ["Status", "Pay Type", "Pay Rate", "Standard Hours"],
     "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
@@ -530,9 +563,11 @@ FIX_LIST_DETAIL_COLUMNS = [
     "Current Value",
     "Reason",
     "Recommended Action",
+    "Pay Type",
     "Salary",
     "Pay Rate",
     "Salary Delta",
+    "Standard Hours",
     "Status",
     "Hire Date",
     "Termination Date",
@@ -551,9 +586,11 @@ _RAW_EXECUTION_COLUMNS = [
     "Recommended Action",
     "Department",
     "Status",
+    "Pay Type",
     "Salary",
     "Pay Rate",
     "Salary Delta",
+    "Standard Hours",
     "Hire Date",
     "Termination Date",
     "Row Number",
@@ -622,6 +659,14 @@ def _execution_why_flagged(
         return "Email address appears on more than one employee record."
     if check_key == "active_zero_salary":
         return "Active employee has a missing, zero, or invalid salary/payrate."
+    if check_key == "pay_type_missing_or_invalid":
+        return "Compensation is present but pay type is blank or invalid."
+    if check_key == "compensation_type_mismatch":
+        return "Pay type does not match the required compensation field for this worker."
+    if check_key == "comp_dual_value_conflict":
+        return "Both salary and pay rate are populated and conflict with the worker pay type."
+    if check_key == "missing_standard_hours_hourly":
+        return "Hourly worker has pay rate present but standard hours are missing."
     if check_key == "phone_invalid":
         return "Phone number is invalid or impossible and should be corrected."
     if check_key == "status_high_pending":
@@ -658,6 +703,19 @@ def _execution_current_value(
         if payrate:
             return f"Pay Rate: {payrate}"
         return "Missing compensation value"
+    if check_key == "pay_type_missing_or_invalid":
+        return _lookup_value(source_row, sample_row, "pay_type", "worker_type") or "Missing pay type"
+    if check_key in {"compensation_type_mismatch", "comp_dual_value_conflict"}:
+        return (
+            f"Pay Type: {_lookup_value(source_row, sample_row, 'pay_type', 'worker_type')} | "
+            f"Salary: {_lookup_value(source_row, sample_row, 'salary')} | "
+            f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')}"
+        )
+    if check_key == "missing_standard_hours_hourly":
+        return (
+            f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')} | "
+            f"Standard Hours: {_lookup_value(source_row, sample_row, 'standard_hours') or 'Missing'}"
+        )
     if check_key == "phone_invalid":
         return _lookup_value(source_row, sample_row, "phone")
     if check_key == "status_high_pending":
@@ -682,6 +740,14 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
         return "Assign a unique, valid email address to this employee."
     if check_key == "active_zero_salary":
         return "Enter a valid positive salary or payrate before payroll processing."
+    if check_key == "pay_type_missing_or_invalid":
+        return "Populate a valid pay type from the controlled allowed list."
+    if check_key == "compensation_type_mismatch":
+        return "Populate the compensation field required by the worker pay type."
+    if check_key == "comp_dual_value_conflict":
+        return "Review the worker record and keep only the compensation field that matches the intended pay type."
+    if check_key == "missing_standard_hours_hourly":
+        return "Populate standard hours for each hourly worker."
     if check_key == "phone_invalid":
         return "Correct the phone number from the source record or a verified employee record."
     if check_key == "status_high_pending":
@@ -715,9 +781,11 @@ def _execution_row(
         "Current Value": current_value,
         "Reason": reason,
         "Recommended Action": recommended_action,
+        "Pay Type": _lookup_value(source_row, sample_row, "pay_type", "worker_type"),
         "Salary": _lookup_value(source_row, sample_row, "salary"),
         "Pay Rate": _lookup_value(source_row, sample_row, "payrate"),
         "Salary Delta": _lookup_value(source_row, sample_row, "salary_delta"),
+        "Standard Hours": _lookup_value(source_row, sample_row, "standard_hours"),
         "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
         "Termination Date": _lookup_value(source_row, sample_row, "termination_date", "term_date", "end_date"),
@@ -736,9 +804,11 @@ def _trim_optional_execution_columns(frame: pd.DataFrame) -> pd.DataFrame:
 def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, column: str) -> str:
     lookup_map = {
         "Status": ("worker_status", "status"),
+        "Pay Type": ("pay_type", "worker_type"),
         "Salary": ("salary",),
         "Pay Rate": ("payrate",),
         "Salary Delta": ("salary_delta",),
+        "Standard Hours": ("standard_hours",),
         "Hire Date": ("hire_date", "start_date", "date_hired"),
         "Termination Date": ("termination_date", "term_date", "end_date"),
         "Department": ("department",),
@@ -919,6 +989,96 @@ def _build_fix_list_detail_full_salary(df: pd.DataFrame) -> pd.DataFrame:
     return _trim_optional_execution_columns(pd.DataFrame(rows, columns=FIX_LIST_DETAIL_COLUMNS))
 
 
+def _build_fix_list_detail_payroll_phase1(df: pd.DataFrame) -> pd.DataFrame:
+    status_col = ia._status_column(df)
+    pay_type_col = ia._pay_type_column(df) if hasattr(ia, "_pay_type_column") else ia._first_present(df, ["pay_type", "worker_type"])
+    standard_hours_col = ia._standard_hours_column(df) if hasattr(ia, "_standard_hours_column") else ia._first_present(df, ["standard_hours"])
+    has_salary = "salary" in df.columns
+    has_payrate = "payrate" in df.columns
+    if not status_col or not pay_type_col or (not has_salary and not has_payrate):
+        return pd.DataFrame()
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salary_blank = ia._blank_mask(df["salary"]) if has_salary else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = ia._blank_mask(df["payrate"]) if has_payrate else pd.Series([True] * len(df), index=df.index)
+    salary_num = pd.to_numeric(df["salary"], errors="coerce") if has_salary else pd.Series([float("nan")] * len(df), index=df.index)
+    payrate_num = pd.to_numeric(df["payrate"], errors="coerce") if has_payrate else pd.Series([float("nan")] * len(df), index=df.index)
+    salary_valid = ~salary_blank & salary_num.gt(0)
+    payrate_valid = ~payrate_blank & payrate_num.gt(0)
+    comp_present = ~salary_blank | ~payrate_blank
+    standard_hours_blank = ia._blank_mask(df[standard_hours_col]) if standard_hours_col else pd.Series([True] * len(df), index=df.index)
+
+    rows: list[dict] = []
+    for orig_idx in df.index:
+        source_row = df.loc[orig_idx]
+        pay_class, invalid = ia._classify_pay_type(source_row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+        pay_type_blank = ia._blank_mask(pd.Series([source_row.get(pay_type_col, "")])).iloc[0]
+        is_active = statuses.at[orig_idx] == "active"
+
+        if comp_present.at[orig_idx] and (invalid or pay_type_blank):
+            rows.append(_execution_row(
+                issue_name="Missing or Invalid Pay Type",
+                severity="CRITICAL" if is_active else "HIGH",
+                reason="Compensation is present but pay type is blank or invalid.",
+                current_value=_safe(source_row.get(pay_type_col, "")) or "Missing pay type",
+                recommended_action="Populate a valid pay type from the controlled allowed list.",
+                source_row=source_row,
+                row_number=_row_number_from_index(orig_idx),
+            ))
+            continue
+
+        if not pay_class:
+            continue
+
+        if comp_present.at[orig_idx]:
+            if pay_class == "hourly" and not payrate_valid.at[orig_idx]:
+                rows.append(_execution_row(
+                    issue_name="Compensation Type Mismatch",
+                    severity="CRITICAL" if is_active else "HIGH",
+                    reason="Hourly worker is missing a valid pay rate for the stated pay type.",
+                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                    recommended_action="Populate a valid pay rate that matches the worker pay type.",
+                    source_row=source_row,
+                    row_number=_row_number_from_index(orig_idx),
+                ))
+            elif pay_class == "salaried" and not salary_valid.at[orig_idx]:
+                rows.append(_execution_row(
+                    issue_name="Compensation Type Mismatch",
+                    severity="CRITICAL" if is_active else "HIGH",
+                    reason="Salaried worker is missing a valid salary for the stated pay type.",
+                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                    recommended_action="Populate a valid salary that matches the worker pay type.",
+                    source_row=source_row,
+                    row_number=_row_number_from_index(orig_idx),
+                ))
+
+        if has_salary and has_payrate and not salary_blank.at[orig_idx] and not payrate_blank.at[orig_idx]:
+            rows.append(_execution_row(
+                issue_name="Salary and Pay Rate Conflict",
+                severity="HIGH" if is_active else "MEDIUM",
+                reason="Both salary and pay rate are populated and conflict with the worker pay type.",
+                current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                recommended_action="Review the worker record and keep only the compensation field that matches the intended pay type.",
+                source_row=source_row,
+                row_number=_row_number_from_index(orig_idx),
+            ))
+
+        if standard_hours_col and pay_class == "hourly" and not payrate_blank.at[orig_idx] and standard_hours_blank.at[orig_idx]:
+            rows.append(_execution_row(
+                issue_name="Missing Standard Hours for Hourly Worker",
+                severity="HIGH" if is_active else "MEDIUM",
+                reason="Hourly worker has pay rate present but standard hours are missing.",
+                current_value=f"Pay Rate: {_safe(source_row.get('payrate', ''))} | Standard Hours: Missing",
+                recommended_action="Populate standard hours for each hourly worker.",
+                source_row=source_row,
+                row_number=_row_number_from_index(orig_idx),
+            ))
+
+    if not rows:
+        return pd.DataFrame()
+    return _trim_optional_execution_columns(pd.DataFrame(rows, columns=FIX_LIST_DETAIL_COLUMNS))
+
+
 def _build_fix_list_detail_full_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
     term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
@@ -1024,6 +1184,7 @@ def _fix_list_detail_sheet(df: pd.DataFrame, summary: dict, row_annotations: lis
     frames = [
         _build_fix_list_detail_full_dup_worker_id(df, row_annotations),
         _build_fix_list_detail_full_salary(df),
+        _build_fix_list_detail_payroll_phase1(df),
         _build_fix_list_detail_full_invalid_dates(df),
         _build_fix_list_detail_full_active_term(df),
         _build_fix_list_detail_full_missing_id(df),
@@ -1209,6 +1370,101 @@ def _build_full_detail_salary(df: pd.DataFrame) -> pd.DataFrame:
     return _format_detail_sheet(result, sheet_name)
 
 
+def _build_full_detail_payroll_phase1(df: pd.DataFrame, issue_name: str, sheet_name: str) -> pd.DataFrame:
+    status_col = ia._status_column(df)
+    pay_type_col = ia._pay_type_column(df) if hasattr(ia, "_pay_type_column") else ia._first_present(df, ["pay_type", "worker_type"])
+    standard_hours_col = ia._standard_hours_column(df) if hasattr(ia, "_standard_hours_column") else ia._first_present(df, ["standard_hours"])
+    has_salary = "salary" in df.columns
+    has_payrate = "payrate" in df.columns
+    if not status_col or not pay_type_col or (not has_salary and not has_payrate):
+        return pd.DataFrame()
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salary_blank = ia._blank_mask(df["salary"]) if has_salary else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = ia._blank_mask(df["payrate"]) if has_payrate else pd.Series([True] * len(df), index=df.index)
+    salary_num = pd.to_numeric(df["salary"], errors="coerce") if has_salary else pd.Series([float("nan")] * len(df), index=df.index)
+    payrate_num = pd.to_numeric(df["payrate"], errors="coerce") if has_payrate else pd.Series([float("nan")] * len(df), index=df.index)
+    salary_valid = ~salary_blank & salary_num.gt(0)
+    payrate_valid = ~payrate_blank & payrate_num.gt(0)
+    comp_present = ~salary_blank | ~payrate_blank
+    standard_hours_blank = ia._blank_mask(df[standard_hours_col]) if standard_hours_col else pd.Series([True] * len(df), index=df.index)
+
+    rows: list[dict] = []
+    for orig_idx in df.index:
+        row = df.loc[orig_idx]
+        pay_class, invalid = ia._classify_pay_type(row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+        pay_type_blank = ia._blank_mask(pd.Series([row.get(pay_type_col, "")])).iloc[0]
+        is_active = statuses.at[orig_idx] == "active"
+
+        if issue_name == "Missing or Invalid Pay Type":
+            if comp_present.at[orig_idx] and (invalid or pay_type_blank):
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="CRITICAL" if is_active else "HIGH",
+                    current_value=_safe(row.get(pay_type_col, "")) or "Missing pay type",
+                    reason="Compensation is present but pay type is blank or invalid.",
+                    recommended_action="Populate a valid pay type from the controlled allowed list before payroll or migration.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Salary", "Pay Rate"],
+                ))
+        elif issue_name == "Compensation Type Mismatch":
+            if not pay_class:
+                continue
+            if pay_class == "hourly" and comp_present.at[orig_idx] and not payrate_valid.at[orig_idx]:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="CRITICAL" if is_active else "HIGH",
+                    current_value=f"Pay Type: {_safe(row.get(pay_type_col, ''))} | Salary: {_safe(row.get('salary', ''))} | Pay Rate: {_safe(row.get('payrate', ''))}",
+                    reason="Hourly worker is missing a valid pay rate for the stated pay type.",
+                    recommended_action="Populate a valid pay rate that matches the worker pay type before payroll.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Salary", "Pay Rate"],
+                ))
+            elif pay_class == "salaried" and comp_present.at[orig_idx] and not salary_valid.at[orig_idx]:
+                rows.append(_detail_row(
+                    issue_name=issue_name,
+                    severity="CRITICAL" if is_active else "HIGH",
+                    current_value=f"Pay Type: {_safe(row.get(pay_type_col, ''))} | Salary: {_safe(row.get('salary', ''))} | Pay Rate: {_safe(row.get('payrate', ''))}",
+                    reason="Salaried worker is missing a valid salary for the stated pay type.",
+                    recommended_action="Populate a valid salary that matches the worker pay type before payroll.",
+                    source_row=row,
+                    extra_columns=["Status", "Pay Type", "Salary", "Pay Rate"],
+                ))
+        elif issue_name == "Salary and Pay Rate Conflict":
+            if not pay_class or not has_salary or not has_payrate or salary_blank.at[orig_idx] or payrate_blank.at[orig_idx]:
+                continue
+            rows.append(_detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if is_active else "MEDIUM",
+                current_value=f"Pay Type: {_safe(row.get(pay_type_col, ''))} | Salary: {_safe(row.get('salary', ''))} | Pay Rate: {_safe(row.get('payrate', ''))}",
+                reason="Both salary and pay rate are populated and conflict with the worker pay type.",
+                recommended_action="Review the worker record and keep only the compensation field that matches the intended pay type.",
+                source_row=row,
+                extra_columns=["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours"],
+            ))
+        elif issue_name == "Missing Standard Hours for Hourly Worker":
+            if not standard_hours_col or pay_class != "hourly" or payrate_blank.at[orig_idx] or not standard_hours_blank.at[orig_idx]:
+                continue
+            rows.append(_detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if is_active else "MEDIUM",
+                current_value=f"Pay Rate: {_safe(row.get('payrate', ''))} | Standard Hours: Missing",
+                reason="Hourly worker has pay rate present but standard hours are missing.",
+                recommended_action="Populate standard hours for each hourly worker before migration.",
+                source_row=row,
+                extra_columns=["Status", "Pay Type", "Pay Rate", "Standard Hours"],
+            ))
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    if len(result) > DETAIL_ROW_CAP:
+        note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
+        result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
+
+
 def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     sheet_name = "Findings_Invalid_Dates"
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
@@ -1332,6 +1588,10 @@ _FULL_DETAIL_BUILDERS = {
     "duplicate_worker_id":                    lambda df, s, ra: _build_full_detail_dup_worker_id(df, s, ra),
     "duplicate_canonical_worker_id_conflict": lambda df, s, ra: _build_full_detail_dup_worker_id(df, s, ra),
     "active_zero_salary":                     lambda df, s, ra: _build_full_detail_salary(df),
+    "pay_type_missing_or_invalid":            lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing or Invalid Pay Type", "Findings_Pay_Type"),
+    "compensation_type_mismatch":             lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Compensation Type Mismatch", "Findings_Comp_Type"),
+    "comp_dual_value_conflict":               lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Salary and Pay Rate Conflict", "Findings_Comp_Conflict"),
+    "missing_standard_hours_hourly":          lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing Standard Hours for Hourly Worker", "Findings_Std_Hours"),
     "invalid_date_logic":                     lambda df, s, ra: _build_full_detail_invalid_dates(df),
     "active_with_termination_date":           lambda df, s, ra: _build_full_detail_active_term(df),
     "missing_required_identity":              lambda df, s, ra: _build_full_detail_missing_id(df),

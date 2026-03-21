@@ -58,6 +58,17 @@ ALIASES: dict[str, str] = {
     "annual_salary": "salary",
     "base_salary": "salary",
     "annual_base_pay": "salary",
+    "pay_rate": "payrate",
+    "hourly_rate": "payrate",
+    "base_rate": "payrate",
+    "worker_type": "pay_type",
+    "employment_type": "pay_type",
+    "compensation_type": "pay_type",
+    "pay_type": "pay_type",
+    "standard_hours": "standard_hours",
+    "scheduled_hours": "standard_hours",
+    "standard_weekly_hours": "standard_hours",
+    "weekly_standard_hours": "standard_hours",
     "email": "email",
     "email_address": "email",
     "join_date": "hire_date",
@@ -80,6 +91,23 @@ ALIASES: dict[str, str] = {
     "last_name": "last_name",
     "lname": "last_name",
 }
+
+PAY_TYPE_HOURLY_VALUES = {
+    "hourly",
+    "hourly_non_exempt",
+    "hourly non exempt",
+    "non_exempt",
+    "non exempt",
+}
+PAY_TYPE_SALARIED_VALUES = {
+    "salary",
+    "salaried",
+    "salaried_exempt",
+    "salaried exempt",
+    "annual",
+    "exempt",
+}
+PAY_TYPE_ALLOWED_VALUES = PAY_TYPE_HOURLY_VALUES | PAY_TYPE_SALARIED_VALUES
 
 
 def _norm_str(x) -> str:
@@ -112,6 +140,10 @@ def _check_catalog() -> list[dict]:
         {"check_key": "duplicate_email", "check_name": "Duplicate email", "severity": "MEDIUM"},
         {"check_key": "duplicate_last4_ssn", "check_name": "Duplicate last4_ssn", "severity": "CRITICAL"},
         {"check_key": "active_zero_salary", "check_name": "Active employees with <= $0 or missing salary/payrate", "severity": "CRITICAL"},
+        {"check_key": "pay_type_missing_or_invalid", "check_name": "Missing or Invalid Pay Type", "severity": "CRITICAL"},
+        {"check_key": "compensation_type_mismatch", "check_name": "Compensation Type Mismatch", "severity": "CRITICAL"},
+        {"check_key": "comp_dual_value_conflict", "check_name": "Salary and Pay Rate Conflict", "severity": "HIGH"},
+        {"check_key": "missing_standard_hours_hourly", "check_name": "Missing Standard Hours for Hourly Worker", "severity": "HIGH"},
         {"check_key": "salary_suspicious_default", "check_name": "Suspicious salary default values", "severity": "HIGH"},
         {"check_key": "hire_date_suspicious_default", "check_name": "Suspicious hire date defaults", "severity": "HIGH"},
         {"check_key": "status_suspicious_value", "check_name": "Suspicious status placeholders", "severity": "HIGH"},
@@ -181,8 +213,11 @@ def _sample_columns(df: pd.DataFrame, extra: list[str] | None = None) -> list[st
         "worker_status",
         "status",
         "employment_status",
+        "pay_type",
+        "worker_type",
         "salary",
         "payrate",
+        "standard_hours",
         "hire_date",
         "start_date",
         "date_hired",
@@ -209,6 +244,31 @@ def _status_column(df: pd.DataFrame) -> str | None:
         if col in df.columns:
             return col
     return None
+
+
+def _pay_type_column(df: pd.DataFrame) -> str | None:
+    for col in ["pay_type", "worker_type", "employment_type", "compensation_type"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _standard_hours_column(df: pd.DataFrame) -> str | None:
+    for col in ["standard_hours", "scheduled_hours", "standard_weekly_hours", "weekly_standard_hours"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _classify_pay_type(value: object) -> tuple[str, bool]:
+    normalized = _norm_lower(value).replace("-", "_")
+    if not normalized:
+        return "", False
+    if normalized in PAY_TYPE_HOURLY_VALUES:
+        return "hourly", False
+    if normalized in PAY_TYPE_SALARIED_VALUES:
+        return "salaried", False
+    return "", True
 
 
 def _first_present(df: pd.DataFrame, names: list[str]) -> str | None:
@@ -468,10 +528,14 @@ def _check_severity(check_key: str, field: str | None = None) -> str:
         "duplicate_canonical_worker_id_conflict",
         "duplicate_last4_ssn",
         "active_zero_salary",
+        "pay_type_missing_or_invalid",
+        "compensation_type_mismatch",
         "ghost_employee_indicator",
     }:
         return "CRITICAL"
     if check_key in {
+        "comp_dual_value_conflict",
+        "missing_standard_hours_hourly",
         "salary_suspicious_default",
         "hire_date_suspicious_default",
         "status_suspicious_value",
@@ -602,6 +666,253 @@ def _detect_active_zero_salary(df: pd.DataFrame) -> list[dict]:
                 "pct": round(mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Active employee has missing, zero, or negative salary/payrate - likely a payroll data error.",
                 "sample_rows": _sample_rows(df, mask, extra=extra_cols),
+            }
+        )
+    return findings
+
+
+def _detect_pay_type_missing_or_invalid(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    has_salary = "salary" in df.columns
+    has_payrate = "payrate" in df.columns
+    if not status_col or not pay_type_col or (not has_salary and not has_payrate):
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salary_blank = _blank_mask(df["salary"]) if has_salary else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = _blank_mask(df["payrate"]) if has_payrate else pd.Series([True] * len(df), index=df.index)
+    comp_present = ~salary_blank | ~payrate_blank
+
+    critical_mask = pd.Series(False, index=df.index)
+    high_mask = pd.Series(False, index=df.index)
+    for idx in df.index[comp_present.fillna(False)]:
+        _, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        is_blank = _blank_mask(pd.Series([df.at[idx, pay_type_col]])).iloc[0]
+        if not (invalid or is_blank):
+            continue
+        if statuses.at[idx] == "active":
+            critical_mask.at[idx] = True
+        else:
+            high_mask.at[idx] = True
+
+    if critical_mask.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "pay_type_missing_or_invalid",
+                "check_name": "Missing or Invalid Pay Type",
+                "field": pay_type_col,
+                "severity": "CRITICAL",
+                "count": int(critical_mask.sum()),
+                "pct": round(critical_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Active worker has compensation present but pay type is blank or invalid.",
+                "impact": "Payroll cannot reliably determine whether to use salary or pay rate logic for this worker.",
+                "recommended_action": "Populate a valid pay type from the controlled allowed list before payroll or migration.",
+                "sample_rows": _sample_rows(df, critical_mask, extra=[status_col, pay_type_col, "salary", "payrate"]),
+            }
+        )
+    if high_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "pay_type_missing_or_invalid",
+                "check_name": "Missing or Invalid Pay Type",
+                "field": pay_type_col,
+                "severity": "HIGH",
+                "count": int(high_mask.sum()),
+                "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Non-active worker has compensation present but pay type is blank or invalid.",
+                "impact": "Compensation records are not reliably classified and may load incorrectly into payroll history.",
+                "recommended_action": "Populate a valid pay type from the controlled allowed list before migration.",
+                "sample_rows": _sample_rows(df, high_mask, extra=[status_col, pay_type_col, "salary", "payrate"]),
+            }
+        )
+    return findings
+
+
+def _detect_compensation_type_mismatch(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    has_salary = "salary" in df.columns
+    has_payrate = "payrate" in df.columns
+    if not status_col or not pay_type_col or (not has_salary and not has_payrate):
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salary_blank = _blank_mask(df["salary"]) if has_salary else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = _blank_mask(df["payrate"]) if has_payrate else pd.Series([True] * len(df), index=df.index)
+    salary_num = pd.to_numeric(df["salary"], errors="coerce") if has_salary else pd.Series([float("nan")] * len(df), index=df.index)
+    payrate_num = pd.to_numeric(df["payrate"], errors="coerce") if has_payrate else pd.Series([float("nan")] * len(df), index=df.index)
+    salary_valid = ~salary_blank & salary_num.gt(0)
+    payrate_valid = ~payrate_blank & payrate_num.gt(0)
+    comp_present = ~salary_blank | ~payrate_blank
+
+    critical_mask = pd.Series(False, index=df.index)
+    high_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or not pay_class or not comp_present.at[idx]:
+            continue
+        if pay_class == "hourly" and not payrate_valid.at[idx]:
+            if statuses.at[idx] == "active":
+                critical_mask.at[idx] = True
+            else:
+                high_mask.at[idx] = True
+        elif pay_class == "salaried" and not salary_valid.at[idx]:
+            if statuses.at[idx] == "active":
+                critical_mask.at[idx] = True
+            else:
+                high_mask.at[idx] = True
+
+    if critical_mask.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "compensation_type_mismatch",
+                "check_name": "Compensation Type Mismatch",
+                "field": pay_type_col,
+                "severity": "CRITICAL",
+                "count": int(critical_mask.sum()),
+                "pct": round(critical_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Active worker is missing the required compensation field for the stated pay type.",
+                "impact": "Payroll will not calculate pay correctly because the required salary or pay rate value is missing or invalid.",
+                "recommended_action": "Populate the required compensation field that matches the worker pay type before payroll.",
+                "sample_rows": _sample_rows(df, critical_mask, extra=[status_col, pay_type_col, "salary", "payrate"]),
+            }
+        )
+    if high_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "compensation_type_mismatch",
+                "check_name": "Compensation Type Mismatch",
+                "field": pay_type_col,
+                "severity": "HIGH",
+                "count": int(high_mask.sum()),
+                "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Pay type and compensation fields disagree, but payroll could still infer intended compensation logic.",
+                "impact": "Migration teams may guess the wrong compensation field and create bad payroll setup for the worker.",
+                "recommended_action": "Align pay type with the required salary or pay rate field before migration.",
+                "sample_rows": _sample_rows(df, high_mask, extra=[status_col, pay_type_col, "salary", "payrate"]),
+            }
+        )
+    return findings
+
+
+def _detect_comp_dual_value_conflict(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    if not status_col or not pay_type_col or "salary" not in df.columns or "payrate" not in df.columns:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    salary_blank = _blank_mask(df["salary"])
+    payrate_blank = _blank_mask(df["payrate"])
+    dual_present = ~salary_blank & ~payrate_blank
+
+    high_mask = pd.Series(False, index=df.index)
+    medium_mask = pd.Series(False, index=df.index)
+    for idx in df.index[dual_present.fillna(False)]:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or not pay_class:
+            continue
+        if statuses.at[idx] == "active":
+            high_mask.at[idx] = True
+        else:
+            medium_mask.at[idx] = True
+
+    if high_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "comp_dual_value_conflict",
+                "check_name": "Salary and Pay Rate Conflict",
+                "field": pay_type_col,
+                "severity": "HIGH",
+                "count": int(high_mask.sum()),
+                "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Active worker has both salary and pay rate populated in a way that conflicts with pay type or compensation rules.",
+                "impact": "Payroll setup is ambiguous and operators may choose the wrong compensation source during migration.",
+                "recommended_action": "Review the worker record and keep only the compensation field that matches the intended pay type.",
+                "sample_rows": _sample_rows(df, high_mask, extra=[status_col, pay_type_col, "salary", "payrate", "standard_hours"]),
+            }
+        )
+    if medium_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "comp_dual_value_conflict",
+                "check_name": "Salary and Pay Rate Conflict",
+                "field": pay_type_col,
+                "severity": "MEDIUM",
+                "count": int(medium_mask.sum()),
+                "pct": round(medium_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Non-active worker has both salary and pay rate populated in a conflicting way.",
+                "impact": "Historical compensation may load ambiguously and reduce confidence in payroll records.",
+                "recommended_action": "Review the worker record and keep only the compensation field that matches the intended pay type.",
+                "sample_rows": _sample_rows(df, medium_mask, extra=[status_col, pay_type_col, "salary", "payrate", "standard_hours"]),
+            }
+        )
+    return findings
+
+
+def _detect_missing_standard_hours_hourly(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    standard_hours_col = _standard_hours_column(df)
+    if not status_col or not pay_type_col or not standard_hours_col or "payrate" not in df.columns:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    payrate_blank = _blank_mask(df["payrate"])
+    standard_hours_blank = _blank_mask(df[standard_hours_col])
+    high_mask = pd.Series(False, index=df.index)
+    medium_mask = pd.Series(False, index=df.index)
+
+    for idx in df.index:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or pay_class != "hourly" or payrate_blank.at[idx] or not standard_hours_blank.at[idx]:
+            continue
+        if statuses.at[idx] == "active":
+            high_mask.at[idx] = True
+        else:
+            medium_mask.at[idx] = True
+
+    if high_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "missing_standard_hours_hourly",
+                "check_name": "Missing Standard Hours for Hourly Worker",
+                "field": standard_hours_col,
+                "severity": "HIGH",
+                "count": int(high_mask.sum()),
+                "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Active hourly worker has pay rate present but standard hours are missing.",
+                "impact": "Payroll teams cannot confidently annualize or validate hourly compensation without standard hours.",
+                "recommended_action": "Populate standard hours for each hourly worker before migration.",
+                "sample_rows": _sample_rows(df, high_mask, extra=[status_col, pay_type_col, "payrate", standard_hours_col]),
+            }
+        )
+    if medium_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "missing_standard_hours_hourly",
+                "check_name": "Missing Standard Hours for Hourly Worker",
+                "field": standard_hours_col,
+                "severity": "MEDIUM",
+                "count": int(medium_mask.sum()),
+                "pct": round(medium_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Non-active hourly worker has pay rate present but standard hours are missing.",
+                "impact": "Historical payroll records may be incomplete and harder to validate during migration.",
+                "recommended_action": "Populate standard hours where available before migration.",
+                "sample_rows": _sample_rows(df, medium_mask, extra=[status_col, pay_type_col, "payrate", standard_hours_col]),
             }
         )
     return findings
@@ -1630,9 +1941,9 @@ def _issue_strings(findings: list[dict]) -> list[str]:
 
 
 def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
-    grouped: dict[tuple[str, str], dict] = {}
+    grouped: dict[tuple[str, str, str], dict] = {}
     for finding in findings:
-        key = (finding["check_key"], finding["check_name"])
+        key = (finding["check_key"], finding["check_name"], finding["severity"])
         if key not in grouped:
             grouped[key] = {
                 "check_key": finding["check_key"],
@@ -1728,6 +2039,10 @@ def run_internal_audit(
     duplicate_worker_findings = _detect_duplicate_worker_id(df_norm)
     suspicious = _detect_suspicious(df_norm, config)
     active_zero_findings = _detect_active_zero_salary(df_norm)
+    pay_type_findings = _detect_pay_type_missing_or_invalid(df_norm)
+    compensation_type_findings = _detect_compensation_type_mismatch(df_norm)
+    dual_comp_findings = _detect_comp_dual_value_conflict(df_norm)
+    missing_standard_hours_findings = _detect_missing_standard_hours_hourly(df_norm)
     invalid_date_logic_findings = _detect_invalid_date_logic(df_norm)
     impossible_date_findings = _detect_impossible_dates(df_norm)
     active_with_term_findings = _detect_active_with_termination_date(df_norm)
@@ -1754,6 +2069,10 @@ def run_internal_audit(
         + duplicate_worker_findings
         + dup_findings
         + active_zero_findings
+        + pay_type_findings
+        + compensation_type_findings
+        + dual_comp_findings
+        + missing_standard_hours_findings
         + invalid_date_logic_findings
         + active_with_term_findings
         + missing_required_identity_findings
@@ -1858,7 +2177,7 @@ def run_internal_audit(
             "severity": row["severity"],
             "description": row["description"],
         }
-        for row in suspicious + active_zero_findings + phone_findings
+        for row in suspicious + active_zero_findings + pay_type_findings + compensation_type_findings + dual_comp_findings + missing_standard_hours_findings + phone_findings
     ]
     _write_csv(
         suspicious_csv,
