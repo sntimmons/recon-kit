@@ -60,6 +60,7 @@ FIX_COLUMNS = [
 # Optional context columns appended when data is present
 CONTEXT_COLUMNS = [
     "Department",
+    "Job Title",
     "Status",
     "Pay Type",
     "Salary",
@@ -91,6 +92,7 @@ REVIEW_REQUIRED_PRIORITY = [
     "First Name",
     "Last Name",
     "Department",
+    "Job Title",
     "Status",
     "Pay Type",
     "Salary",
@@ -133,6 +135,7 @@ CORRECTION_SALARY_COLUMNS = [
     "First Name",
     "Last Name",
     "Issue Name",
+    "Related Issues",
     "Severity",
     "Current Pay Type",
     "Current Salary",
@@ -144,12 +147,45 @@ CORRECTION_SALARY_COLUMNS = [
     "Notes",
 ]
 
+# ---------------------------------------------------------------------------
+# Payroll issue presentation - primary issue hierarchy and display labels
+# ---------------------------------------------------------------------------
+
+# Priority order for selecting the primary (lead) issue in payroll correction rows.
+# First matching issue in a group becomes the primary label shown to HR reviewers.
+_PAYROLL_ISSUE_PRIORITY = [
+    "Implausible Hourly Pay Rate",        # CRITICAL: payrate <= 0 - always the clearest lead
+    "Implausible Annual Salary",          # CRITICAL: salary <= 0 - always the clearest lead
+    "Missing or Invalid Salary",          # CRITICAL: active with no valid comp
+    "Missing or Invalid Pay Type",        # pay type is absent or unrecognised
+    "Compensation Type Mismatch",         # pay type and comp field conflict
+    "Salary and Pay Rate Conflict",       # both fields populated, one is wrong
+    "Missing Standard Hours for Hourly Worker",
+]
+
+# Human-readable display labels for the two implausible-value issues.
+# These replace the "Implausible" wording in correction and review outputs.
+_PAYROLL_DISPLAY_LABELS: dict[str, str] = {
+    "Implausible Hourly Pay Rate": "Invalid Hourly Pay Rate",
+    "Implausible Annual Salary":   "Invalid Annual Salary",
+}
+
+# Issues that are consequences of a zero/negative value and are suppressed
+# from Related Issues and review issue_names rollups when an Implausible*
+# CRITICAL issue is already the primary.  They add no new information.
+_PAYROLL_ZERO_CONSEQUENCES = frozenset({
+    "Missing or Invalid Salary",
+    "Compensation Type Mismatch",
+})
+
 CORRECTION_FILE_CONFIG = {
     "correction_salary.csv": {
         "issue_names": {
             "Missing or Invalid Salary",
             "Missing or Invalid Pay Type",
             "Compensation Type Mismatch",
+            "Implausible Hourly Pay Rate",
+            "Implausible Annual Salary",
         },
         "extra_columns": ["Pay Type", "Salary", "Payrate", "Standard Hours"],
     },
@@ -193,7 +229,8 @@ def _get(row: pd.Series, *keys: str) -> str:
 
 def _context(row: pd.Series) -> dict:
     return {
-        "Department":        _get(row, "department"),
+        "Department":        _get(row, "department", "district"),
+        "Job Title":         _get(row, "job_title", "title", "position_title", "position"),
         "Status":            _get(row, "worker_status", "status"),
         "Pay Type":          _get(row, "pay_type", "worker_type"),
         "Salary":            _get(row, "salary"),
@@ -259,6 +296,11 @@ def _display_name(column: str) -> str:
         "first_name": "First Name",
         "last_name": "Last Name",
         "department": "Department",
+        "district": "Department",
+        "job_title": "Job Title",
+        "title": "Job Title",
+        "position_title": "Job Title",
+        "position": "Job Title",
         "worker_status": "Status",
         "status": "Status",
         "pay_type": "Pay Type",
@@ -364,12 +406,20 @@ def _aggregate_review_metadata(issue_rows: pd.DataFrame, clean_base: pd.DataFram
 
     summaries: list[dict] = []
     for row_number, group in matched.groupby("__row_number", sort=False):
-        issue_names = _unique_ordered(group["Issue Name"].tolist()) if "Issue Name" in group.columns else []
-        fix_needed = _unique_ordered(group["Fix Needed"].tolist()) if "Fix Needed" in group.columns else []
+        raw_issue_names = _unique_ordered(group["Issue Name"].tolist()) if "Issue Name" in group.columns else []
         severities = _unique_ordered(group["Severity"].tolist()) if "Severity" in group.columns else []
         highest = min(severities, key=lambda sev: SEVERITY_RANK.get(_safe(sev).upper(), 99)) if severities else ""
         highest = _safe(highest).upper()
-        review_status = "BLOCKED" if highest in {"CRITICAL", "HIGH"} else "REVIEW"
+
+        # Collapse co-occurring payroll issues with the same zero/negative root
+        # into a single primary label so issue_names does not become a junk drawer.
+        issue_names = _deduplicate_salary_issues_for_review(raw_issue_names, group)
+
+        # BLOCKED = must correct before payroll (CRITICAL severity only).
+        # REVIEW  = must review before proceeding (HIGH severity or below).
+        # This makes the distinction clear: BLOCKED rows need immediate correction;
+        # REVIEW rows need a human decision.
+        review_status = "BLOCKED" if highest == "CRITICAL" else "REVIEW"
 
         summaries.append({
             "__row_number": row_number,
@@ -378,7 +428,7 @@ def _aggregate_review_metadata(issue_rows: pd.DataFrame, clean_base: pd.DataFram
             "issue_names": "; ".join(issue_names),
             "highest_severity": highest,
             "requires_manual_review": "Yes",
-            "recommended_next_step": _recommended_next_step(fix_needed),
+            "recommended_next_step": _recommended_step_from_issues(issue_names, group),
         })
 
     return pd.DataFrame(summaries)
@@ -480,6 +530,206 @@ def _first_nonblank(group: pd.DataFrame, column: str) -> str:
     return ""
 
 
+def _primary_salary_correction(
+    issue_names: list[str],
+    pay_type: str,
+    group: pd.DataFrame,
+) -> tuple[str, list[str], str]:
+    """Determine the primary issue label, related issues, and lead note for a
+    payroll correction row.
+
+    Returns (primary_label, related_issues, note).
+
+    Logic:
+    - Walk _PAYROLL_ISSUE_PRIORITY to find the first matching issue.
+    - For Implausible* issues, only treat them as primary when CRITICAL (zero/neg).
+      HIGH outlier rows must not become primary in correction files; they are
+      filtered out before this function is called.
+    - Consequence issues (Missing or Invalid Salary, Compensation Type Mismatch)
+      are suppressed from Related Issues when the primary is an Implausible* issue
+      because they add no new information for the reviewer.
+    - Note is a single plain-English action statement matched to primary + pay type.
+    """
+    pt = pay_type.strip().lower() if pay_type else ""
+
+    # Build a quick severity lookup for this group
+    sev_for_issue: dict[str, str] = {}
+    if "Issue Name" in group.columns and "Severity" in group.columns:
+        for _, r in group.iterrows():
+            name = _safe(r.get("Issue Name", ""))
+            sev  = _safe(r.get("Severity", "")).upper()
+            if name and name not in sev_for_issue:
+                sev_for_issue[name] = sev
+
+    primary_raw = ""
+    for candidate in _PAYROLL_ISSUE_PRIORITY:
+        if candidate not in issue_names:
+            continue
+        if candidate in ("Implausible Hourly Pay Rate", "Implausible Annual Salary"):
+            if sev_for_issue.get(candidate, "") == "CRITICAL":
+                primary_raw = candidate
+                break
+        else:
+            primary_raw = candidate
+            break
+    if not primary_raw:
+        primary_raw = issue_names[0] if issue_names else ""
+
+    primary_label = _PAYROLL_DISPLAY_LABELS.get(primary_raw, primary_raw)
+    is_implausible_primary = primary_raw in ("Implausible Hourly Pay Rate", "Implausible Annual Salary")
+
+    # Build related issues list - drop primary raw name and optionally suppress consequences
+    related: list[str] = []
+    for name in issue_names:
+        if name == primary_raw:
+            continue
+        if is_implausible_primary and name in _PAYROLL_ZERO_CONSEQUENCES:
+            continue
+        related.append(name)
+
+    # Build single clean lead action note
+    if primary_raw == "Implausible Hourly Pay Rate":
+        note = "Enter a valid positive hourly pay rate before payroll processing."
+    elif primary_raw == "Implausible Annual Salary":
+        note = "Enter a valid positive annual salary before payroll processing."
+    elif primary_raw == "Missing or Invalid Salary":
+        if pt == "hourly":
+            note = "Enter a valid positive hourly pay rate before payroll processing."
+        elif pt == "salaried":
+            note = "Enter a valid positive annual salary before payroll processing."
+        else:
+            note = "Enter a valid positive salary or payrate before payroll processing."
+    elif primary_raw == "Missing or Invalid Pay Type":
+        note = "Enter the correct pay type from the allowed list before payroll processing."
+    elif primary_raw == "Compensation Type Mismatch":
+        if pt == "hourly":
+            note = "Enter a valid hourly pay rate that matches the worker pay type."
+        elif pt == "salaried":
+            note = "Enter a valid annual salary that matches the worker pay type."
+        else:
+            note = "Enter the correct compensation value for the worker pay type."
+    elif primary_raw == "Salary and Pay Rate Conflict":
+        if pt == "hourly":
+            note = "Remove the salary value - this worker should have a payrate only."
+        elif pt == "salaried":
+            note = "Remove the payrate value - this worker should have a salary only."
+        else:
+            note = "Keep only the compensation field that matches the intended pay type."
+    elif primary_raw == "Missing Standard Hours for Hourly Worker":
+        note = "Populate standard hours for this hourly worker before migration."
+    else:
+        note = _safe(issue_names[0]) if issue_names else ""
+
+    return primary_label, related, note
+
+
+def _deduplicate_salary_issues_for_review(
+    raw_names: list[str],
+    group: pd.DataFrame,
+) -> list[str]:
+    """Collapse co-occurring payroll issues that share the same zero/negative root
+    into a single primary label for review_required and clean_data outputs.
+
+    Only applied when a CRITICAL Implausible* issue is present - because in that
+    case Missing or Invalid Salary and Compensation Type Mismatch are consequences
+    of the same single problem, not independent issues.
+
+    Non-payroll issues in the list are preserved unchanged.
+    """
+    payroll_set = set(_PAYROLL_ISSUE_PRIORITY)
+    has_payroll = any(n in payroll_set for n in raw_names)
+    if not has_payroll:
+        return raw_names
+
+    # Check for critical implausible issues
+    sev_for_issue: dict[str, str] = {}
+    if "Issue Name" in group.columns and "Severity" in group.columns:
+        for _, r in group.iterrows():
+            name = _safe(r.get("Issue Name", ""))
+            sev  = _safe(r.get("Severity", "")).upper()
+            if name and name not in sev_for_issue:
+                sev_for_issue[name] = sev
+
+    has_crit_hourly = sev_for_issue.get("Implausible Hourly Pay Rate", "") == "CRITICAL"
+    has_crit_annual = sev_for_issue.get("Implausible Annual Salary",   "") == "CRITICAL"
+
+    if not has_crit_hourly and not has_crit_annual:
+        return raw_names
+
+    result: list[str] = []
+    suppress: set[str] = set()
+
+    if has_crit_hourly:
+        result.append("Invalid Hourly Pay Rate")
+        suppress |= {"Implausible Hourly Pay Rate"} | _PAYROLL_ZERO_CONSEQUENCES
+
+    if has_crit_annual:
+        result.append("Invalid Annual Salary")
+        suppress |= {"Implausible Annual Salary"} | _PAYROLL_ZERO_CONSEQUENCES
+
+    for name in raw_names:
+        if name not in suppress:
+            result.append(name)
+
+    return _unique_ordered(result)
+
+
+def _recommended_step_from_issues(
+    issue_names: list[str],
+    group: pd.DataFrame,
+) -> str:
+    """Generate a single clean recommended_next_step from deduplicated issue names.
+
+    For payroll correction issues the step is derived from the primary issue
+    rather than from raw Fix Needed text, which can be repetitive when multiple
+    issues share the same root.
+    """
+    if not issue_names:
+        return "No action needed"
+
+    payroll_set = set(_PAYROLL_DISPLAY_LABELS.values()) | set(_PAYROLL_ISSUE_PRIORITY)
+    primary = issue_names[0]
+
+    if primary in payroll_set:
+        # Determine pay type from the group if available
+        pt = ""
+        pt_col = None
+        for c in ("Pay Type", "pay_type", "worker_type"):
+            if c in group.columns:
+                pt_col = c
+                break
+        if pt_col:
+            for val in group[pt_col].tolist():
+                v = _safe(val).lower()
+                if v:
+                    pt = v
+                    break
+
+        if primary == "Invalid Hourly Pay Rate":
+            return "Enter a valid positive hourly pay rate before payroll processing."
+        if primary == "Invalid Annual Salary":
+            return "Enter a valid positive annual salary before payroll processing."
+        if primary == "Missing or Invalid Salary":
+            if pt == "hourly":
+                return "Enter a valid positive hourly pay rate before payroll processing."
+            if pt == "salaried":
+                return "Enter a valid positive annual salary before payroll processing."
+            return "Enter a valid positive salary or payrate before payroll processing."
+        if primary == "Implausible Hourly Pay Rate":
+            return "Review the hourly payrate - confirm it is within the expected range."
+        if primary == "Implausible Annual Salary":
+            return "Review the annual salary - confirm it is within the expected range."
+        if primary in ("Missing or Invalid Pay Type", "Compensation Type Mismatch"):
+            return "Confirm the pay type and enter the matching compensation value."
+
+    # Non-payroll issues: use original fix-needed style joined step
+    fix_needed_raw = (
+        _unique_ordered(group["Fix Needed"].tolist())
+        if "Fix Needed" in group.columns else []
+    )
+    return _recommended_next_step(fix_needed_raw)
+
+
 def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.DataFrame:
     config = CORRECTION_FILE_CONFIG[filename]
     allowed_issue_names = config["issue_names"]
@@ -495,42 +745,52 @@ def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.D
     if filename == "correction_salary.csv":
         rows: list[dict] = []
         for group in _group_issue_rows(filtered):
-            issue_name = "; ".join(_unique_ordered(group["Issue Name"].tolist()))
-            severity = _first_nonblank(group, "Severity")
-            current_pay_type = _first_nonblank(group, "Pay Type")
-            current_salary = _first_nonblank(group, "Salary")
-            current_pay_rate = _first_nonblank(group, "Payrate")
+            correction_group = group.copy()
+            # Keep only CRITICAL implausible-value rows; drop HIGH outlier-only rows.
+            # This preserves the rule that outlier-only records stay review-only.
+            if (correction_group["Issue Name"] == "Implausible Hourly Pay Rate").any():
+                correction_group = correction_group[
+                    ~(
+                        (correction_group["Issue Name"] == "Implausible Hourly Pay Rate")
+                        & (correction_group["Severity"] != "CRITICAL")
+                    )
+                ]
+            if (correction_group["Issue Name"] == "Implausible Annual Salary").any():
+                correction_group = correction_group[
+                    ~(
+                        (correction_group["Issue Name"] == "Implausible Annual Salary")
+                        & (correction_group["Severity"] != "CRITICAL")
+                    )
+                ]
+            if correction_group.empty:
+                continue
 
-            note = ""
-            if issue_name == "Missing or Invalid Salary":
-                note = "Enter a valid positive salary"
-            elif issue_name == "Missing or Invalid Pay Type":
-                note = "Enter the correct pay type from the allowed list"
-            elif issue_name == "Compensation Type Mismatch":
-                pay_type = current_pay_type.lower()
-                if pay_type == "hourly":
-                    note = "Enter a valid pay rate that matches the hourly pay type"
-                elif pay_type == "salaried":
-                    note = "Enter a valid salary that matches the salaried pay type"
-                else:
-                    note = "Enter the missing compensation value that matches the pay type"
-            else:
-                note = "; ".join(_unique_ordered(group["Fix Needed"].tolist()))
+            all_issue_names = _unique_ordered(correction_group["Issue Name"].tolist())
+            current_pay_type = _first_nonblank(correction_group, "Pay Type")
+            severity = _first_nonblank(correction_group, "Severity")
+            current_salary = _first_nonblank(correction_group, "Salary")
+            current_pay_rate = _first_nonblank(correction_group, "Payrate")
+
+            # Determine primary issue, related issues, and clean lead note
+            primary_label, related_issues, note = _primary_salary_correction(
+                all_issue_names, current_pay_type, correction_group
+            )
 
             rows.append({
-                "Worker ID": _first_nonblank(group, "Worker ID"),
-                "First Name": _first_nonblank(group, "First Name"),
-                "Last Name": _first_nonblank(group, "Last Name"),
-                "Issue Name": issue_name,
-                "Severity": severity,
-                "Current Pay Type": current_pay_type,
-                "Current Salary": current_salary,
-                "Current Pay Rate": current_pay_rate,
+                "Worker ID":          _first_nonblank(correction_group, "Worker ID"),
+                "First Name":         _first_nonblank(correction_group, "First Name"),
+                "Last Name":          _first_nonblank(correction_group, "Last Name"),
+                "Issue Name":         primary_label,
+                "Related Issues":     "; ".join(related_issues) if related_issues else "",
+                "Severity":           severity,
+                "Current Pay Type":   current_pay_type,
+                "Current Salary":     current_salary,
+                "Current Pay Rate":   current_pay_rate,
                 "Corrected Pay Type": "",
-                "Corrected Salary": "",
+                "Corrected Salary":   "",
                 "Corrected Pay Rate": "",
-                "Effective Date": "",
-                "Notes": note,
+                "Effective Date":     "",
+                "Notes":              note,
             })
 
         return pd.DataFrame(rows, columns=CORRECTION_SALARY_COLUMNS).reset_index(drop=True)
@@ -724,6 +984,11 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
     payrate_valid = ~pay_blank & pay_vals.gt(0)
     salary_valid = ~sal_blank & sal_vals.gt(0)
     comp_present = ~sal_blank | ~pay_blank
+    config = ia._load_config() if hasattr(ia, "_load_config") else {}
+    hourly_min = float(config.get("hourly_payrate_min", 7.25))
+    hourly_max = float(config.get("hourly_payrate_max", 250.0))
+    salary_min = float(config.get("salaried_salary_min", 10000.0))
+    salary_max = float(config.get("salaried_salary_max", 1000000.0))
 
     # --- active_zero_salary (CRITICAL) full mask ---
     if status_col and (has_salary or has_payrate):
@@ -834,6 +1099,64 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 current_value=f"Payrate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, '')) or 'Missing'}",
                 fix_needed="Populate standard hours for each hourly worker before migration.",
             ))
+
+    # --- hourly_implausible_payrate ---
+    if pay_type_col and has_payrate:
+        for orig_idx in df.index[~pay_blank.fillna(True)]:
+            source_row = df.loc[orig_idx]
+            pay_class, invalid = ia._classify_pay_type(source_row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+            if invalid or pay_class != "hourly":
+                continue
+            value = pay_vals.at[orig_idx]
+            if pd.isna(value):
+                continue
+            if value <= 0:
+                rows.append(_make_row(
+                    source_row, orig_idx,
+                    issue_name="Implausible Hourly Pay Rate",
+                    severity="CRITICAL",
+                    why_flagged="Hourly worker has a zero or negative payrate.",
+                    current_value=f"Payrate: {_safe(source_row.get('payrate', ''))}",
+                    fix_needed="Enter a valid positive payrate before payroll.",
+                ))
+            elif value < hourly_min or value > hourly_max:
+                rows.append(_make_row(
+                    source_row, orig_idx,
+                    issue_name="Implausible Hourly Pay Rate",
+                    severity="HIGH",
+                    why_flagged=f"Hourly worker payrate is outside the configured review range of {hourly_min:g} to {hourly_max:g}.",
+                    current_value=f"Payrate: {_safe(source_row.get('payrate', ''))}",
+                    fix_needed=f"Review the hourly payrate and confirm it belongs within the configured range of {hourly_min:g} to {hourly_max:g}.",
+                ))
+
+    # --- salaried_implausible_salary ---
+    if pay_type_col and has_salary:
+        for orig_idx in df.index[~sal_blank.fillna(True)]:
+            source_row = df.loc[orig_idx]
+            pay_class, invalid = ia._classify_pay_type(source_row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+            if invalid or pay_class != "salaried":
+                continue
+            value = sal_vals.at[orig_idx]
+            if pd.isna(value):
+                continue
+            if value <= 0:
+                rows.append(_make_row(
+                    source_row, orig_idx,
+                    issue_name="Implausible Annual Salary",
+                    severity="CRITICAL",
+                    why_flagged="Salaried worker has a zero or negative annual salary.",
+                    current_value=f"Salary: {_safe(source_row.get('salary', ''))}",
+                    fix_needed="Enter a valid positive salary before payroll.",
+                ))
+            elif value < salary_min or value > salary_max:
+                rows.append(_make_row(
+                    source_row, orig_idx,
+                    issue_name="Implausible Annual Salary",
+                    severity="HIGH",
+                    why_flagged=f"Salaried worker salary is outside the configured review range of {salary_min:g} to {salary_max:g}.",
+                    current_value=f"Salary: {_safe(source_row.get('salary', ''))}",
+                    fix_needed=f"Review the salary and confirm it belongs within the configured range of {salary_min:g} to {salary_max:g}.",
+                ))
 
     # --- salary_suspicious_default + suspicious_round_salary from JSON samples ---
     sample_keys = {"salary_suspicious_default", "suspicious_round_salary"}
