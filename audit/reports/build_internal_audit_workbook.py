@@ -112,6 +112,18 @@ _M = {
         "Correct zero or negative salaries immediately and review outlier salaries before payroll or migration.",
         "Findings_Impl_Salary",
     ),
+    "annualized_comp_mismatch": (
+        "Annualized Compensation Mismatch",
+        "Salary and pay rate do not align to the same annual basis, which creates payroll setup risk.",
+        "Review salary, pay rate, and standard hours together before payroll or migration.",
+        "Findings_Annualized",
+    ),
+    "pay_context_sanity_check": (
+        "Payroll Context Mismatch",
+        "Worker status, leave context, and compensation setup disagree in a way that suggests payroll risk.",
+        "Review worker status, leave status, and compensation together before payroll or migration.",
+        "Findings_Pay_Context",
+    ),
     "invalid_date_logic": (
         "Invalid Dates",
         "Service calculations, payroll timing, and benefits eligibility will produce wrong results.",
@@ -341,6 +353,11 @@ def _humanize(col: str) -> str:
         "payrate": "Pay Rate",
         "salary_delta": "Salary Delta",
         "standard_hours": "Standard Hours",
+        "leave_status": "Leave Status",
+        "absence_status": "Leave Status",
+        "loa_status": "Leave Status",
+        "annualized_pay": "Annualized Pay",
+        "annualized_difference": "Annualized Difference",
         "hire_date": "Hire Date",
         "termination_date": "Termination Date",
         "records_affected": "Records Affected",
@@ -386,8 +403,11 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
         "Pay Rate",
         "Salary Delta",
         "Standard Hours",
+        "Annualized Pay",
+        "Annualized Difference",
         "Hire Date",
         "Termination Date",
+        "Leave Status",
         "Row Number",
     ],
     "Findings_Missing_Salary": ["Salary", "Pay Rate", "Salary Delta"],
@@ -397,6 +417,8 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
     "Findings_Std_Hours": ["Status", "Pay Type", "Pay Rate", "Standard Hours"],
     "Findings_Hourly_Rate": ["Status", "Pay Type", "Pay Rate", "Department", "Job Title"],
     "Findings_Impl_Salary": ["Status", "Pay Type", "Salary", "Department", "Job Title"],
+    "Findings_Annualized": ["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours", "Annualized Pay", "Annualized Difference"],
+    "Findings_Pay_Context": ["Status", "Leave Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours", "Termination Date"],
     "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
@@ -604,10 +626,14 @@ FIX_LIST_DETAIL_COLUMNS = [
     "Pay Rate",
     "Salary Delta",
     "Standard Hours",
+    "Annualized Pay",
+    "Annualized Difference",
     "Status",
+    "Leave Status",
     "Hire Date",
     "Termination Date",
     "Department",
+    "Job Title",
     "Row Number",
 ]
 
@@ -621,12 +647,16 @@ _RAW_EXECUTION_COLUMNS = [
     "Reason",
     "Recommended Action",
     "Department",
+    "Job Title",
     "Status",
+    "Leave Status",
     "Pay Type",
     "Salary",
     "Pay Rate",
     "Salary Delta",
     "Standard Hours",
+    "Annualized Pay",
+    "Annualized Difference",
     "Hire Date",
     "Termination Date",
     "Row Number",
@@ -699,6 +729,10 @@ def _execution_why_flagged(
         return "Compensation is present but pay type is blank or invalid."
     if check_key == "compensation_type_mismatch":
         return "Pay type does not match the required compensation field for this worker."
+    if check_key == "annualized_comp_mismatch":
+        return "Salary and annualized pay rate do not align for this worker."
+    if check_key == "pay_context_sanity_check":
+        return "Worker status, leave status, and compensation context disagree in a way that should be reviewed."
     if check_key == "comp_dual_value_conflict":
         return "Both salary and pay rate are populated and conflict with the worker pay type."
     if check_key == "missing_standard_hours_hourly":
@@ -747,6 +781,22 @@ def _execution_current_value(
             f"Salary: {_lookup_value(source_row, sample_row, 'salary')} | "
             f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')}"
         )
+    if check_key == "annualized_comp_mismatch":
+        return (
+            f"Salary: {_lookup_value(source_row, sample_row, 'salary')} | "
+            f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')} | "
+            f"Standard Hours: {_lookup_value(source_row, sample_row, 'standard_hours')} | "
+            f"Annualized Pay: {_lookup_value(source_row, sample_row, 'annualized_pay')} | "
+            f"Annualized Difference: {_lookup_value(source_row, sample_row, 'annualized_difference')}"
+        )
+    if check_key == "pay_context_sanity_check":
+        return (
+            f"Status: {_lookup_value(source_row, sample_row, 'worker_status', 'status')} | "
+            f"Leave Status: {_lookup_value(source_row, sample_row, 'leave_status', 'absence_status', 'loa_status')} | "
+            f"Pay Type: {_lookup_value(source_row, sample_row, 'pay_type', 'worker_type')} | "
+            f"Salary: {_lookup_value(source_row, sample_row, 'salary')} | "
+            f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')}"
+        )
     if check_key == "missing_standard_hours_hourly":
         return (
             f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')} | "
@@ -780,6 +830,10 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
         return "Populate a valid pay type from the controlled allowed list."
     if check_key == "compensation_type_mismatch":
         return "Populate the compensation field required by the worker pay type."
+    if check_key == "annualized_comp_mismatch":
+        return "Review salary, pay rate, and standard hours together before payroll or migration."
+    if check_key == "pay_context_sanity_check":
+        return "Review worker status, leave status, and compensation together before payroll or migration."
     if check_key == "comp_dual_value_conflict":
         return "Review the worker record and keep only the compensation field that matches the intended pay type."
     if check_key == "missing_standard_hours_hourly":
@@ -822,7 +876,10 @@ def _execution_row(
         "Pay Rate": _lookup_value(source_row, sample_row, "payrate"),
         "Salary Delta": _lookup_value(source_row, sample_row, "salary_delta"),
         "Standard Hours": _lookup_value(source_row, sample_row, "standard_hours"),
+        "Annualized Pay": _lookup_value(source_row, sample_row, "annualized_pay"),
+        "Annualized Difference": _lookup_value(source_row, sample_row, "annualized_difference"),
         "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
+        "Leave Status": _lookup_value(source_row, sample_row, "leave_status", "absence_status", "loa_status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
         "Termination Date": _lookup_value(source_row, sample_row, "termination_date", "term_date", "end_date"),
         "Department": _lookup_value(source_row, sample_row, "department", "district"),
@@ -846,8 +903,11 @@ def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, c
         "Pay Rate": ("payrate",),
         "Salary Delta": ("salary_delta",),
         "Standard Hours": ("standard_hours",),
+        "Annualized Pay": ("annualized_pay",),
+        "Annualized Difference": ("annualized_difference",),
         "Hire Date": ("hire_date", "start_date", "date_hired"),
         "Termination Date": ("termination_date", "term_date", "end_date"),
+        "Leave Status": ("leave_status", "absence_status", "loa_status"),
         "Department": ("department", "district"),
         "Job Title": ("job_title", "title", "position_title", "position"),
     }
@@ -1588,6 +1648,128 @@ def _build_full_detail_payroll_phase2(df: pd.DataFrame, issue_name: str, sheet_n
     return _format_detail_sheet(result, sheet_name)
 
 
+def _build_full_detail_annualized_comp(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Annualized"
+    pay_type_col = ia._pay_type_column(df) if hasattr(ia, "_pay_type_column") else ia._first_present(df, ["pay_type", "worker_type"])
+    standard_hours_col = ia._standard_hours_column(df) if hasattr(ia, "_standard_hours_column") else ia._first_present(df, ["standard_hours"])
+    if not pay_type_col or not standard_hours_col or "salary" not in df.columns or "payrate" not in df.columns:
+        return pd.DataFrame()
+
+    config = ia._load_config() if hasattr(ia, "_load_config") else {}
+    threshold_pct = float(config.get("annualized_comp_mismatch_pct", getattr(ia, "DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT", 0.10)))
+    sal_blank = ia._blank_mask(df["salary"])
+    pay_blank = ia._blank_mask(df["payrate"])
+    std_blank = ia._blank_mask(df[standard_hours_col])
+    sal_vals = pd.to_numeric(df["salary"], errors="coerce")
+    pay_vals = pd.to_numeric(df["payrate"], errors="coerce")
+    std_vals = pd.to_numeric(df[standard_hours_col], errors="coerce")
+
+    rows: list[dict] = []
+    for orig_idx in df.index:
+        row = df.loc[orig_idx]
+        pay_class, invalid = ia._classify_pay_type(row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+        if invalid or not pay_class or sal_blank.at[orig_idx] or pay_blank.at[orig_idx] or std_blank.at[orig_idx]:
+            continue
+        salary_value = sal_vals.at[orig_idx]
+        payrate_value = pay_vals.at[orig_idx]
+        standard_hours_value = std_vals.at[orig_idx]
+        if pd.isna(salary_value) or pd.isna(payrate_value) or pd.isna(standard_hours_value):
+            continue
+        if salary_value <= 0 or payrate_value <= 0 or standard_hours_value <= 0:
+            continue
+
+        annualized_pay = payrate_value * standard_hours_value * 52
+        annualized_difference = abs(annualized_pay - salary_value)
+        mismatch_pct = annualized_difference / max(abs(salary_value), 1.0)
+        if mismatch_pct < threshold_pct:
+            continue
+
+        detail = _detail_row(
+            issue_name="Annualized Compensation Mismatch",
+            severity="HIGH",
+            current_value=(
+                f"Salary: {_safe(row.get('salary', ''))} | "
+                f"Pay Rate: {_safe(row.get('payrate', ''))} | "
+                f"Standard Hours: {_safe(row.get(standard_hours_col, ''))}"
+            ),
+            reason=f"Salary and annualized pay rate differ by at least {threshold_pct:.0%}.",
+            recommended_action="Review salary, pay rate, and standard hours together before payroll or migration.",
+            source_row=row,
+            extra_columns=["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours"],
+        )
+        detail["Annualized Pay"] = f"{annualized_pay:.2f}"
+        detail["Annualized Difference"] = f"{annualized_difference:.2f}"
+        rows.append(detail)
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    if len(result) > DETAIL_ROW_CAP:
+        note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
+        result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
+
+
+def _build_full_detail_pay_context(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Pay_Context"
+    status_col = ia._status_column(df)
+    pay_type_col = ia._pay_type_column(df) if hasattr(ia, "_pay_type_column") else ia._first_present(df, ["pay_type", "worker_type"])
+    leave_status_col = ia._leave_status_column(df) if hasattr(ia, "_leave_status_column") else ia._first_present(df, ["leave_status", "absence_status", "loa_status"])
+    term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not pay_type_col or not leave_status_col or ("salary" not in df.columns and "payrate" not in df.columns):
+        return pd.DataFrame()
+
+    sal_blank = ia._blank_mask(df["salary"]) if "salary" in df.columns else pd.Series([True] * len(df), index=df.index)
+    pay_blank = ia._blank_mask(df["payrate"]) if "payrate" in df.columns else pd.Series([True] * len(df), index=df.index)
+    comp_present = ~sal_blank | ~pay_blank
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    leave_statuses = df[leave_status_col].astype(str).str.strip().str.lower()
+    active_leave_terms = {"active", "open", "working"}
+    inactive_leave_terms = {"terminated", "inactive", "leave", "leave_of_absence", "loa", "suspended"}
+
+    rows: list[dict] = []
+    for orig_idx in df.index[comp_present.fillna(False)]:
+        row = df.loc[orig_idx]
+        pay_class, invalid = ia._classify_pay_type(row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+        if invalid or not pay_class:
+            continue
+        status_value = statuses.at[orig_idx]
+        leave_value = leave_statuses.at[orig_idx]
+        mismatch = (
+            (status_value == "active" and leave_value in inactive_leave_terms)
+            or (status_value in {"terminated", "inactive"} and leave_value in active_leave_terms)
+        )
+        if not leave_value or not mismatch:
+            continue
+
+        detail = _detail_row(
+            issue_name="Payroll Context Mismatch",
+            severity="HIGH",
+            current_value=(
+                f"Status: {_safe(row.get(status_col, ''))} | "
+                f"Leave Status: {_safe(row.get(leave_status_col, ''))} | "
+                f"Pay Type: {_safe(row.get(pay_type_col, ''))} | "
+                f"Salary: {_safe(row.get('salary', ''))} | "
+                f"Pay Rate: {_safe(row.get('payrate', ''))}"
+            ),
+            reason="Worker status, leave status, and compensation context disagree in a way that should be reviewed.",
+            recommended_action="Review worker status, leave status, and compensation together before payroll or migration.",
+            source_row=row,
+            extra_columns=["Status", "Leave Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours", "Termination Date"],
+        )
+        rows.append(detail)
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    if len(result) > DETAIL_ROW_CAP:
+        note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
+        result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
+
+
 def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     sheet_name = "Findings_Invalid_Dates"
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
@@ -1715,6 +1897,8 @@ _FULL_DETAIL_BUILDERS = {
     "compensation_type_mismatch":             lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Compensation Type Mismatch", "Findings_Comp_Type"),
     "hourly_implausible_payrate":             lambda df, s, ra: _build_full_detail_payroll_phase2(df, "Implausible Hourly Pay Rate", "Findings_Hourly_Rate"),
     "salaried_implausible_salary":            lambda df, s, ra: _build_full_detail_payroll_phase2(df, "Implausible Annual Salary", "Findings_Impl_Salary"),
+    "annualized_comp_mismatch":               lambda df, s, ra: _build_full_detail_annualized_comp(df),
+    "pay_context_sanity_check":               lambda df, s, ra: _build_full_detail_pay_context(df),
     "comp_dual_value_conflict":               lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Salary and Pay Rate Conflict", "Findings_Comp_Conflict"),
     "missing_standard_hours_hourly":          lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing Standard Hours for Hourly Worker", "Findings_Std_Hours"),
     "invalid_date_logic":                     lambda df, s, ra: _build_full_detail_invalid_dates(df),

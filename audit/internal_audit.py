@@ -39,6 +39,11 @@ DEFAULT_SALARY_OUTLIER_THRESHOLD = 2.5
 DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE = 5
 DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD = 0.30
 DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE = 3
+DEFAULT_HOURLY_PAYRATE_MIN = 7.25
+DEFAULT_HOURLY_PAYRATE_MAX = 250.00
+DEFAULT_SALARIED_SALARY_MIN = 10000.00
+DEFAULT_SALARIED_SALARY_MAX = 1000000.00
+DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT = 0.10
 
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 GATE_BLOCKED_MESSAGE = "CRITICAL issues detected. Dataset is NOT safe for payroll or production use."
@@ -84,6 +89,13 @@ ALIASES: dict[str, str] = {
     "dept": "department",
     "business_unit": "department",
     "department_region": "department",
+    "job_title": "job_title",
+    "title": "job_title",
+    "position_title": "job_title",
+    "position": "job_title",
+    "leave_status": "leave_status",
+    "absence_status": "leave_status",
+    "loa_status": "leave_status",
     "manager_id": "manager_id",
     "manager_worker_id": "manager_id",
     "first_name": "first_name",
@@ -142,6 +154,10 @@ def _check_catalog() -> list[dict]:
         {"check_key": "active_zero_salary", "check_name": "Active employees with <= $0 or missing salary/payrate", "severity": "CRITICAL"},
         {"check_key": "pay_type_missing_or_invalid", "check_name": "Missing or Invalid Pay Type", "severity": "CRITICAL"},
         {"check_key": "compensation_type_mismatch", "check_name": "Compensation Type Mismatch", "severity": "CRITICAL"},
+        {"check_key": "hourly_implausible_payrate", "check_name": "Implausible Hourly Pay Rate", "severity": "CRITICAL"},
+        {"check_key": "salaried_implausible_salary", "check_name": "Implausible Annual Salary", "severity": "CRITICAL"},
+        {"check_key": "annualized_comp_mismatch", "check_name": "Annualized Compensation Mismatch", "severity": "HIGH"},
+        {"check_key": "pay_context_sanity_check", "check_name": "Payroll Context Mismatch", "severity": "HIGH"},
         {"check_key": "comp_dual_value_conflict", "check_name": "Salary and Pay Rate Conflict", "severity": "HIGH"},
         {"check_key": "missing_standard_hours_hourly", "check_name": "Missing Standard Hours for Hourly Worker", "severity": "HIGH"},
         {"check_key": "salary_suspicious_default", "check_name": "Suspicious salary default values", "severity": "HIGH"},
@@ -188,6 +204,11 @@ def _load_config() -> dict:
         "salary_outlier_min_dept_size": int(cfg.get("salary_outlier_min_dept_size", DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE) or DEFAULT_SALARY_OUTLIER_MIN_DEPT_SIZE),
         "pay_equity_variance_threshold": float(cfg.get("pay_equity_variance_threshold", DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD) or DEFAULT_PAY_EQUITY_VARIANCE_THRESHOLD),
         "pay_equity_min_group_size": int(cfg.get("pay_equity_min_group_size", DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE) or DEFAULT_PAY_EQUITY_MIN_GROUP_SIZE),
+        "hourly_payrate_min": float(cfg.get("hourly_payrate_min", DEFAULT_HOURLY_PAYRATE_MIN) or DEFAULT_HOURLY_PAYRATE_MIN),
+        "hourly_payrate_max": float(cfg.get("hourly_payrate_max", DEFAULT_HOURLY_PAYRATE_MAX) or DEFAULT_HOURLY_PAYRATE_MAX),
+        "salaried_salary_min": float(cfg.get("salaried_salary_min", DEFAULT_SALARIED_SALARY_MIN) or DEFAULT_SALARIED_SALARY_MIN),
+        "salaried_salary_max": float(cfg.get("salaried_salary_max", DEFAULT_SALARIED_SALARY_MAX) or DEFAULT_SALARIED_SALARY_MAX),
+        "annualized_comp_mismatch_pct": float(cfg.get("annualized_comp_mismatch_pct", DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT) or DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT),
         "ghost_employee_check": bool(cfg.get("ghost_employee_check", True)),
         "manager_loop_check": bool(cfg.get("manager_loop_check", True)),
     }
@@ -269,6 +290,20 @@ def _classify_pay_type(value: object) -> tuple[str, bool]:
     if normalized in PAY_TYPE_SALARIED_VALUES:
         return "salaried", False
     return "", True
+
+
+def _job_title_column(df: pd.DataFrame) -> str | None:
+    for col in ["job_title", "title", "position_title", "position"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _leave_status_column(df: pd.DataFrame) -> str | None:
+    for col in ["leave_status", "absence_status", "loa_status"]:
+        if col in df.columns:
+            return col
+    return None
 
 
 def _first_present(df: pd.DataFrame, names: list[str]) -> str | None:
@@ -913,6 +948,265 @@ def _detect_missing_standard_hours_hourly(df: pd.DataFrame) -> list[dict]:
                 "impact": "Historical payroll records may be incomplete and harder to validate during migration.",
                 "recommended_action": "Populate standard hours where available before migration.",
                 "sample_rows": _sample_rows(df, medium_mask, extra=[status_col, pay_type_col, "payrate", standard_hours_col]),
+            }
+        )
+    return findings
+
+
+def _detect_hourly_implausible_payrate(df: pd.DataFrame, config: dict) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    job_title_col = _job_title_column(df)
+    if not status_col or not pay_type_col or "payrate" not in df.columns:
+        return findings
+
+    minimum = float(config["hourly_payrate_min"])
+    maximum = float(config["hourly_payrate_max"])
+    payrate_blank = _blank_mask(df["payrate"])
+    payrate_num = pd.to_numeric(df["payrate"], errors="coerce")
+    invalid_mask = pd.Series(False, index=df.index)
+    outlier_mask = pd.Series(False, index=df.index)
+
+    for idx in df.index:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or pay_class != "hourly" or payrate_blank.at[idx]:
+            continue
+        value = payrate_num.at[idx]
+        if pd.isna(value):
+            continue
+        if value <= 0:
+            invalid_mask.at[idx] = True
+        elif value < minimum or value > maximum:
+            outlier_mask.at[idx] = True
+
+    extra_cols = [status_col, pay_type_col, "payrate", "department"]
+    if job_title_col:
+        extra_cols.append(job_title_col)
+
+    if invalid_mask.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "hourly_implausible_payrate",
+                "check_name": "Implausible Hourly Pay Rate",
+                "field": "payrate",
+                "severity": "CRITICAL",
+                "count": int(invalid_mask.sum()),
+                "pct": round(invalid_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Hourly worker has a zero or negative pay rate.",
+                "impact": "Payroll will underpay, overpay, or fail because the worker pay rate is not valid for processing.",
+                "recommended_action": "Enter a valid positive hourly pay rate before payroll or migration.",
+                "sample_rows": _sample_rows(df, invalid_mask, extra=extra_cols),
+            }
+        )
+    if outlier_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "hourly_implausible_payrate",
+                "check_name": "Implausible Hourly Pay Rate",
+                "field": "payrate",
+                "severity": "HIGH",
+                "count": int(outlier_mask.sum()),
+                "pct": round(outlier_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": f"Hourly worker pay rate falls outside the configured review range of {minimum:g} to {maximum:g}.",
+                "impact": "Payroll may still process, but the rate is unusual enough that operators should verify the worker compensation before migration.",
+                "recommended_action": f"Review the hourly pay rate and confirm it belongs within the configured range of {minimum:g} to {maximum:g}.",
+                "sample_rows": _sample_rows(df, outlier_mask, extra=extra_cols),
+            }
+        )
+    return findings
+
+
+def _detect_salaried_implausible_salary(df: pd.DataFrame, config: dict) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    job_title_col = _job_title_column(df)
+    if not status_col or not pay_type_col or "salary" not in df.columns:
+        return findings
+
+    minimum = float(config["salaried_salary_min"])
+    maximum = float(config["salaried_salary_max"])
+    salary_blank = _blank_mask(df["salary"])
+    salary_num = pd.to_numeric(df["salary"], errors="coerce")
+    invalid_mask = pd.Series(False, index=df.index)
+    outlier_mask = pd.Series(False, index=df.index)
+
+    for idx in df.index:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or pay_class != "salaried" or salary_blank.at[idx]:
+            continue
+        value = salary_num.at[idx]
+        if pd.isna(value):
+            continue
+        if value <= 0:
+            invalid_mask.at[idx] = True
+        elif value < minimum or value > maximum:
+            outlier_mask.at[idx] = True
+
+    extra_cols = [status_col, pay_type_col, "salary", "department"]
+    if job_title_col:
+        extra_cols.append(job_title_col)
+
+    if invalid_mask.any():
+        findings.append(
+            {
+                "section": "CRITICAL_CHECKS",
+                "check_key": "salaried_implausible_salary",
+                "check_name": "Implausible Annual Salary",
+                "field": "salary",
+                "severity": "CRITICAL",
+                "count": int(invalid_mask.sum()),
+                "pct": round(invalid_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Salaried worker has a zero or negative annual salary.",
+                "impact": "Payroll will underpay, overpay, or fail because the annual salary is not valid for processing.",
+                "recommended_action": "Enter a valid positive annual salary before payroll or migration.",
+                "sample_rows": _sample_rows(df, invalid_mask, extra=extra_cols),
+            }
+        )
+    if outlier_mask.any():
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "salaried_implausible_salary",
+                "check_name": "Implausible Annual Salary",
+                "field": "salary",
+                "severity": "HIGH",
+                "count": int(outlier_mask.sum()),
+                "pct": round(outlier_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": f"Salaried worker annual salary falls outside the configured review range of {minimum:g} to {maximum:g}.",
+                "impact": "Payroll may still process, but the annual salary is unusual enough that operators should verify the worker compensation before migration.",
+                "recommended_action": f"Review the annual salary and confirm it belongs within the configured range of {minimum:g} to {maximum:g}.",
+                "sample_rows": _sample_rows(df, outlier_mask, extra=extra_cols),
+            }
+        )
+    return findings
+
+
+def _detect_annualized_comp_mismatch(df: pd.DataFrame, config: dict) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    standard_hours_col = _standard_hours_column(df)
+    if not status_col or not pay_type_col or not standard_hours_col or "salary" not in df.columns or "payrate" not in df.columns:
+        return findings
+
+    salary_blank = _blank_mask(df["salary"])
+    payrate_blank = _blank_mask(df["payrate"])
+    standard_hours_blank = _blank_mask(df[standard_hours_col])
+    salary_num = pd.to_numeric(df["salary"], errors="coerce")
+    payrate_num = pd.to_numeric(df["payrate"], errors="coerce")
+    standard_hours_num = pd.to_numeric(df[standard_hours_col], errors="coerce")
+    threshold_pct = float(config["annualized_comp_mismatch_pct"])
+    mismatch_mask = pd.Series(False, index=df.index)
+
+    annualized_pay = pd.Series([float("nan")] * len(df), index=df.index)
+    annualized_difference = pd.Series([float("nan")] * len(df), index=df.index)
+
+    for idx in df.index:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or not pay_class:
+            continue
+        if salary_blank.at[idx] or payrate_blank.at[idx] or standard_hours_blank.at[idx]:
+            continue
+        salary_value = salary_num.at[idx]
+        payrate_value = payrate_num.at[idx]
+        standard_hours_value = standard_hours_num.at[idx]
+        if pd.isna(salary_value) or pd.isna(payrate_value) or pd.isna(standard_hours_value):
+            continue
+        if salary_value <= 0 or payrate_value <= 0 or standard_hours_value <= 0:
+            continue
+
+        annualized_value = payrate_value * standard_hours_value * 52
+        difference_value = abs(annualized_value - salary_value)
+        base_value = max(abs(salary_value), 1.0)
+        mismatch_pct = difference_value / base_value
+
+        annualized_pay.at[idx] = annualized_value
+        annualized_difference.at[idx] = difference_value
+        if mismatch_pct >= threshold_pct:
+            mismatch_mask.at[idx] = True
+
+    if mismatch_mask.any():
+        temp = df.copy()
+        temp["annualized_pay"] = annualized_pay.map(lambda v: "" if pd.isna(v) else f"{v:.2f}")
+        temp["annualized_difference"] = annualized_difference.map(lambda v: "" if pd.isna(v) else f"{v:.2f}")
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "annualized_comp_mismatch",
+                "check_name": "Annualized Compensation Mismatch",
+                "field": pay_type_col,
+                "severity": "HIGH",
+                "count": int(mismatch_mask.sum()),
+                "pct": round(mismatch_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": f"Salary and pay rate do not align when annualized using pay rate multiplied by standard hours multiplied by 52, beyond the configured mismatch threshold of {threshold_pct:.0%}.",
+                "impact": "Payroll teams may migrate inconsistent compensation values that calculate to materially different annual amounts.",
+                "recommended_action": "Review salary, pay rate, and standard hours together and confirm which values are correct before payroll or migration.",
+                "sample_rows": _sample_rows(
+                    temp,
+                    mismatch_mask,
+                    extra=[status_col, pay_type_col, "salary", "payrate", standard_hours_col, "annualized_pay", "annualized_difference"],
+                ),
+            }
+        )
+    return findings
+
+
+def _detect_pay_context_sanity_check(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    pay_type_col = _pay_type_column(df)
+    leave_status_col = _leave_status_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not pay_type_col or not leave_status_col or ("salary" not in df.columns and "payrate" not in df.columns):
+        return findings
+
+    salary_blank = _blank_mask(df["salary"]) if "salary" in df.columns else pd.Series([True] * len(df), index=df.index)
+    payrate_blank = _blank_mask(df["payrate"]) if "payrate" in df.columns else pd.Series([True] * len(df), index=df.index)
+    comp_present = ~salary_blank | ~payrate_blank
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    leave_statuses = df[leave_status_col].astype(str).str.strip().str.lower()
+
+    active_leave_terms = {"active", "open", "working"}
+    inactive_leave_terms = {"terminated", "inactive", "leave", "leave_of_absence", "loa", "suspended"}
+    high_mask = pd.Series(False, index=df.index)
+
+    for idx in df.index[comp_present.fillna(False)]:
+        pay_class, invalid = _classify_pay_type(df.at[idx, pay_type_col])
+        if invalid or not pay_class:
+            continue
+        status_value = statuses.at[idx]
+        leave_value = leave_statuses.at[idx]
+        if not leave_value:
+            continue
+        if status_value == "active" and leave_value in inactive_leave_terms:
+            high_mask.at[idx] = True
+        elif status_value in {"terminated", "inactive"} and leave_value in active_leave_terms:
+            high_mask.at[idx] = True
+
+    if high_mask.any():
+        extra_cols = [status_col, pay_type_col, "salary", "payrate"]
+        if "standard_hours" in df.columns:
+            extra_cols.append("standard_hours")
+        if term_col:
+            extra_cols.append(term_col)
+        extra_cols.append(leave_status_col)
+        findings.append(
+            {
+                "section": "PAYROLL_CHECKS",
+                "check_key": "pay_context_sanity_check",
+                "check_name": "Payroll Context Mismatch",
+                "field": pay_type_col,
+                "severity": "HIGH",
+                "count": int(high_mask.sum()),
+                "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+                "description": "Payroll context fields disagree in a way that suggests the worker compensation setup should be reviewed before migration.",
+                "impact": "Teams may migrate compensation onto the wrong worker status or leave context, creating payroll setup risk.",
+                "recommended_action": "Review worker status, leave status, and compensation together before payroll or migration.",
+                "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
             }
         )
     return findings
@@ -2041,6 +2335,10 @@ def run_internal_audit(
     active_zero_findings = _detect_active_zero_salary(df_norm)
     pay_type_findings = _detect_pay_type_missing_or_invalid(df_norm)
     compensation_type_findings = _detect_compensation_type_mismatch(df_norm)
+    hourly_payrate_findings = _detect_hourly_implausible_payrate(df_norm, config)
+    salaried_salary_findings = _detect_salaried_implausible_salary(df_norm, config)
+    annualized_comp_findings = _detect_annualized_comp_mismatch(df_norm, config)
+    pay_context_findings = _detect_pay_context_sanity_check(df_norm)
     dual_comp_findings = _detect_comp_dual_value_conflict(df_norm)
     missing_standard_hours_findings = _detect_missing_standard_hours_hourly(df_norm)
     invalid_date_logic_findings = _detect_invalid_date_logic(df_norm)
@@ -2071,6 +2369,10 @@ def run_internal_audit(
         + active_zero_findings
         + pay_type_findings
         + compensation_type_findings
+        + hourly_payrate_findings
+        + salaried_salary_findings
+        + annualized_comp_findings
+        + pay_context_findings
         + dual_comp_findings
         + missing_standard_hours_findings
         + invalid_date_logic_findings

@@ -112,6 +112,7 @@ _DEFAULT_POLICY: dict = {
         "hourly_payrate_max": 250.0,
         "salaried_salary_min": 10000.0,
         "salaried_salary_max": 1000000.0,
+        "annualized_comp_mismatch_pct": 0.10,
         "salary_outlier_threshold": 2.5,
         "salary_outlier_min_dept_size": 5,
         "pay_equity_variance_threshold": 0.30,
@@ -278,6 +279,7 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
         hourly_payrate_max (float)
         salaried_salary_min (float)
         salaried_salary_max (float)
+        annualized_comp_mismatch_pct (float)
         salary_outlier_threshold (float)
         salary_outlier_min_dept_size (int)
         pay_equity_variance_threshold (float)
@@ -299,6 +301,7 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
             "hourly_payrate_max": 250.0,
             "salaried_salary_min": 10000.0,
             "salaried_salary_max": 1000000.0,
+            "annualized_comp_mismatch_pct": 0.10,
             "salary_outlier_threshold": 2.5,
             "salary_outlier_min_dept_size": 5,
             "pay_equity_variance_threshold": 0.30,

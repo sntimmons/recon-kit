@@ -1,0 +1,10 @@
+worker_id,first_name,last_name,status,pay_type,salary,payrate,standard_hours,department,job_title,hire_date,termination_date,leave_status
+AM3001,Ava,Brooks,active,salaried,78000,20,40,Finance,Analyst,2021-02-10,,active
+AM3002,Ben,Carter,active,hourly,52000,18,40,Operations,Lead Technician,2020-08-14,,active
+AM3003,Cara,Diaz,active,salaried,100000,30,35,Sales,Manager,2019-04-22,,active
+PC3001,Drew,Ellis,active,hourly,,25,40,Operations,Technician,2022-07-18,,terminated
+PC3002,Elle,Frost,terminated,salaried,90000,,40,HR,HR Business Partner,2018-03-05,2024-05-01,active
+PC3003,Finn,Gray,inactive,hourly,,22,40,Operations,Clerk,2020-11-09,2024-04-15,active
+CL3001,Gia,Hart,active,hourly,,25,40,Operations,Assembler,2023-01-12,,active
+CL3002,Hugo,Ivers,active,salaried,88000,,40,Finance,Senior Analyst,2021-06-28,,active
+SK3001,Ivy,Jones,active,salaried,91000,,40,Finance,Accountant,2022-09-19,,

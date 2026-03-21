@@ -62,10 +62,13 @@ CONTEXT_COLUMNS = [
     "Department",
     "Job Title",
     "Status",
+    "Leave Status",
     "Pay Type",
     "Salary",
     "Payrate",
     "Standard Hours",
+    "Annualized Pay",
+    "Annualized Difference",
     "Hire Date",
     "Termination Date",
     "Email",
@@ -94,6 +97,7 @@ REVIEW_REQUIRED_PRIORITY = [
     "Department",
     "Job Title",
     "Status",
+    "Leave Status",
     "Pay Type",
     "Salary",
     "Payrate",
@@ -232,6 +236,7 @@ def _context(row: pd.Series) -> dict:
         "Department":        _get(row, "department", "district"),
         "Job Title":         _get(row, "job_title", "title", "position_title", "position"),
         "Status":            _get(row, "worker_status", "status"),
+        "Leave Status":      _get(row, "leave_status", "absence_status", "loa_status"),
         "Pay Type":          _get(row, "pay_type", "worker_type"),
         "Salary":            _get(row, "salary"),
         "Payrate":           _get(row, "payrate"),
@@ -303,11 +308,16 @@ def _display_name(column: str) -> str:
         "position": "Job Title",
         "worker_status": "Status",
         "status": "Status",
+        "leave_status": "Leave Status",
+        "absence_status": "Leave Status",
+        "loa_status": "Leave Status",
         "pay_type": "Pay Type",
         "worker_type": "Pay Type",
         "salary": "Salary",
         "payrate": "Payrate",
         "standard_hours": "Standard Hours",
+        "annualized_pay": "Annualized Pay",
+        "annualized_difference": "Annualized Difference",
         "hire_date": "Hire Date",
         "start_date": "Hire Date",
         "date_hired": "Hire Date",
@@ -989,6 +999,7 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
     hourly_max = float(config.get("hourly_payrate_max", ia.DEFAULT_HOURLY_PAYRATE_MAX))
     salary_min = float(config.get("salaried_salary_min", ia.DEFAULT_SALARIED_SALARY_MIN))
     salary_max = float(config.get("salaried_salary_max", ia.DEFAULT_SALARIED_SALARY_MAX))
+    annualized_threshold_pct = float(config.get("annualized_comp_mismatch_pct", getattr(ia, "DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT", 0.10)))
 
     # --- active_zero_salary (CRITICAL) full mask ---
     if status_col and (has_salary or has_payrate):
@@ -1157,6 +1168,78 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                     current_value=f"Salary: {_safe(source_row.get('salary', ''))}",
                     fix_needed=f"Review the salary and confirm it belongs within the configured range of {salary_min:g} to {salary_max:g}.",
                 ))
+
+    # --- annualized_comp_mismatch ---
+    if pay_type_col and standard_hours_col and has_salary and has_payrate:
+        standard_hours_blank = ia._blank_mask(df[standard_hours_col])
+        standard_hours_vals = pd.to_numeric(df[standard_hours_col], errors="coerce")
+        for orig_idx in df.index:
+            source_row = df.loc[orig_idx]
+            pay_class, invalid = ia._classify_pay_type(source_row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+            if invalid or not pay_class or sal_blank.at[orig_idx] or pay_blank.at[orig_idx] or standard_hours_blank.at[orig_idx]:
+                continue
+            salary_value = sal_vals.at[orig_idx]
+            payrate_value = pay_vals.at[orig_idx]
+            standard_hours_value = standard_hours_vals.at[orig_idx]
+            if pd.isna(salary_value) or pd.isna(payrate_value) or pd.isna(standard_hours_value):
+                continue
+            if salary_value <= 0 or payrate_value <= 0 or standard_hours_value <= 0:
+                continue
+
+            annualized_pay = payrate_value * standard_hours_value * 52
+            annualized_difference = abs(annualized_pay - salary_value)
+            mismatch_pct = annualized_difference / max(abs(salary_value), 1.0)
+            if mismatch_pct < annualized_threshold_pct:
+                continue
+
+            row = _make_row(
+                source_row, orig_idx,
+                issue_name="Annualized Compensation Mismatch",
+                severity="HIGH",
+                why_flagged=f"Salary and annualized payrate differ by at least {annualized_threshold_pct:.0%}.",
+                current_value=f"Salary: {_safe(source_row.get('salary', ''))} | Payrate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, ''))}",
+                fix_needed="Review salary, payrate, and standard hours together before payroll or migration.",
+            )
+            row["Annualized Pay"] = f"{annualized_pay:.2f}"
+            row["Annualized Difference"] = f"{annualized_difference:.2f}"
+            rows.append(row)
+
+    # --- pay_context_sanity_check ---
+    leave_status_col = ia._leave_status_column(df) if hasattr(ia, "_leave_status_column") else ia._first_present(df, ["leave_status", "absence_status", "loa_status"])
+    term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
+    if status_col and pay_type_col and leave_status_col and (has_salary or has_payrate):
+        leave_statuses = df[leave_status_col].astype(str).str.strip().str.lower()
+        active_leave_terms = {"active", "open", "working"}
+        inactive_leave_terms = {"terminated", "inactive", "leave", "leave_of_absence", "loa", "suspended"}
+        for orig_idx in df.index[comp_present.fillna(False)]:
+            source_row = df.loc[orig_idx]
+            pay_class, invalid = ia._classify_pay_type(source_row.get(pay_type_col, "")) if hasattr(ia, "_classify_pay_type") else ("", False)
+            if invalid or not pay_class:
+                continue
+            status_value = statuses.at[orig_idx]
+            leave_value = leave_statuses.at[orig_idx]
+            if not leave_value:
+                continue
+            mismatch = (
+                (status_value == "active" and leave_value in inactive_leave_terms)
+                or (status_value in {"terminated", "inactive"} and leave_value in active_leave_terms)
+            )
+            if not mismatch:
+                continue
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Payroll Context Mismatch",
+                severity="HIGH",
+                why_flagged="Worker status, leave status, and compensation context disagree in a way that should be reviewed.",
+                current_value=(
+                    f"Status: {_safe(source_row.get(status_col, ''))} | "
+                    f"Leave Status: {_safe(source_row.get(leave_status_col, ''))} | "
+                    f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | "
+                    f"Salary: {_safe(source_row.get('salary', ''))} | "
+                    f"Payrate: {_safe(source_row.get('payrate', ''))}"
+                ),
+                fix_needed="Review worker status, leave status, and compensation together before payroll or migration.",
+            ))
 
     # --- salary_suspicious_default + suspicious_round_salary from JSON samples ---
     sample_keys = {"salary_suspicious_default", "suspicious_round_salary"}
