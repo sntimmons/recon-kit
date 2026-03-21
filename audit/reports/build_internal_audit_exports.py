@@ -63,6 +63,11 @@ CONTEXT_COLUMNS = [
     "Job Title",
     "Status",
     "Leave Status",
+    "Benefits Eligible",
+    "Benefit Plan",
+    "Coverage Level",
+    "Dependent Count",
+    "Benefits Start Date",
     "Pay Type",
     "Salary",
     "Payrate",
@@ -98,6 +103,11 @@ REVIEW_REQUIRED_PRIORITY = [
     "Job Title",
     "Status",
     "Leave Status",
+    "Benefits Eligible",
+    "Benefit Plan",
+    "Coverage Level",
+    "Dependent Count",
+    "Benefits Start Date",
     "Pay Type",
     "Salary",
     "Payrate",
@@ -237,6 +247,11 @@ def _context(row: pd.Series) -> dict:
         "Job Title":         _get(row, "job_title", "title", "position_title", "position"),
         "Status":            _get(row, "worker_status", "status"),
         "Leave Status":      _get(row, "leave_status", "absence_status", "loa_status"),
+        "Benefits Eligible": _get(row, "benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"),
+        "Benefit Plan":      _get(row, "benefit_plan", "benefits_plan", "benefit_plan_name", "plan_name"),
+        "Coverage Level":    _get(row, "coverage_level", "benefit_coverage_level", "coverage_tier"),
+        "Dependent Count":   _get(row, "dependent_count", "dependents", "covered_dependents"),
+        "Benefits Start Date": _get(row, "benefits_start_date", "benefit_start_date", "coverage_start_date"),
         "Pay Type":          _get(row, "pay_type", "worker_type"),
         "Salary":            _get(row, "salary"),
         "Payrate":           _get(row, "payrate"),
@@ -311,6 +326,22 @@ def _display_name(column: str) -> str:
         "leave_status": "Leave Status",
         "absence_status": "Leave Status",
         "loa_status": "Leave Status",
+        "benefits_eligible": "Benefits Eligible",
+        "benefit_eligible": "Benefits Eligible",
+        "benefits_eligibility": "Benefits Eligible",
+        "benefit_eligibility": "Benefits Eligible",
+        "benefit_plan": "Benefit Plan",
+        "benefits_plan": "Benefit Plan",
+        "benefit_plan_name": "Benefit Plan",
+        "coverage_level": "Coverage Level",
+        "benefit_coverage_level": "Coverage Level",
+        "coverage_tier": "Coverage Level",
+        "dependent_count": "Dependent Count",
+        "dependents": "Dependent Count",
+        "covered_dependents": "Dependent Count",
+        "benefits_start_date": "Benefits Start Date",
+        "benefit_start_date": "Benefits Start Date",
+        "coverage_start_date": "Benefits Start Date",
         "pay_type": "Pay Type",
         "worker_type": "Pay Type",
         "salary": "Salary",
@@ -1482,6 +1513,106 @@ def _build_data_quality(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 why_flagged=f"{field_label} is blank on this record.",
                 current_value=f"Blank {field_label}",
                 fix_needed=f"Populate {field_label} from the source system.",
+            ))
+
+    status_col = ia._status_column(df)
+    eligible_col = ia._benefits_eligible_column(df) if hasattr(ia, "_benefits_eligible_column") else ia._first_present(df, ["benefits_eligible"])
+    plan_col = ia._benefit_plan_column(df) if hasattr(ia, "_benefit_plan_column") else ia._first_present(df, ["benefit_plan"])
+    coverage_col = ia._coverage_level_column(df) if hasattr(ia, "_coverage_level_column") else ia._first_present(df, ["coverage_level"])
+    dependent_col = ia._dependent_count_column(df) if hasattr(ia, "_dependent_count_column") else ia._first_present(df, ["dependent_count"])
+    term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
+    statuses = df[status_col].astype(str).str.strip().str.lower() if status_col else pd.Series("", index=df.index)
+
+    # --- benefits_enrolled_not_eligible ---
+    if status_col and eligible_col and plan_col:
+        for orig_idx in df.index:
+            source_row = df.loc[orig_idx]
+            eligibility = ia._classify_benefits_eligible(source_row.get(eligible_col, "")) if hasattr(ia, "_classify_benefits_eligible") else ""
+            if eligibility != "not_eligible" or not ia._benefit_plan_present(source_row.get(plan_col, "")):
+                continue
+            severity = "CRITICAL" if statuses.at[orig_idx] == "active" else "HIGH"
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Enrolled in Benefits but Not Eligible",
+                severity=severity,
+                why_flagged="Worker is enrolled in benefits but marked as not eligible.",
+                current_value=f"Benefits Eligible: {_safe(source_row.get(eligible_col, ''))} | Benefit Plan: {_safe(source_row.get(plan_col, ''))}",
+                fix_needed="Remove benefit enrollment or correct eligibility status.",
+            ))
+
+    # --- benefits_eligible_not_enrolled ---
+    if status_col and eligible_col and plan_col:
+        for orig_idx in df.index:
+            source_row = df.loc[orig_idx]
+            eligibility = ia._classify_benefits_eligible(source_row.get(eligible_col, "")) if hasattr(ia, "_classify_benefits_eligible") else ""
+            if eligibility != "eligible" or ia._benefit_plan_present(source_row.get(plan_col, "")):
+                continue
+            severity = "HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM"
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Eligible for Benefits but Not Enrolled",
+                severity=severity,
+                why_flagged="Worker is eligible for benefits but has no enrollment.",
+                current_value=f"Benefits Eligible: {_safe(source_row.get(eligible_col, ''))} | Benefit Plan: Missing",
+                fix_needed="Confirm if employee should be enrolled or update eligibility.",
+            ))
+
+    # --- invalid_coverage_level ---
+    if status_col and plan_col and coverage_col:
+        for orig_idx in df.index:
+            source_row = df.loc[orig_idx]
+            if not ia._benefit_plan_present(source_row.get(plan_col, "")):
+                continue
+            coverage_class = ia._classify_coverage_level(source_row.get(coverage_col, "")) if hasattr(ia, "_classify_coverage_level") else ""
+            if coverage_class not in {"", "invalid"}:
+                continue
+            severity = "HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM"
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Invalid Coverage Level",
+                severity=severity,
+                why_flagged="Coverage level is missing or not recognized.",
+                current_value=f"Benefit Plan: {_safe(source_row.get(plan_col, ''))} | Coverage Level: {_safe(source_row.get(coverage_col, '')) or 'Missing'}",
+                fix_needed="Assign a valid coverage level for the selected plan.",
+            ))
+
+    # --- dependents_without_coverage ---
+    if plan_col and coverage_col and dependent_col:
+        dependent_vals = pd.to_numeric(df[dependent_col], errors="coerce").fillna(0)
+        for orig_idx in df.index:
+            source_row = df.loc[orig_idx]
+            if not ia._benefit_plan_present(source_row.get(plan_col, "")) or dependent_vals.at[orig_idx] <= 0:
+                continue
+            coverage_class = ia._classify_coverage_level(source_row.get(coverage_col, "")) if hasattr(ia, "_classify_coverage_level") else ""
+            if coverage_class != "employee_only":
+                continue
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Dependents Without Proper Coverage",
+                severity="HIGH",
+                why_flagged="Dependents are present but coverage does not include them.",
+                current_value=(
+                    f"Benefit Plan: {_safe(source_row.get(plan_col, ''))} | "
+                    f"Coverage Level: {_safe(source_row.get(coverage_col, ''))} | "
+                    f"Dependent Count: {_safe(source_row.get(dependent_col, ''))}"
+                ),
+                fix_needed="Update coverage level to include dependents if applicable.",
+            ))
+
+    # --- benefits_after_termination ---
+    if plan_col and term_col:
+        term_blank = ia._blank_mask(df[term_col])
+        for orig_idx in df.index[~term_blank.fillna(True)]:
+            source_row = df.loc[orig_idx]
+            if not ia._benefit_plan_present(source_row.get(plan_col, "")):
+                continue
+            rows.append(_make_row(
+                source_row, orig_idx,
+                issue_name="Benefits Active After Termination",
+                severity="CRITICAL",
+                why_flagged="Benefits appear active after employee termination.",
+                current_value=f"Benefit Plan: {_safe(source_row.get(plan_col, ''))} | Termination Date: {_safe(source_row.get(term_col, ''))}",
+                fix_needed="End benefits coverage as of termination date.",
             ))
 
     if not rows:

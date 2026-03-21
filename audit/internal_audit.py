@@ -45,6 +45,31 @@ DEFAULT_SALARIED_SALARY_MIN = 10000.00
 DEFAULT_SALARIED_SALARY_MAX = 1000000.00
 DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT = 0.10
 
+BENEFITS_ELIGIBLE_TRUE_VALUES = {"true", "yes", "y", "1", "eligible", "enrolled"}
+BENEFITS_ELIGIBLE_FALSE_VALUES = {"false", "no", "n", "0", "not eligible", "ineligible"}
+BENEFIT_PLAN_EMPTY_VALUES = {"", "none", "no plan", "not enrolled", "waived", "waive", "declined", "decline"}
+EMPLOYEE_ONLY_COVERAGE_VALUES = {
+    "employee only",
+    "employee_only",
+    "employee",
+    "ee only",
+    "ee_only",
+    "self",
+}
+DEPENDENT_COVERAGE_VALUES = {
+    "employee spouse",
+    "employee_spouse",
+    "spouse",
+    "employee children",
+    "employee_children",
+    "children",
+    "child",
+    "family",
+    "employee family",
+    "employee_family",
+}
+VALID_COVERAGE_LEVEL_VALUES = EMPLOYEE_ONLY_COVERAGE_VALUES | DEPENDENT_COVERAGE_VALUES
+
 SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 GATE_BLOCKED_MESSAGE = "CRITICAL issues detected. Dataset is NOT safe for payroll or production use."
 GATE_OVERRIDDEN_MESSAGE = "WARNING: Gate overridden. CRITICAL issues still exist."
@@ -96,6 +121,22 @@ ALIASES: dict[str, str] = {
     "leave_status": "leave_status",
     "absence_status": "leave_status",
     "loa_status": "leave_status",
+    "benefits_eligible": "benefits_eligible",
+    "benefit_eligible": "benefits_eligible",
+    "benefits_eligibility": "benefits_eligible",
+    "benefit_eligibility": "benefits_eligible",
+    "benefit_plan": "benefit_plan",
+    "benefits_plan": "benefit_plan",
+    "benefit_plan_name": "benefit_plan",
+    "coverage_level": "coverage_level",
+    "benefit_coverage_level": "coverage_level",
+    "coverage_tier": "coverage_level",
+    "dependent_count": "dependent_count",
+    "dependents": "dependent_count",
+    "covered_dependents": "dependent_count",
+    "benefits_start_date": "benefits_start_date",
+    "benefit_start_date": "benefits_start_date",
+    "coverage_start_date": "benefits_start_date",
     "manager_id": "manager_id",
     "manager_worker_id": "manager_id",
     "first_name": "first_name",
@@ -158,6 +199,11 @@ def _check_catalog() -> list[dict]:
         {"check_key": "salaried_implausible_salary", "check_name": "Implausible Annual Salary", "severity": "CRITICAL"},
         {"check_key": "annualized_comp_mismatch", "check_name": "Annualized Compensation Mismatch", "severity": "HIGH"},
         {"check_key": "pay_context_sanity_check", "check_name": "Payroll Context Mismatch", "severity": "HIGH"},
+        {"check_key": "benefits_enrolled_not_eligible", "check_name": "Enrolled in Benefits but Not Eligible", "severity": "CRITICAL"},
+        {"check_key": "benefits_eligible_not_enrolled", "check_name": "Eligible for Benefits but Not Enrolled", "severity": "HIGH"},
+        {"check_key": "invalid_coverage_level", "check_name": "Invalid Coverage Level", "severity": "HIGH"},
+        {"check_key": "dependents_without_coverage", "check_name": "Dependents Without Proper Coverage", "severity": "HIGH"},
+        {"check_key": "benefits_after_termination", "check_name": "Benefits Active After Termination", "severity": "CRITICAL"},
         {"check_key": "comp_dual_value_conflict", "check_name": "Salary and Pay Rate Conflict", "severity": "HIGH"},
         {"check_key": "missing_standard_hours_hourly", "check_name": "Missing Standard Hours for Hourly Worker", "severity": "HIGH"},
         {"check_key": "salary_suspicious_default", "check_name": "Suspicious salary default values", "severity": "HIGH"},
@@ -304,6 +350,68 @@ def _leave_status_column(df: pd.DataFrame) -> str | None:
         if col in df.columns:
             return col
     return None
+
+
+def _benefits_eligible_column(df: pd.DataFrame) -> str | None:
+    for col in ["benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _benefit_plan_column(df: pd.DataFrame) -> str | None:
+    for col in ["benefit_plan", "benefits_plan", "benefit_plan_name", "plan_name"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _coverage_level_column(df: pd.DataFrame) -> str | None:
+    for col in ["coverage_level", "benefit_coverage_level", "coverage_tier"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _dependent_count_column(df: pd.DataFrame) -> str | None:
+    for col in ["dependent_count", "dependents", "covered_dependents"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _benefits_start_date_column(df: pd.DataFrame) -> str | None:
+    for col in ["benefits_start_date", "benefit_start_date", "coverage_start_date"]:
+        if col in df.columns:
+            return col
+    return None
+
+
+def _classify_benefits_eligible(value: object) -> str:
+    normalized = _norm_lower(value)
+    if normalized in BENEFITS_ELIGIBLE_TRUE_VALUES:
+        return "eligible"
+    if normalized in BENEFITS_ELIGIBLE_FALSE_VALUES:
+        return "not_eligible"
+    return ""
+
+
+def _benefit_plan_present(value: object) -> bool:
+    normalized = _norm_lower(value)
+    return normalized not in BENEFIT_PLAN_EMPTY_VALUES
+
+
+def _classify_coverage_level(value: object) -> str:
+    normalized = _norm_lower(value).replace("-", "_")
+    normalized = normalized.replace("/", " ").strip()
+    normalized = " ".join(normalized.split())
+    if not normalized:
+        return ""
+    if normalized in EMPLOYEE_ONLY_COVERAGE_VALUES:
+        return "employee_only"
+    if normalized in DEPENDENT_COVERAGE_VALUES:
+        return "includes_dependents"
+    return "invalid"
 
 
 def _first_present(df: pd.DataFrame, names: list[str]) -> str | None:
@@ -1209,6 +1317,270 @@ def _detect_pay_context_sanity_check(df: pd.DataFrame) -> list[dict]:
                 "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
             }
         )
+    return findings
+
+
+def _detect_benefits_enrolled_not_eligible(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    eligible_col = _benefits_eligible_column(df)
+    plan_col = _benefit_plan_column(df)
+    coverage_col = _coverage_level_column(df)
+    dependent_col = _dependent_count_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not eligible_col or not plan_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    critical_mask = pd.Series(False, index=df.index)
+    high_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        eligibility = _classify_benefits_eligible(df.at[idx, eligible_col])
+        if eligibility != "not_eligible" or not _benefit_plan_present(df.at[idx, plan_col]):
+            continue
+        if statuses.at[idx] == "active":
+            critical_mask.at[idx] = True
+        else:
+            high_mask.at[idx] = True
+
+    extra_cols = [status_col, eligible_col, plan_col]
+    if coverage_col:
+        extra_cols.append(coverage_col)
+    if dependent_col:
+        extra_cols.append(dependent_col)
+    if term_col:
+        extra_cols.append(term_col)
+
+    if critical_mask.any():
+        findings.append({
+            "section": "CRITICAL_CHECKS",
+            "check_key": "benefits_enrolled_not_eligible",
+            "check_name": "Enrolled in Benefits but Not Eligible",
+            "field": plan_col,
+            "severity": "CRITICAL",
+            "count": int(critical_mask.sum()),
+            "pct": round(critical_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Active worker is enrolled in benefits but marked as not eligible.",
+            "impact": "Benefits costs may be incurred for employees who should not be covered, and carrier enrollments may be wrong.",
+            "recommended_action": "Remove benefit enrollment or correct eligibility status.",
+            "sample_rows": _sample_rows(df, critical_mask, extra=extra_cols),
+        })
+    if high_mask.any():
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "benefits_enrolled_not_eligible",
+            "check_name": "Enrolled in Benefits but Not Eligible",
+            "field": plan_col,
+            "severity": "HIGH",
+            "count": int(high_mask.sum()),
+            "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Non-active worker is enrolled in benefits but marked as not eligible.",
+            "impact": "Historical benefits records may be wrong and can create carrier or billing confusion.",
+            "recommended_action": "Remove benefit enrollment or correct eligibility status.",
+            "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
+        })
+    return findings
+
+
+def _detect_benefits_eligible_not_enrolled(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    eligible_col = _benefits_eligible_column(df)
+    plan_col = _benefit_plan_column(df)
+    coverage_col = _coverage_level_column(df)
+    dependent_col = _dependent_count_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not eligible_col or not plan_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    high_mask = pd.Series(False, index=df.index)
+    medium_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        eligibility = _classify_benefits_eligible(df.at[idx, eligible_col])
+        if eligibility != "eligible" or _benefit_plan_present(df.at[idx, plan_col]):
+            continue
+        if statuses.at[idx] == "active":
+            high_mask.at[idx] = True
+        else:
+            medium_mask.at[idx] = True
+
+    extra_cols = [status_col, eligible_col, plan_col]
+    if coverage_col:
+        extra_cols.append(coverage_col)
+    if dependent_col:
+        extra_cols.append(dependent_col)
+    if term_col:
+        extra_cols.append(term_col)
+
+    if high_mask.any():
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "benefits_eligible_not_enrolled",
+            "check_name": "Eligible for Benefits but Not Enrolled",
+            "field": plan_col,
+            "severity": "HIGH",
+            "count": int(high_mask.sum()),
+            "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Active worker is eligible for benefits but has no enrollment.",
+            "impact": "Eligible employees may miss coverage or produce enrollment exceptions during migration.",
+            "recommended_action": "Confirm if the employee should be enrolled or update eligibility.",
+            "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
+        })
+    if medium_mask.any():
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "benefits_eligible_not_enrolled",
+            "check_name": "Eligible for Benefits but Not Enrolled",
+            "field": plan_col,
+            "severity": "MEDIUM",
+            "count": int(medium_mask.sum()),
+            "pct": round(medium_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Non-active worker is marked eligible for benefits but has no enrollment.",
+            "impact": "Historical eligibility and enrollment records may be incomplete.",
+            "recommended_action": "Confirm if the employee should be enrolled or update eligibility.",
+            "sample_rows": _sample_rows(df, medium_mask, extra=extra_cols),
+        })
+    return findings
+
+
+def _detect_invalid_coverage_level(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    plan_col = _benefit_plan_column(df)
+    coverage_col = _coverage_level_column(df)
+    dependent_col = _dependent_count_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not plan_col or not coverage_col:
+        return findings
+
+    statuses = df[status_col].astype(str).str.strip().str.lower()
+    high_mask = pd.Series(False, index=df.index)
+    medium_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        if not _benefit_plan_present(df.at[idx, plan_col]):
+            continue
+        coverage_class = _classify_coverage_level(df.at[idx, coverage_col])
+        if coverage_class not in {"", "invalid"}:
+            continue
+        if statuses.at[idx] == "active":
+            high_mask.at[idx] = True
+        else:
+            medium_mask.at[idx] = True
+
+    extra_cols = [status_col, plan_col, coverage_col]
+    if dependent_col:
+        extra_cols.append(dependent_col)
+    if term_col:
+        extra_cols.append(term_col)
+
+    if high_mask.any():
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "invalid_coverage_level",
+            "check_name": "Invalid Coverage Level",
+            "field": coverage_col,
+            "severity": "HIGH",
+            "count": int(high_mask.sum()),
+            "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Active worker has a benefit plan but coverage level is blank or not recognized.",
+            "impact": "Carrier enrollment may fail or assign the wrong coverage tier.",
+            "recommended_action": "Assign a valid coverage level for the selected plan.",
+            "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
+        })
+    if medium_mask.any():
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "invalid_coverage_level",
+            "check_name": "Invalid Coverage Level",
+            "field": coverage_col,
+            "severity": "MEDIUM",
+            "count": int(medium_mask.sum()),
+            "pct": round(medium_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Non-active worker has a benefit plan but coverage level is blank or not recognized.",
+            "impact": "Historical benefits coverage may be incomplete or inconsistent.",
+            "recommended_action": "Assign a valid coverage level for the selected plan.",
+            "sample_rows": _sample_rows(df, medium_mask, extra=extra_cols),
+        })
+    return findings
+
+
+def _detect_dependents_without_coverage(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    status_col = _status_column(df)
+    plan_col = _benefit_plan_column(df)
+    coverage_col = _coverage_level_column(df)
+    dependent_col = _dependent_count_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    if not status_col or not plan_col or not coverage_col or not dependent_col:
+        return findings
+
+    dependent_vals = pd.to_numeric(df[dependent_col], errors="coerce").fillna(0)
+    high_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        if not _benefit_plan_present(df.at[idx, plan_col]) or dependent_vals.at[idx] <= 0:
+            continue
+        if _classify_coverage_level(df.at[idx, coverage_col]) == "employee_only":
+            high_mask.at[idx] = True
+
+    if high_mask.any():
+        extra_cols = [status_col, plan_col, coverage_col, dependent_col]
+        if term_col:
+            extra_cols.append(term_col)
+        findings.append({
+            "section": "BENEFITS_CHECKS",
+            "check_key": "dependents_without_coverage",
+            "check_name": "Dependents Without Proper Coverage",
+            "field": coverage_col,
+            "severity": "HIGH",
+            "count": int(high_mask.sum()),
+            "pct": round(high_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Dependents are present but coverage level appears to be employee-only.",
+            "impact": "Dependents may be left off coverage or billed under the wrong tier.",
+            "recommended_action": "Update coverage level to include dependents if applicable.",
+            "sample_rows": _sample_rows(df, high_mask, extra=extra_cols),
+        })
+    return findings
+
+
+def _detect_benefits_after_termination(df: pd.DataFrame) -> list[dict]:
+    findings: list[dict] = []
+    plan_col = _benefit_plan_column(df)
+    term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
+    status_col = _status_column(df)
+    coverage_col = _coverage_level_column(df)
+    dependent_col = _dependent_count_column(df)
+    if not plan_col or not term_col:
+        return findings
+
+    term_blank = _blank_mask(df[term_col])
+    critical_mask = pd.Series(False, index=df.index)
+    for idx in df.index:
+        if term_blank.at[idx] or not _benefit_plan_present(df.at[idx, plan_col]):
+            continue
+        critical_mask.at[idx] = True
+
+    if critical_mask.any():
+        extra_cols = [plan_col, term_col]
+        if status_col:
+            extra_cols.insert(0, status_col)
+        if coverage_col:
+            extra_cols.append(coverage_col)
+        if dependent_col:
+            extra_cols.append(dependent_col)
+        findings.append({
+            "section": "CRITICAL_CHECKS",
+            "check_key": "benefits_after_termination",
+            "check_name": "Benefits Active After Termination",
+            "field": plan_col,
+            "severity": "CRITICAL",
+            "count": int(critical_mask.sum()),
+            "pct": round(critical_mask.sum() / len(df) * 100, 2) if len(df) else 0.0,
+            "description": "Benefits appear active after employee termination.",
+            "impact": "Benefits costs may continue after termination and coverage end dates may be wrong.",
+            "recommended_action": "End benefits coverage as of termination date.",
+            "sample_rows": _sample_rows(df, critical_mask, extra=extra_cols),
+        })
     return findings
 
 
@@ -2339,6 +2711,11 @@ def run_internal_audit(
     salaried_salary_findings = _detect_salaried_implausible_salary(df_norm, config)
     annualized_comp_findings = _detect_annualized_comp_mismatch(df_norm, config)
     pay_context_findings = _detect_pay_context_sanity_check(df_norm)
+    benefits_enrolled_not_eligible_findings = _detect_benefits_enrolled_not_eligible(df_norm)
+    benefits_eligible_not_enrolled_findings = _detect_benefits_eligible_not_enrolled(df_norm)
+    invalid_coverage_level_findings = _detect_invalid_coverage_level(df_norm)
+    dependents_without_coverage_findings = _detect_dependents_without_coverage(df_norm)
+    benefits_after_termination_findings = _detect_benefits_after_termination(df_norm)
     dual_comp_findings = _detect_comp_dual_value_conflict(df_norm)
     missing_standard_hours_findings = _detect_missing_standard_hours_hourly(df_norm)
     invalid_date_logic_findings = _detect_invalid_date_logic(df_norm)
@@ -2373,6 +2750,11 @@ def run_internal_audit(
         + salaried_salary_findings
         + annualized_comp_findings
         + pay_context_findings
+        + benefits_enrolled_not_eligible_findings
+        + benefits_eligible_not_enrolled_findings
+        + invalid_coverage_level_findings
+        + dependents_without_coverage_findings
+        + benefits_after_termination_findings
         + dual_comp_findings
         + missing_standard_hours_findings
         + invalid_date_logic_findings

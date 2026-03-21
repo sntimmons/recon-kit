@@ -1,0 +1,19 @@
+worker_id,first_name,last_name,status,hire_date,termination_date,benefits_eligible,benefit_plan,coverage_level,dependent_count,benefits_start_date
+BN1001,Ava,Brooks,active,2021-01-10,,false,Medical Gold,family,2,2021-02-01
+BN1002,Ben,Carter,inactive,2020-06-15,,false,Dental Basic,employee only,0,2020-07-01
+BN1003,Cara,Diaz,active,2022-03-20,,no,Vision Plus,employee only,0,2022-04-01
+BN1004,Drew,Ellis,active,2021-05-11,,true,,,,2021-06-01
+BN1005,Elle,Frost,inactive,2019-09-09,,true,,,,2019-10-01
+BN1006,Finn,Gray,active,2023-02-18,,yes,,,,2023-03-01
+BN1007,Gia,Hart,active,2020-04-25,,true,Medical Gold,,0,2020-05-01
+BN1008,Hugo,Ivers,inactive,2018-08-08,,true,Dental Basic,unknown,1,2018-09-01
+BN1009,Ivy,Jones,active,2022-11-14,,yes,Vision Plus,invalid tier,0,2022-12-01
+BN1010,Jack,King,active,2021-07-07,,true,Medical Gold,employee only,2,2021-08-01
+BN1011,Kara,Lane,active,2020-10-10,,true,Dental Basic,employee only,1,2020-11-01
+BN1012,Liam,Moss,active,2019-12-12,,yes,Vision Plus,ee only,3,2020-01-01
+BN1013,Mia,Nash,terminated,2017-03-03,2024-01-31,false,Medical Gold,family,2,2017-04-01
+BN1014,Noah,Owens,terminated,2018-06-06,2024-02-15,true,Dental Basic,employee only,0,2018-07-01
+BN1015,Pia,Price,inactive,2016-09-09,2023-12-01,false,Vision Plus,employee only,0,2016-10-01
+BN1016,Quinn,Reed,active,2021-11-11,,true,Medical Gold,family,2,2021-12-01
+BN1017,Ruby,Stone,active,2022-01-21,,true,Dental Basic,employee only,0,2022-02-01
+BN1018,Seth,Turner,inactive,2020-02-02,,false,,,,2020-03-01

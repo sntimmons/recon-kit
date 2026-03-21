@@ -124,6 +124,36 @@ _M = {
         "Review worker status, leave status, and compensation together before payroll or migration.",
         "Findings_Pay_Context",
     ),
+    "benefits_enrolled_not_eligible": (
+        "Enrolled in Benefits but Not Eligible",
+        "Benefits costs may be incurred for employees who should not be covered, and carrier enrollments may be wrong.",
+        "Remove benefit enrollment or correct eligibility status.",
+        "Findings_Ben_Not_Elig",
+    ),
+    "benefits_eligible_not_enrolled": (
+        "Eligible for Benefits but Not Enrolled",
+        "Eligible employees may miss coverage or produce enrollment exceptions during migration.",
+        "Confirm if the employee should be enrolled or update eligibility.",
+        "Findings_Ben_Not_Enrl",
+    ),
+    "invalid_coverage_level": (
+        "Invalid Coverage Level",
+        "Carrier enrollment may fail or assign the wrong coverage tier.",
+        "Assign a valid coverage level for the selected plan.",
+        "Findings_Ben_Coverage",
+    ),
+    "dependents_without_coverage": (
+        "Dependents Without Proper Coverage",
+        "Dependents may be left off coverage or billed under the wrong tier.",
+        "Update coverage level to include dependents if applicable.",
+        "Findings_Ben_Dependents",
+    ),
+    "benefits_after_termination": (
+        "Benefits Active After Termination",
+        "Benefits costs may continue after termination and coverage end dates may be wrong.",
+        "End benefits coverage as of termination date.",
+        "Findings_Ben_Post_Term",
+    ),
     "invalid_date_logic": (
         "Invalid Dates",
         "Service calculations, payroll timing, and benefits eligibility will produce wrong results.",
@@ -358,6 +388,22 @@ def _humanize(col: str) -> str:
         "loa_status": "Leave Status",
         "annualized_pay": "Annualized Pay",
         "annualized_difference": "Annualized Difference",
+        "benefits_eligible": "Benefits Eligible",
+        "benefit_eligible": "Benefits Eligible",
+        "benefits_eligibility": "Benefits Eligible",
+        "benefit_eligibility": "Benefits Eligible",
+        "benefit_plan": "Benefit Plan",
+        "benefits_plan": "Benefit Plan",
+        "benefit_plan_name": "Benefit Plan",
+        "coverage_level": "Coverage Level",
+        "benefit_coverage_level": "Coverage Level",
+        "coverage_tier": "Coverage Level",
+        "dependent_count": "Dependent Count",
+        "dependents": "Dependent Count",
+        "covered_dependents": "Dependent Count",
+        "benefits_start_date": "Benefits Start Date",
+        "benefit_start_date": "Benefits Start Date",
+        "coverage_start_date": "Benefits Start Date",
         "hire_date": "Hire Date",
         "termination_date": "Termination Date",
         "records_affected": "Records Affected",
@@ -405,6 +451,11 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
         "Standard Hours",
         "Annualized Pay",
         "Annualized Difference",
+        "Benefits Eligible",
+        "Benefit Plan",
+        "Coverage Level",
+        "Dependent Count",
+        "Benefits Start Date",
         "Hire Date",
         "Termination Date",
         "Leave Status",
@@ -419,6 +470,11 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
     "Findings_Impl_Salary": ["Status", "Pay Type", "Salary", "Department", "Job Title"],
     "Findings_Annualized": ["Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours", "Annualized Pay", "Annualized Difference"],
     "Findings_Pay_Context": ["Status", "Leave Status", "Pay Type", "Salary", "Pay Rate", "Standard Hours", "Termination Date"],
+    "Findings_Ben_Not_Elig": ["Status", "Benefits Eligible", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+    "Findings_Ben_Not_Enrl": ["Status", "Benefits Eligible", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+    "Findings_Ben_Coverage": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+    "Findings_Ben_Dependents": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+    "Findings_Ben_Post_Term": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
     "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
@@ -628,6 +684,11 @@ FIX_LIST_DETAIL_COLUMNS = [
     "Standard Hours",
     "Annualized Pay",
     "Annualized Difference",
+    "Benefits Eligible",
+    "Benefit Plan",
+    "Coverage Level",
+    "Dependent Count",
+    "Benefits Start Date",
     "Status",
     "Leave Status",
     "Hire Date",
@@ -650,16 +711,26 @@ _RAW_EXECUTION_COLUMNS = [
     "Job Title",
     "Status",
     "Leave Status",
+    "Benefits Eligible",
+    "Benefit Plan",
+    "Coverage Level",
+    "Dependent Count",
+    "Benefits Start Date",
     "Pay Type",
     "Salary",
     "Pay Rate",
     "Salary Delta",
     "Standard Hours",
-    "Annualized Pay",
-    "Annualized Difference",
-    "Hire Date",
-    "Termination Date",
-    "Row Number",
+        "Annualized Pay",
+        "Annualized Difference",
+        "Benefits Eligible",
+        "Benefit Plan",
+        "Coverage Level",
+        "Dependent Count",
+        "Benefits Start Date",
+        "Hire Date",
+        "Termination Date",
+        "Row Number",
 ]
 
 
@@ -733,6 +804,16 @@ def _execution_why_flagged(
         return "Salary and annualized pay rate do not align for this worker."
     if check_key == "pay_context_sanity_check":
         return "Worker status, leave status, and compensation context disagree in a way that should be reviewed."
+    if check_key == "benefits_enrolled_not_eligible":
+        return "Worker is enrolled in benefits but marked as not eligible."
+    if check_key == "benefits_eligible_not_enrolled":
+        return "Worker is eligible for benefits but has no enrollment."
+    if check_key == "invalid_coverage_level":
+        return "Coverage level is missing or not recognized."
+    if check_key == "dependents_without_coverage":
+        return "Dependents are present but coverage does not include them."
+    if check_key == "benefits_after_termination":
+        return "Benefits appear active after employee termination."
     if check_key == "comp_dual_value_conflict":
         return "Both salary and pay rate are populated and conflict with the worker pay type."
     if check_key == "missing_standard_hours_hourly":
@@ -797,6 +878,32 @@ def _execution_current_value(
             f"Salary: {_lookup_value(source_row, sample_row, 'salary')} | "
             f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')}"
         )
+    if check_key == "benefits_enrolled_not_eligible":
+        return (
+            f"Benefits Eligible: {_lookup_value(source_row, sample_row, 'benefits_eligible', 'benefit_eligible', 'benefits_eligibility', 'benefit_eligibility')} | "
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')}"
+        )
+    if check_key == "benefits_eligible_not_enrolled":
+        return (
+            f"Benefits Eligible: {_lookup_value(source_row, sample_row, 'benefits_eligible', 'benefit_eligible', 'benefits_eligibility', 'benefit_eligibility')} | "
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name') or 'Missing'}"
+        )
+    if check_key == "invalid_coverage_level":
+        return (
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')} | "
+            f"Coverage Level: {_lookup_value(source_row, sample_row, 'coverage_level', 'benefit_coverage_level', 'coverage_tier') or 'Missing'}"
+        )
+    if check_key == "dependents_without_coverage":
+        return (
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')} | "
+            f"Coverage Level: {_lookup_value(source_row, sample_row, 'coverage_level', 'benefit_coverage_level', 'coverage_tier')} | "
+            f"Dependent Count: {_lookup_value(source_row, sample_row, 'dependent_count', 'dependents', 'covered_dependents')}"
+        )
+    if check_key == "benefits_after_termination":
+        return (
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')} | "
+            f"Termination Date: {_lookup_value(source_row, sample_row, 'termination_date', 'term_date', 'end_date')}"
+        )
     if check_key == "missing_standard_hours_hourly":
         return (
             f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')} | "
@@ -834,6 +941,16 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
         return "Review salary, pay rate, and standard hours together before payroll or migration."
     if check_key == "pay_context_sanity_check":
         return "Review worker status, leave status, and compensation together before payroll or migration."
+    if check_key == "benefits_enrolled_not_eligible":
+        return "Remove benefit enrollment or correct eligibility status."
+    if check_key == "benefits_eligible_not_enrolled":
+        return "Confirm if the employee should be enrolled or update eligibility."
+    if check_key == "invalid_coverage_level":
+        return "Assign a valid coverage level for the selected plan."
+    if check_key == "dependents_without_coverage":
+        return "Update coverage level to include dependents if applicable."
+    if check_key == "benefits_after_termination":
+        return "End benefits coverage as of termination date."
     if check_key == "comp_dual_value_conflict":
         return "Review the worker record and keep only the compensation field that matches the intended pay type."
     if check_key == "missing_standard_hours_hourly":
@@ -878,6 +995,11 @@ def _execution_row(
         "Standard Hours": _lookup_value(source_row, sample_row, "standard_hours"),
         "Annualized Pay": _lookup_value(source_row, sample_row, "annualized_pay"),
         "Annualized Difference": _lookup_value(source_row, sample_row, "annualized_difference"),
+        "Benefits Eligible": _lookup_value(source_row, sample_row, "benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"),
+        "Benefit Plan": _lookup_value(source_row, sample_row, "benefit_plan", "benefits_plan", "benefit_plan_name"),
+        "Coverage Level": _lookup_value(source_row, sample_row, "coverage_level", "benefit_coverage_level", "coverage_tier"),
+        "Dependent Count": _lookup_value(source_row, sample_row, "dependent_count", "dependents", "covered_dependents"),
+        "Benefits Start Date": _lookup_value(source_row, sample_row, "benefits_start_date", "benefit_start_date", "coverage_start_date"),
         "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
         "Leave Status": _lookup_value(source_row, sample_row, "leave_status", "absence_status", "loa_status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
@@ -905,6 +1027,11 @@ def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, c
         "Standard Hours": ("standard_hours",),
         "Annualized Pay": ("annualized_pay",),
         "Annualized Difference": ("annualized_difference",),
+        "Benefits Eligible": ("benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"),
+        "Benefit Plan": ("benefit_plan", "benefits_plan", "benefit_plan_name"),
+        "Coverage Level": ("coverage_level", "benefit_coverage_level", "coverage_tier"),
+        "Dependent Count": ("dependent_count", "dependents", "covered_dependents"),
+        "Benefits Start Date": ("benefits_start_date", "benefit_start_date", "coverage_start_date"),
         "Hire Date": ("hire_date", "start_date", "date_hired"),
         "Termination Date": ("termination_date", "term_date", "end_date"),
         "Leave Status": ("leave_status", "absence_status", "loa_status"),
@@ -1770,6 +1897,114 @@ def _build_full_detail_pay_context(df: pd.DataFrame) -> pd.DataFrame:
     return _format_detail_sheet(result, sheet_name)
 
 
+def _build_full_detail_benefits(df: pd.DataFrame, issue_name: str, sheet_name: str) -> pd.DataFrame:
+    status_col = ia._status_column(df)
+    eligible_col = ia._benefits_eligible_column(df) if hasattr(ia, "_benefits_eligible_column") else ia._first_present(df, ["benefits_eligible"])
+    plan_col = ia._benefit_plan_column(df) if hasattr(ia, "_benefit_plan_column") else ia._first_present(df, ["benefit_plan"])
+    coverage_col = ia._coverage_level_column(df) if hasattr(ia, "_coverage_level_column") else ia._first_present(df, ["coverage_level"])
+    dependent_col = ia._dependent_count_column(df) if hasattr(ia, "_dependent_count_column") else ia._first_present(df, ["dependent_count"])
+    term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
+    if issue_name in {"Enrolled in Benefits but Not Eligible", "Eligible for Benefits but Not Enrolled"} and (not status_col or not eligible_col or not plan_col):
+        return pd.DataFrame()
+    if issue_name == "Invalid Coverage Level" and (not status_col or not plan_col or not coverage_col):
+        return pd.DataFrame()
+    if issue_name == "Dependents Without Proper Coverage" and (not plan_col or not coverage_col or not dependent_col):
+        return pd.DataFrame()
+    if issue_name == "Benefits Active After Termination" and (not plan_col or not term_col):
+        return pd.DataFrame()
+
+    statuses = df[status_col].astype(str).str.strip().str.lower() if status_col else pd.Series("", index=df.index)
+    dependent_vals = pd.to_numeric(df[dependent_col], errors="coerce").fillna(0) if dependent_col else pd.Series([0] * len(df), index=df.index)
+    term_blank = ia._blank_mask(df[term_col]) if term_col else pd.Series([True] * len(df), index=df.index)
+    rows: list[dict] = []
+
+    for orig_idx in df.index:
+        row = df.loc[orig_idx]
+        if issue_name == "Enrolled in Benefits but Not Eligible":
+            if ia._classify_benefits_eligible(row.get(eligible_col, "")) != "not_eligible" or not ia._benefit_plan_present(row.get(plan_col, "")):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="CRITICAL" if statuses.at[orig_idx] == "active" else "HIGH",
+                current_value=f"Benefits Eligible: {_safe(row.get(eligible_col, ''))} | Benefit Plan: {_safe(row.get(plan_col, ''))}",
+                reason="Worker is enrolled in benefits but marked as not eligible.",
+                recommended_action="Remove benefit enrollment or correct eligibility status.",
+                source_row=row,
+                extra_columns=["Status", "Benefits Eligible", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Eligible for Benefits but Not Enrolled":
+            if ia._classify_benefits_eligible(row.get(eligible_col, "")) != "eligible" or ia._benefit_plan_present(row.get(plan_col, "")):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM",
+                current_value=f"Benefits Eligible: {_safe(row.get(eligible_col, ''))} | Benefit Plan: Missing",
+                reason="Worker is eligible for benefits but has no enrollment.",
+                recommended_action="Confirm if employee should be enrolled or update eligibility.",
+                source_row=row,
+                extra_columns=["Status", "Benefits Eligible", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Invalid Coverage Level":
+            if not ia._benefit_plan_present(row.get(plan_col, "")):
+                continue
+            coverage_class = ia._classify_coverage_level(row.get(coverage_col, ""))
+            if coverage_class not in {"", "invalid"}:
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM",
+                current_value=f"Benefit Plan: {_safe(row.get(plan_col, ''))} | Coverage Level: {_safe(row.get(coverage_col, '')) or 'Missing'}",
+                reason="Coverage level is missing or not recognized.",
+                recommended_action="Assign a valid coverage level for the selected plan.",
+                source_row=row,
+                extra_columns=["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Dependents Without Proper Coverage":
+            if not ia._benefit_plan_present(row.get(plan_col, "")) or dependent_vals.at[orig_idx] <= 0:
+                continue
+            if ia._classify_coverage_level(row.get(coverage_col, "")) != "employee_only":
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH",
+                current_value=(
+                    f"Benefit Plan: {_safe(row.get(plan_col, ''))} | "
+                    f"Coverage Level: {_safe(row.get(coverage_col, ''))} | "
+                    f"Dependent Count: {_safe(row.get(dependent_col, ''))}"
+                ),
+                reason="Dependents are present but coverage does not include them.",
+                recommended_action="Update coverage level to include dependents if applicable.",
+                source_row=row,
+                extra_columns=["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Benefits Active After Termination":
+            if term_blank.at[orig_idx] or not ia._benefit_plan_present(row.get(plan_col, "")):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="CRITICAL",
+                current_value=f"Benefit Plan: {_safe(row.get(plan_col, ''))} | Termination Date: {_safe(row.get(term_col, ''))}",
+                reason="Benefits appear active after employee termination.",
+                recommended_action="End benefits coverage as of termination date.",
+                source_row=row,
+                extra_columns=["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.DataFrame(rows)
+    if len(result) > DETAIL_ROW_CAP:
+        note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
+        result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
+
+
 def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     sheet_name = "Findings_Invalid_Dates"
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
@@ -1899,6 +2134,11 @@ _FULL_DETAIL_BUILDERS = {
     "salaried_implausible_salary":            lambda df, s, ra: _build_full_detail_payroll_phase2(df, "Implausible Annual Salary", "Findings_Impl_Salary"),
     "annualized_comp_mismatch":               lambda df, s, ra: _build_full_detail_annualized_comp(df),
     "pay_context_sanity_check":               lambda df, s, ra: _build_full_detail_pay_context(df),
+    "benefits_enrolled_not_eligible":         lambda df, s, ra: _build_full_detail_benefits(df, "Enrolled in Benefits but Not Eligible", "Findings_Ben_Not_Elig"),
+    "benefits_eligible_not_enrolled":         lambda df, s, ra: _build_full_detail_benefits(df, "Eligible for Benefits but Not Enrolled", "Findings_Ben_Not_Enrl"),
+    "invalid_coverage_level":                 lambda df, s, ra: _build_full_detail_benefits(df, "Invalid Coverage Level", "Findings_Ben_Coverage"),
+    "dependents_without_coverage":            lambda df, s, ra: _build_full_detail_benefits(df, "Dependents Without Proper Coverage", "Findings_Ben_Dependents"),
+    "benefits_after_termination":             lambda df, s, ra: _build_full_detail_benefits(df, "Benefits Active After Termination", "Findings_Ben_Post_Term"),
     "comp_dual_value_conflict":               lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Salary and Pay Rate Conflict", "Findings_Comp_Conflict"),
     "missing_standard_hours_hourly":          lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing Standard Hours for Hourly Worker", "Findings_Std_Hours"),
     "invalid_date_logic":                     lambda df, s, ra: _build_full_detail_invalid_dates(df),
