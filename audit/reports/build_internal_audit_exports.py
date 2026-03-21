@@ -128,6 +128,22 @@ CORRECTION_BASE_COLUMNS = [
     "Notes",
 ]
 
+CORRECTION_SALARY_COLUMNS = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Issue Name",
+    "Severity",
+    "Current Pay Type",
+    "Current Salary",
+    "Current Pay Rate",
+    "Corrected Pay Type",
+    "Corrected Salary",
+    "Corrected Pay Rate",
+    "Effective Date",
+    "Notes",
+]
+
 CORRECTION_FILE_CONFIG = {
     "correction_salary.csv": {
         "issue_names": {
@@ -421,13 +437,13 @@ def _write_csv(df: pd.DataFrame, path: Path) -> int:
     """Write dataframe to CSV, return row count (excluding header)."""
     if df.empty:
         return 0
-    df.to_csv(path, index=False, encoding="utf-8-sig")
+    df.to_csv(path, index=False, encoding="utf-8")
     return len(df)
 
 
 def _write_required_csv(df: pd.DataFrame, path: Path) -> int:
     """Always write required CSV outputs, even if only the header is present."""
-    df.to_csv(path, index=False, encoding="utf-8-sig")
+    df.to_csv(path, index=False, encoding="utf-8")
     return len(df)
 
 
@@ -475,6 +491,49 @@ def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.D
     filtered = issue_frame[issue_frame["Issue Name"].isin(allowed_issue_names)].copy()
     if filtered.empty:
         return pd.DataFrame(columns=[*CORRECTION_BASE_COLUMNS, *extra_columns])
+
+    if filename == "correction_salary.csv":
+        rows: list[dict] = []
+        for group in _group_issue_rows(filtered):
+            issue_name = "; ".join(_unique_ordered(group["Issue Name"].tolist()))
+            severity = _first_nonblank(group, "Severity")
+            current_pay_type = _first_nonblank(group, "Pay Type")
+            current_salary = _first_nonblank(group, "Salary")
+            current_pay_rate = _first_nonblank(group, "Payrate")
+
+            note = ""
+            if issue_name == "Missing or Invalid Salary":
+                note = "Enter a valid positive salary"
+            elif issue_name == "Missing or Invalid Pay Type":
+                note = "Enter the correct pay type from the allowed list"
+            elif issue_name == "Compensation Type Mismatch":
+                pay_type = current_pay_type.lower()
+                if pay_type == "hourly":
+                    note = "Enter a valid pay rate that matches the hourly pay type"
+                elif pay_type == "salaried":
+                    note = "Enter a valid salary that matches the salaried pay type"
+                else:
+                    note = "Enter the missing compensation value that matches the pay type"
+            else:
+                note = "; ".join(_unique_ordered(group["Fix Needed"].tolist()))
+
+            rows.append({
+                "Worker ID": _first_nonblank(group, "Worker ID"),
+                "First Name": _first_nonblank(group, "First Name"),
+                "Last Name": _first_nonblank(group, "Last Name"),
+                "Issue Name": issue_name,
+                "Severity": severity,
+                "Current Pay Type": current_pay_type,
+                "Current Salary": current_salary,
+                "Current Pay Rate": current_pay_rate,
+                "Corrected Pay Type": "",
+                "Corrected Salary": "",
+                "Corrected Pay Rate": "",
+                "Effective Date": "",
+                "Notes": note,
+            })
+
+        return pd.DataFrame(rows, columns=CORRECTION_SALARY_COLUMNS).reset_index(drop=True)
 
     rows: list[dict] = []
     for group in _group_issue_rows(filtered):
