@@ -113,6 +113,8 @@ _DEFAULT_POLICY: dict = {
         "salaried_salary_min": 10000.0,
         "salaried_salary_max": 1000000.0,
         "annualized_comp_mismatch_pct": 0.10,
+        "benefits_termination_grace_days": 30,
+        "benefits_waiting_period_days": 30,
         "salary_outlier_threshold": 2.5,
         "salary_outlier_min_dept_size": 5,
         "pay_equity_variance_threshold": 0.30,
@@ -280,6 +282,8 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
         salaried_salary_min (float)
         salaried_salary_max (float)
         annualized_comp_mismatch_pct (float)
+        benefits_termination_grace_days (int)
+        benefits_waiting_period_days (int)
         salary_outlier_threshold (float)
         salary_outlier_min_dept_size (int)
         pay_equity_variance_threshold (float)
@@ -302,6 +306,8 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
             "salaried_salary_min": 10000.0,
             "salaried_salary_max": 1000000.0,
             "annualized_comp_mismatch_pct": 0.10,
+            "benefits_termination_grace_days": 30,
+            "benefits_waiting_period_days": 30,
             "salary_outlier_threshold": 2.5,
             "salary_outlier_min_dept_size": 5,
             "pay_equity_variance_threshold": 0.30,

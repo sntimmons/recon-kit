@@ -154,6 +154,42 @@ _M = {
         "End benefits coverage as of termination date.",
         "Findings_Ben_Post_Term",
     ),
+    "benefits_start_before_hire": (
+        "Benefits Start Date Before Hire Date",
+        "Benefits cannot begin before employment starts, and early coverage dates can break enrollment timing.",
+        "Correct the benefits start date so it does not begin before the hire date.",
+        "Findings_Ben_Start",
+    ),
+    "benefits_after_termination_window": (
+        "Benefits Active Too Long After Termination",
+        "Benefits may continue too long after termination, creating billing and enrollment cleanup risk.",
+        "Review benefits end timing and close coverage within the allowed post-termination window when appropriate.",
+        "Findings_Ben_TermWin",
+    ),
+    "benefits_waiting_period_violation": (
+        "Benefits Waiting Period Violation",
+        "Benefits may begin too early, which can create enrollment timing issues and unexpected carrier cost.",
+        "Review the hire date and benefits start date and confirm the waiting period is correct.",
+        "Findings_Ben_Wait",
+    ),
+    "employment_type_eligibility_conflict": (
+        "Employment Type Benefits Eligibility Conflict",
+        "Benefits eligibility or enrollment may not match the worker employment type.",
+        "Review worker type, eligibility status, and benefit enrollment together before migration.",
+        "Findings_Ben_Type",
+    ),
+    "multiple_active_benefit_plans": (
+        "Multiple Active Benefit Plans",
+        "Workers may be enrolled in multiple active plans, creating duplicate billing or carrier confusion.",
+        "Review the active benefit plan setup and keep only the correct plan values for each worker.",
+        "Findings_Ben_Multi",
+    ),
+    "coverage_vs_dependent_sanity": (
+        "Coverage Level vs Dependent Count Mismatch",
+        "Coverage tier may not match the dependents attached to the worker record.",
+        "Review dependent count and coverage level together and confirm the selected coverage tier is correct.",
+        "Findings_Ben_CovDep",
+    ),
     "invalid_date_logic": (
         "Invalid Dates",
         "Service calculations, payroll timing, and benefits eligibility will produce wrong results.",
@@ -386,6 +422,8 @@ def _humanize(col: str) -> str:
         "leave_status": "Leave Status",
         "absence_status": "Leave Status",
         "loa_status": "Leave Status",
+        "worker_type": "Worker Type",
+        "employment_type": "Worker Type",
         "annualized_pay": "Annualized Pay",
         "annualized_difference": "Annualized Difference",
         "benefits_eligible": "Benefits Eligible",
@@ -404,6 +442,9 @@ def _humanize(col: str) -> str:
         "benefits_start_date": "Benefits Start Date",
         "benefit_start_date": "Benefits Start Date",
         "coverage_start_date": "Benefits Start Date",
+        "benefits_end_date": "Benefits End Date",
+        "benefit_end_date": "Benefits End Date",
+        "coverage_end_date": "Benefits End Date",
         "hire_date": "Hire Date",
         "termination_date": "Termination Date",
         "records_affected": "Records Affected",
@@ -456,6 +497,8 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
         "Coverage Level",
         "Dependent Count",
         "Benefits Start Date",
+        "Benefits End Date",
+        "Worker Type",
         "Hire Date",
         "Termination Date",
         "Leave Status",
@@ -475,6 +518,12 @@ ROW_LEVEL_RELEVANT_COLUMNS = {
     "Findings_Ben_Coverage": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
     "Findings_Ben_Dependents": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
     "Findings_Ben_Post_Term": ["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+    "Findings_Ben_Start": ["Status", "Hire Date", "Benefits Start Date"],
+    "Findings_Ben_TermWin": ["Status", "Benefit Plan", "Termination Date", "Benefits End Date"],
+    "Findings_Ben_Wait": ["Status", "Hire Date", "Benefits Start Date"],
+    "Findings_Ben_Type": ["Status", "Worker Type", "Benefits Eligible", "Benefit Plan"],
+    "Findings_Ben_Multi": ["Status", "Benefit Plan"],
+    "Findings_Ben_CovDep": ["Status", "Coverage Level", "Dependent Count"],
     "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
     "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
@@ -689,6 +738,8 @@ FIX_LIST_DETAIL_COLUMNS = [
     "Coverage Level",
     "Dependent Count",
     "Benefits Start Date",
+    "Benefits End Date",
+    "Worker Type",
     "Status",
     "Leave Status",
     "Hire Date",
@@ -904,6 +955,34 @@ def _execution_current_value(
             f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')} | "
             f"Termination Date: {_lookup_value(source_row, sample_row, 'termination_date', 'term_date', 'end_date')}"
         )
+    if check_key == "benefits_start_before_hire":
+        return (
+            f"Hire Date: {_lookup_value(source_row, sample_row, 'hire_date', 'start_date', 'date_hired')} | "
+            f"Benefits Start Date: {_lookup_value(source_row, sample_row, 'benefits_start_date', 'benefit_start_date', 'coverage_start_date')}"
+        )
+    if check_key == "benefits_after_termination_window":
+        return (
+            f"Termination Date: {_lookup_value(source_row, sample_row, 'termination_date', 'term_date', 'end_date')} | "
+            f"Benefits End Date: {_lookup_value(source_row, sample_row, 'benefits_end_date', 'benefit_end_date', 'coverage_end_date') or 'Missing'}"
+        )
+    if check_key == "benefits_waiting_period_violation":
+        return (
+            f"Hire Date: {_lookup_value(source_row, sample_row, 'hire_date', 'start_date', 'date_hired')} | "
+            f"Benefits Start Date: {_lookup_value(source_row, sample_row, 'benefits_start_date', 'benefit_start_date', 'coverage_start_date')}"
+        )
+    if check_key == "employment_type_eligibility_conflict":
+        return (
+            f"Worker Type: {_lookup_value(source_row, sample_row, 'worker_type', 'employment_type', 'pay_type')} | "
+            f"Benefits Eligible: {_lookup_value(source_row, sample_row, 'benefits_eligible', 'benefit_eligible', 'benefits_eligibility', 'benefit_eligibility')} | "
+            f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')}"
+        )
+    if check_key == "multiple_active_benefit_plans":
+        return f"Benefit Plan: {_lookup_value(source_row, sample_row, 'benefit_plan', 'benefits_plan', 'benefit_plan_name')}"
+    if check_key == "coverage_vs_dependent_sanity":
+        return (
+            f"Coverage Level: {_lookup_value(source_row, sample_row, 'coverage_level', 'benefit_coverage_level', 'coverage_tier')} | "
+            f"Dependent Count: {_lookup_value(source_row, sample_row, 'dependent_count', 'dependents', 'covered_dependents')}"
+        )
     if check_key == "missing_standard_hours_hourly":
         return (
             f"Pay Rate: {_lookup_value(source_row, sample_row, 'payrate')} | "
@@ -951,6 +1030,18 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
         return "Update coverage level to include dependents if applicable."
     if check_key == "benefits_after_termination":
         return "End benefits coverage as of termination date."
+    if check_key == "benefits_start_before_hire":
+        return "Correct the benefits start date so it does not begin before the hire date."
+    if check_key == "benefits_after_termination_window":
+        return "Review benefits end timing and close coverage within the allowed post-termination window when appropriate."
+    if check_key == "benefits_waiting_period_violation":
+        return "Review the hire date and benefits start date and confirm the waiting period is correct."
+    if check_key == "employment_type_eligibility_conflict":
+        return "Review worker type, eligibility status, and benefit enrollment together before migration."
+    if check_key == "multiple_active_benefit_plans":
+        return "Review the active benefit plan setup and keep only the correct plan values for each worker."
+    if check_key == "coverage_vs_dependent_sanity":
+        return "Review dependent count and coverage level together and confirm the selected coverage tier is correct."
     if check_key == "comp_dual_value_conflict":
         return "Review the worker record and keep only the compensation field that matches the intended pay type."
     if check_key == "missing_standard_hours_hourly":
@@ -1000,6 +1091,8 @@ def _execution_row(
         "Coverage Level": _lookup_value(source_row, sample_row, "coverage_level", "benefit_coverage_level", "coverage_tier"),
         "Dependent Count": _lookup_value(source_row, sample_row, "dependent_count", "dependents", "covered_dependents"),
         "Benefits Start Date": _lookup_value(source_row, sample_row, "benefits_start_date", "benefit_start_date", "coverage_start_date"),
+        "Benefits End Date": _lookup_value(source_row, sample_row, "benefits_end_date", "benefit_end_date", "coverage_end_date"),
+        "Worker Type": _lookup_value(source_row, sample_row, "worker_type", "employment_type", "pay_type"),
         "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
         "Leave Status": _lookup_value(source_row, sample_row, "leave_status", "absence_status", "loa_status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
@@ -1032,6 +1125,8 @@ def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, c
         "Coverage Level": ("coverage_level", "benefit_coverage_level", "coverage_tier"),
         "Dependent Count": ("dependent_count", "dependents", "covered_dependents"),
         "Benefits Start Date": ("benefits_start_date", "benefit_start_date", "coverage_start_date"),
+        "Benefits End Date": ("benefits_end_date", "benefit_end_date", "coverage_end_date"),
+        "Worker Type": ("worker_type", "employment_type", "pay_type"),
         "Hire Date": ("hire_date", "start_date", "date_hired"),
         "Termination Date": ("termination_date", "term_date", "end_date"),
         "Leave Status": ("leave_status", "absence_status", "loa_status"),
@@ -1903,6 +1998,9 @@ def _build_full_detail_benefits(df: pd.DataFrame, issue_name: str, sheet_name: s
     plan_col = ia._benefit_plan_column(df) if hasattr(ia, "_benefit_plan_column") else ia._first_present(df, ["benefit_plan"])
     coverage_col = ia._coverage_level_column(df) if hasattr(ia, "_coverage_level_column") else ia._first_present(df, ["coverage_level"])
     dependent_col = ia._dependent_count_column(df) if hasattr(ia, "_dependent_count_column") else ia._first_present(df, ["dependent_count"])
+    benefits_start_col = ia._benefits_start_date_column(df) if hasattr(ia, "_benefits_start_date_column") else ia._first_present(df, ["benefits_start_date"])
+    benefits_end_col = ia._benefits_end_date_column(df) if hasattr(ia, "_benefits_end_date_column") else ia._first_present(df, ["benefits_end_date"])
+    worker_type_col = ia._first_present(df, ["worker_type", "employment_type", "pay_type"])
     term_col = ia._first_present(df, ["termination_date", "term_date", "end_date"])
     if issue_name in {"Enrolled in Benefits but Not Eligible", "Eligible for Benefits but Not Enrolled"} and (not status_col or not eligible_col or not plan_col):
         return pd.DataFrame()
@@ -1912,11 +2010,52 @@ def _build_full_detail_benefits(df: pd.DataFrame, issue_name: str, sheet_name: s
         return pd.DataFrame()
     if issue_name == "Benefits Active After Termination" and (not plan_col or not term_col):
         return pd.DataFrame()
+    if issue_name == "Benefits Start Date Before Hire Date" and (not status_col or not benefits_start_col):
+        return pd.DataFrame()
+    if issue_name == "Benefits Active Too Long After Termination" and (not plan_col or not term_col):
+        return pd.DataFrame()
+    if issue_name == "Benefits Waiting Period Violation" and (not status_col or not benefits_start_col):
+        return pd.DataFrame()
+    if issue_name == "Employment Type Benefits Eligibility Conflict" and (not status_col or not worker_type_col or not eligible_col):
+        return pd.DataFrame()
+    if issue_name == "Multiple Active Benefit Plans" and not plan_col:
+        return pd.DataFrame()
+    if issue_name == "Coverage Level vs Dependent Count Mismatch" and (not coverage_col or not dependent_col):
+        return pd.DataFrame()
 
     statuses = df[status_col].astype(str).str.strip().str.lower() if status_col else pd.Series("", index=df.index)
     dependent_vals = pd.to_numeric(df[dependent_col], errors="coerce").fillna(0) if dependent_col else pd.Series([0] * len(df), index=df.index)
     term_blank = ia._blank_mask(df[term_col]) if term_col else pd.Series([True] * len(df), index=df.index)
+    hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
+    hire_dates = ia._date_series(df, hire_col) if hire_col else pd.Series([pd.NaT] * len(df), index=df.index)
+    benefits_start_dates = ia._date_series(df, benefits_start_col) if benefits_start_col else pd.Series([pd.NaT] * len(df), index=df.index)
+    benefits_end_dates = ia._date_series(df, benefits_end_col) if benefits_end_col else pd.Series([pd.NaT] * len(df), index=df.index)
+    termination_dates = ia._date_series(df, term_col) if term_col else pd.Series([pd.NaT] * len(df), index=df.index)
+    config = ia._load_config() if hasattr(ia, "_load_config") else {"benefits_termination_grace_days": 30, "benefits_waiting_period_days": 30}
     rows: list[dict] = []
+
+    def _plan_tokens(value: object) -> list[str]:
+        raw = _safe(value)
+        if not raw:
+            return []
+        normalized = raw.replace("|", ";").replace(",", ";")
+        tokens = [str(token).strip().lower() for token in normalized.split(";")]
+        return [token for token in tokens if token and token not in {"none", "no plan", "not enrolled", "waived", "waive", "declined", "decline"}]
+
+    multi_plan_worker_ids: set[str] = set()
+    worker_id_col = ia._first_present(df, ["worker_id", "employee_id"])
+    if issue_name == "Multiple Active Benefit Plans" and worker_id_col:
+        grouped_plans: dict[str, set[str]] = {}
+        for orig_idx in df.index:
+            worker_id = _safe(df.loc[orig_idx].get(worker_id_col, ""))
+            if not worker_id:
+                continue
+            grouped_plans.setdefault(worker_id, set()).update(_plan_tokens(df.loc[orig_idx].get(plan_col, "")))
+            if len(set(_plan_tokens(df.loc[orig_idx].get(plan_col, "")))) > 1:
+                multi_plan_worker_ids.add(worker_id)
+        for worker_id, plans in grouped_plans.items():
+            if len(plans) > 1:
+                multi_plan_worker_ids.add(worker_id)
 
     for orig_idx in df.index:
         row = df.loc[orig_idx]
@@ -1992,6 +2131,117 @@ def _build_full_detail_benefits(df: pd.DataFrame, issue_name: str, sheet_name: s
                 recommended_action="End benefits coverage as of termination date.",
                 source_row=row,
                 extra_columns=["Status", "Benefit Plan", "Coverage Level", "Dependent Count", "Termination Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Benefits Start Date Before Hire Date":
+            hire_date = hire_dates.at[orig_idx]
+            benefits_start_date = benefits_start_dates.at[orig_idx]
+            if pd.isna(hire_date) or pd.isna(benefits_start_date) or benefits_start_date >= hire_date:
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM",
+                current_value=f"Hire Date: {_safe(row.get(hire_col, ''))} | Benefits Start Date: {_safe(row.get(benefits_start_col, ''))}",
+                reason="Benefits start date is earlier than the hire date.",
+                recommended_action="Correct the benefits start date so it does not begin before the hire date.",
+                source_row=row,
+                extra_columns=["Status", "Hire Date", "Benefits Start Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Benefits Active Too Long After Termination":
+            if not ia._benefit_plan_present(row.get(plan_col, "")):
+                continue
+            termination_date = termination_dates.at[orig_idx]
+            if pd.isna(termination_date):
+                continue
+            benefits_end_date = benefits_end_dates.at[orig_idx]
+            grace_days = int(config.get("benefits_termination_grace_days", 30))
+            if not (pd.isna(benefits_end_date) or benefits_end_date > termination_date + pd.Timedelta(days=grace_days)):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH",
+                current_value=f"Termination Date: {_safe(row.get(term_col, ''))} | Benefits End Date: {_safe(row.get(benefits_end_col, '')) or 'Missing'}",
+                reason=f"Benefits appear to remain active beyond the allowed post-termination window of {grace_days} days, or no benefits end date is present.",
+                recommended_action="Review benefits end timing and close coverage within the allowed post-termination window when appropriate.",
+                source_row=row,
+                extra_columns=["Status", "Benefit Plan", "Termination Date", "Benefits End Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Benefits Waiting Period Violation":
+            hire_date = hire_dates.at[orig_idx]
+            benefits_start_date = benefits_start_dates.at[orig_idx]
+            waiting_days = int(config.get("benefits_waiting_period_days", 30))
+            if pd.isna(hire_date) or pd.isna(benefits_start_date):
+                continue
+            if benefits_start_date < hire_date:
+                continue
+            if benefits_start_date >= hire_date + pd.Timedelta(days=waiting_days):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH" if statuses.at[orig_idx] == "active" else "MEDIUM",
+                current_value=f"Hire Date: {_safe(row.get(hire_col, ''))} | Benefits Start Date: {_safe(row.get(benefits_start_col, ''))}",
+                reason=f"Benefits start date begins earlier than the configured waiting period of {waiting_days} days.",
+                recommended_action=f"Review the hire date and benefits start date and confirm the waiting period should be at least {waiting_days} days.",
+                source_row=row,
+                extra_columns=["Status", "Hire Date", "Benefits Start Date"],
+            )
+            rows.append(detail)
+        elif issue_name == "Employment Type Benefits Eligibility Conflict":
+            worker_type_class = ia._classify_employment_type_for_benefits(row.get(worker_type_col, "")) if hasattr(ia, "_classify_employment_type_for_benefits") else ""
+            eligibility = ia._classify_benefits_eligible(row.get(eligible_col, ""))
+            has_plan = ia._benefit_plan_present(row.get(plan_col, "")) if plan_col else False
+            if not worker_type_class:
+                continue
+            if not (
+                (worker_type_class == "part_time" and eligibility == "eligible")
+                or (worker_type_class in {"contractor", "temporary"} and (eligibility == "eligible" or has_plan))
+            ):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH",
+                current_value=(
+                    f"Worker Type: {_safe(row.get(worker_type_col, ''))} | "
+                    f"Benefits Eligible: {_safe(row.get(eligible_col, ''))} | "
+                    f"Benefit Plan: {_safe(row.get(plan_col, ''))}"
+                ),
+                reason="Worker type and benefits eligibility context disagree in a way that should be reviewed.",
+                recommended_action="Review worker type, eligibility status, and benefit enrollment together before migration.",
+                source_row=row,
+                extra_columns=["Status", "Worker Type", "Benefits Eligible", "Benefit Plan"],
+            )
+            rows.append(detail)
+        elif issue_name == "Multiple Active Benefit Plans":
+            if not worker_id_col or _safe(row.get(worker_id_col, "")) not in multi_plan_worker_ids:
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH",
+                current_value=f"Benefit Plan: {_safe(row.get(plan_col, ''))}",
+                reason="Worker appears to have multiple active benefit plan values that should be reviewed.",
+                recommended_action="Review the active benefit plan setup and keep only the correct plan values for each worker.",
+                source_row=row,
+                extra_columns=["Status", "Benefit Plan"],
+            )
+            rows.append(detail)
+        elif issue_name == "Coverage Level vs Dependent Count Mismatch":
+            coverage_class = ia._classify_coverage_level(row.get(coverage_col, ""))
+            dependent_count = dependent_vals.at[orig_idx]
+            if not (
+                (coverage_class == "includes_dependents" and dependent_count <= 0)
+                or (coverage_class == "employee_only" and dependent_count > 0)
+            ):
+                continue
+            detail = _detail_row(
+                issue_name=issue_name,
+                severity="HIGH",
+                current_value=f"Coverage Level: {_safe(row.get(coverage_col, ''))} | Dependent Count: {_safe(row.get(dependent_col, ''))}",
+                reason="Coverage level and dependent count do not align in a way that suggests the benefit setup should be reviewed.",
+                recommended_action="Review dependent count and coverage level together and confirm the selected coverage tier is correct.",
+                source_row=row,
+                extra_columns=["Status", "Coverage Level", "Dependent Count"],
             )
             rows.append(detail)
 
@@ -2139,6 +2389,12 @@ _FULL_DETAIL_BUILDERS = {
     "invalid_coverage_level":                 lambda df, s, ra: _build_full_detail_benefits(df, "Invalid Coverage Level", "Findings_Ben_Coverage"),
     "dependents_without_coverage":            lambda df, s, ra: _build_full_detail_benefits(df, "Dependents Without Proper Coverage", "Findings_Ben_Dependents"),
     "benefits_after_termination":             lambda df, s, ra: _build_full_detail_benefits(df, "Benefits Active After Termination", "Findings_Ben_Post_Term"),
+    "benefits_start_before_hire":             lambda df, s, ra: _build_full_detail_benefits(df, "Benefits Start Date Before Hire Date", "Findings_Ben_Start"),
+    "benefits_after_termination_window":      lambda df, s, ra: _build_full_detail_benefits(df, "Benefits Active Too Long After Termination", "Findings_Ben_TermWin"),
+    "benefits_waiting_period_violation":      lambda df, s, ra: _build_full_detail_benefits(df, "Benefits Waiting Period Violation", "Findings_Ben_Wait"),
+    "employment_type_eligibility_conflict":   lambda df, s, ra: _build_full_detail_benefits(df, "Employment Type Benefits Eligibility Conflict", "Findings_Ben_Type"),
+    "multiple_active_benefit_plans":          lambda df, s, ra: _build_full_detail_benefits(df, "Multiple Active Benefit Plans", "Findings_Ben_Multi"),
+    "coverage_vs_dependent_sanity":           lambda df, s, ra: _build_full_detail_benefits(df, "Coverage Level vs Dependent Count Mismatch", "Findings_Ben_CovDep"),
     "comp_dual_value_conflict":               lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Salary and Pay Rate Conflict", "Findings_Comp_Conflict"),
     "missing_standard_hours_hourly":          lambda df, s, ra: _build_full_detail_payroll_phase1(df, "Missing Standard Hours for Hourly Worker", "Findings_Std_Hours"),
     "invalid_date_logic":                     lambda df, s, ra: _build_full_detail_invalid_dates(df),

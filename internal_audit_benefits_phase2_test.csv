@@ -1,0 +1,17 @@
+worker_id,first_name,last_name,status,hire_date,termination_date,benefits_eligible,benefit_plan,coverage_level,dependent_count,benefits_start_date,benefits_end_date,employment_type
+BF2001,Alice,North,active,2024-02-15,,true,Medical Gold,family,2,2024-02-01,,full_time
+BF2002,Brian,Owens,inactive,2023-06-10,,true,Dental Basic,employee only,0,2023-06-01,,full_time
+BF2003,Carla,Price,terminated,2022-03-01,2024-01-31,true,Medical Gold,family,2,2022-04-01,,full_time
+BF2004,David,Quinn,terminated,2021-07-15,2024-02-01,true,Vision Plus,employee only,0,2021-08-15,2024-04-15,full_time
+BF2005,Elena,Ross,active,2024-05-01,,true,Medical Gold,employee only,0,2024-05-15,,full_time
+BF2006,Frank,Stone,inactive,2023-04-01,,true,Dental Basic,employee only,0,2023-04-20,,full_time
+BF2007,Gina,Turner,active,2024-01-08,,false,Medical Gold,employee only,0,2024-02-08,,contractor
+BF2008,Henry,Ulrich,active,2024-02-12,,true,,employee only,0,,,part_time
+BF2009,Iris,Valdez,active,2023-01-05,,true,Medical Gold; Dental Basic,family,1,2023-02-05,,full_time
+BF2010,Jack,White,active,2023-03-11,,true,Vision Plus|Medical Silver,family,2,2023-04-11,,full_time
+BF2011,Kara,Xavier,active,2022-09-01,,true,Medical Gold,family,0,2022-10-01,,full_time
+BF2012,Liam,Young,active,2021-11-15,,true,Dental Basic,employee only,2,2021-12-15,,full_time
+BF2013,Maya,Zane,active,2020-01-10,,true,Medical Gold,family,2,2020-02-10,,full_time
+BF2014,Noah,Avery,active,2021-06-20,,false,,employee only,0,,,full_time
+BF2015,Olivia,Brooks,inactive,2019-08-30,2024-02-15,false,,employee only,0,,,full_time
+BF2016,Peter,Cho,active,,,,Medical Gold,family,1,,,full_time
