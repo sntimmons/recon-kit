@@ -277,13 +277,105 @@ def _load_data_csv(run_dir: Path) -> pd.DataFrame | None:
 
 
 def _humanize(col: str) -> str:
-    return str(col).replace("_", " ").strip().title()
+    display_map = {
+        "worker_id": "Worker ID",
+        "employee_id": "Employee ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "issue_name": "Issue Name",
+        "issue_description": "Reason",
+        "current_value": "Current Value",
+        "expected_fix": "Recommended Action",
+        "recommended_action": "Recommended Action",
+        "required_action": "Required Action",
+        "why_flagged": "Reason",
+        "fix_needed": "Recommended Action",
+        "row_number": "Row Number",
+        "department": "Department",
+        "status": "Status",
+        "worker_status": "Status",
+        "salary": "Salary",
+        "payrate": "Pay Rate",
+        "salary_delta": "Salary Delta",
+        "hire_date": "Hire Date",
+        "termination_date": "Termination Date",
+        "records_affected": "Records Affected",
+        "priority_rank": "Priority Rank",
+        "what_to_do": "What To Do",
+        "business_impact": "Business Impact",
+        "gate_status": "Gate Status",
+        "gate_message": "Gate Message",
+        "source_file": "Source File",
+        "detail_sheet": "Detail Sheet",
+    }
+    key = str(col).strip()
+    lowered = key.lower().replace(" ", "_")
+    if lowered in display_map:
+        return display_map[lowered]
+    return key.replace("_", " ").strip().title()
 
 
 def _fmt(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     return df.rename(columns={c: _humanize(c) for c in df.columns})
+
+
+ROW_LEVEL_CORE_COLUMNS = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Issue Name",
+    "Severity",
+    "Current Value",
+    "Reason",
+    "Recommended Action",
+]
+
+ROW_LEVEL_RELEVANT_COLUMNS = {
+    "Fix_List_Detail": [
+        "Department",
+        "Status",
+        "Salary",
+        "Pay Rate",
+        "Salary Delta",
+        "Hire Date",
+        "Termination Date",
+        "Row Number",
+    ],
+    "Findings_Missing_Salary": ["Salary", "Pay Rate", "Salary Delta"],
+    "Findings_Salary_Defaults": ["Salary", "Pay Rate", "Salary Delta"],
+    "Findings_Round_Salary": ["Salary", "Pay Rate", "Salary Delta"],
+    "Findings_Pay_Equity": ["Department", "Salary", "Salary Delta"],
+    "Findings_Salary_Outliers": ["Department", "Salary", "Salary Delta"],
+    "Findings_Active_Term": ["Status", "Termination Date"],
+    "Findings_Pending_Status": ["Status", "Termination Date"],
+    "Findings_Invalid_Dates": ["Hire Date", "Termination Date"],
+    "Findings_Impossible_Dates": ["Hire Date", "Termination Date"],
+}
+
+
+def _reorder_columns(df: pd.DataFrame, first_columns: list[str]) -> pd.DataFrame:
+    if df.empty:
+        return df
+    ordered = [col for col in first_columns if col in df.columns]
+    remaining = [col for col in df.columns if col not in ordered]
+    return df[[*ordered, *remaining]]
+
+
+def _trim_row_level_columns(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+    allowed = [col for col in ROW_LEVEL_CORE_COLUMNS if col in df.columns]
+    relevant = [col for col in ROW_LEVEL_RELEVANT_COLUMNS.get(sheet_name, []) if col in df.columns]
+    remaining = [col for col in df.columns if col not in set(allowed + relevant)]
+    return df[[*allowed, *relevant, *remaining]]
+
+
+def _format_row_level_sheet(df: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    formatted = _fmt(df)
+    formatted = _trim_row_level_columns(formatted, sheet_name)
+    return _reorder_columns(formatted, ROW_LEVEL_CORE_COLUMNS)
 
 
 def _safe(val: object) -> str:
@@ -322,14 +414,56 @@ def _executive_summary_sheet(summary: dict) -> pd.DataFrame:
     Mirrors the PDF findings-by-severity section.
     Uses human-readable language throughout.
     """
-    rows = [{
-        "Severity":         "",
-        "Issue Name":       "How to Use This Workbook",
-        "Records Affected": "",
-        "Description":      "This workbook highlights data issues found in the employee file. Review Executive_Summary first, then use Fix_List_Detail to identify and correct affected records.",
-        "Business Impact":  "",
-        "Required Action":  "",
-    }]
+    rows = [
+        {
+            "Severity": "",
+            "Issue Name": "Start here",
+            "Records Affected": "",
+            "Description": "Fix CRITICAL issues first",
+            "Business Impact": "",
+            "Required Action": "Use Fix_List for priority-ranked issues",
+        },
+        {
+            "Severity": "",
+            "Issue Name": "Start here",
+            "Records Affected": "",
+            "Description": "Use Fix_List_Detail to see affected employees",
+            "Business Impact": "",
+            "Required Action": "Use correction CSV files to apply fixes",
+        },
+        {
+            "Severity": "CRITICAL",
+            "Issue Name": "Priority",
+            "Records Affected": "",
+            "Description": "Must fix immediately",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+        {
+            "Severity": "HIGH",
+            "Issue Name": "Priority",
+            "Records Affected": "",
+            "Description": "Fix before migration",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+        {
+            "Severity": "MEDIUM",
+            "Issue Name": "Priority",
+            "Records Affected": "",
+            "Description": "Review recommended",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+        {
+            "Severity": "LOW",
+            "Issue Name": "Priority",
+            "Records Affected": "",
+            "Description": "Informational",
+            "Business Impact": "",
+            "Required Action": "",
+        },
+    ]
     for finding in _ordered_findings(summary):
         check_key  = str(finding.get("check_key", ""))
         check_name = str(finding.get("check_name", ""))
@@ -393,26 +527,36 @@ FIX_LIST_DETAIL_COLUMNS = [
     "Last Name",
     "Issue Name",
     "Severity",
-    "Why Flagged",
     "Current Value",
-    "Fix Needed",
-    "Row Number",
-    "Department",
-    "Status",
+    "Reason",
+    "Recommended Action",
     "Salary",
-    "Payrate",
+    "Pay Rate",
+    "Salary Delta",
+    "Status",
     "Hire Date",
     "Termination Date",
+    "Department",
+    "Row Number",
 ]
 
-_OPTIONAL_EXECUTION_COLUMNS = [
-    "Row Number",
+_RAW_EXECUTION_COLUMNS = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Issue Name",
+    "Severity",
+    "Current Value",
+    "Reason",
+    "Recommended Action",
     "Department",
     "Status",
     "Salary",
-    "Payrate",
+    "Pay Rate",
+    "Salary Delta",
     "Hire Date",
     "Termination Date",
+    "Row Number",
 ]
 
 
@@ -508,11 +652,11 @@ def _execution_current_value(
         salary = _lookup_value(source_row, sample_row, "salary")
         payrate = _lookup_value(source_row, sample_row, "payrate")
         if salary and payrate:
-            return f"Salary: {salary} | Payrate: {payrate}"
+            return f"Salary: {salary} | Pay Rate: {payrate}"
         if salary:
             return f"Salary: {salary}"
         if payrate:
-            return f"Payrate: {payrate}"
+            return f"Pay Rate: {payrate}"
         return "Missing compensation value"
     if check_key == "phone_invalid":
         return _lookup_value(source_row, sample_row, "phone")
@@ -554,9 +698,9 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
 def _execution_row(
     issue_name: str,
     severity: str,
-    why_flagged: str,
+    reason: str,
     current_value: str,
-    fix_needed: str,
+    recommended_action: str,
     source_row: pd.Series | None = None,
     sample_row: dict | None = None,
     row_number: str = "",
@@ -568,16 +712,17 @@ def _execution_row(
         "Last Name": _lookup_value(source_row, sample_row, "last_name") or sample_last,
         "Issue Name": issue_name,
         "Severity": severity,
-        "Why Flagged": why_flagged,
         "Current Value": current_value,
-        "Fix Needed": fix_needed,
-        "Row Number": row_number or _lookup_value(source_row, sample_row, "row_number"),
-        "Department": _lookup_value(source_row, sample_row, "department"),
-        "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
+        "Reason": reason,
+        "Recommended Action": recommended_action,
         "Salary": _lookup_value(source_row, sample_row, "salary"),
-        "Payrate": _lookup_value(source_row, sample_row, "payrate"),
+        "Pay Rate": _lookup_value(source_row, sample_row, "payrate"),
+        "Salary Delta": _lookup_value(source_row, sample_row, "salary_delta"),
+        "Status": _lookup_value(source_row, sample_row, "worker_status", "status"),
         "Hire Date": _lookup_value(source_row, sample_row, "hire_date", "start_date", "date_hired"),
         "Termination Date": _lookup_value(source_row, sample_row, "termination_date", "term_date", "end_date"),
+        "Department": _lookup_value(source_row, sample_row, "department"),
+        "Row Number": row_number or _lookup_value(source_row, sample_row, "row_number"),
     }
     return result
 
@@ -585,12 +730,71 @@ def _execution_row(
 def _trim_optional_execution_columns(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         return frame
+    return _format_row_level_sheet(frame, "Fix_List_Detail")
 
-    keep_cols = FIX_LIST_DETAIL_COLUMNS[:8]
-    for col in _OPTIONAL_EXECUTION_COLUMNS:
-        if col in frame.columns and frame[col].map(_safe).any():
-            keep_cols.append(col)
-    return frame[keep_cols]
+
+def _detail_extra_value(source_row: pd.Series | None, sample_row: dict | None, column: str) -> str:
+    lookup_map = {
+        "Status": ("worker_status", "status"),
+        "Salary": ("salary",),
+        "Pay Rate": ("payrate",),
+        "Salary Delta": ("salary_delta",),
+        "Hire Date": ("hire_date", "start_date", "date_hired"),
+        "Termination Date": ("termination_date", "term_date", "end_date"),
+        "Department": ("department",),
+    }
+    return _lookup_value(source_row, sample_row, *lookup_map.get(column, ()))
+
+
+DETAIL_COLUMNS = [
+    "Worker ID",
+    "First Name",
+    "Last Name",
+    "Issue Name",
+    "Severity",
+    "Current Value",
+    "Reason",
+    "Recommended Action",
+    "Status",
+    "Salary",
+    "Pay Rate",
+    "Salary Delta",
+    "Hire Date",
+    "Termination Date",
+    "Department",
+]
+
+
+def _detail_row(
+    issue_name: str,
+    severity: str,
+    current_value: str,
+    reason: str,
+    recommended_action: str,
+    source_row: pd.Series | None = None,
+    sample_row: dict | None = None,
+    extra_columns: list[str] | None = None,
+) -> dict:
+    sample_first, sample_last = _split_name_parts(sample_row)
+    row = {
+        "Worker ID": _lookup_value(source_row, sample_row, "worker_id", "employee_id"),
+        "First Name": _lookup_value(source_row, sample_row, "first_name") or sample_first,
+        "Last Name": _lookup_value(source_row, sample_row, "last_name") or sample_last,
+        "Issue Name": issue_name,
+        "Severity": severity,
+        "Current Value": current_value,
+        "Reason": reason,
+        "Recommended Action": recommended_action,
+    }
+    for column in extra_columns or []:
+        row[column] = _detail_extra_value(source_row, sample_row, column)
+    return row
+
+
+def _format_detail_sheet(frame: pd.DataFrame, sheet_name: str) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    return _format_row_level_sheet(frame, sheet_name)
 
 
 def _build_fix_list_detail_from_samples(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
@@ -613,9 +817,9 @@ def _build_fix_list_detail_from_samples(df: pd.DataFrame, summary: dict) -> pd.D
             rows.append(_execution_row(
                 issue_name=issue_name,
                 severity=severity,
-                why_flagged=_execution_why_flagged(check_key, issue_name, finding, source_row, sample_row),
+                reason=_execution_why_flagged(check_key, issue_name, finding, source_row, sample_row),
                 current_value=_execution_current_value(check_key, finding, source_row, sample_row),
-                fix_needed=_execution_fix_needed(check_key, finding, required_action),
+                recommended_action=_execution_fix_needed(check_key, finding, required_action),
                 source_row=source_row,
                 sample_row=sample_row,
             ))
@@ -642,9 +846,9 @@ def _build_fix_list_detail_full_dup_worker_id(
         rows.append(_execution_row(
             issue_name="Duplicate Worker ID (Source Column Conflict)",
             severity="CRITICAL",
-            why_flagged="Two source columns map to Worker ID with conflicting values.",
+            reason="Two source columns map to Worker ID with conflicting values.",
             current_value=_safe(det.get("duplicate_values", "")),
-            fix_needed="Choose the authoritative Worker ID value and remove the conflicting one.",
+            recommended_action="Choose the authoritative Worker ID value and remove the conflicting one.",
             source_row=source_row,
             row_number=_row_number_from_index(idx),
         ))
@@ -658,9 +862,9 @@ def _build_fix_list_detail_full_dup_worker_id(
             rows.append(_execution_row(
                 issue_name="Duplicate Worker ID",
                 severity="CRITICAL",
-                why_flagged="Worker ID appears on more than one employee record.",
+                reason="Worker ID appears on more than one employee record.",
                 current_value=_safe(source_row.get("worker_id", "")),
-                fix_needed="Assign a unique Worker ID to each affected employee.",
+                recommended_action="Assign a unique Worker ID to each affected employee.",
                 source_row=source_row,
                 row_number=_row_number_from_index(orig_idx),
             ))
@@ -692,20 +896,20 @@ def _build_fix_list_detail_full_salary(df: pd.DataFrame) -> pd.DataFrame:
         salary = _safe(source_row.get("salary", ""))
         payrate = _safe(source_row.get("payrate", ""))
         if salary and payrate:
-            current_value = f"Salary: {salary} | Payrate: {payrate}"
+            current_value = f"Salary: {salary} | Pay Rate: {payrate}"
         elif salary:
             current_value = f"Salary: {salary}"
         elif payrate:
-            current_value = f"Payrate: {payrate}"
+            current_value = f"Pay Rate: {payrate}"
         else:
             current_value = "Missing compensation value"
 
         rows.append(_execution_row(
             issue_name="Missing or Invalid Salary",
             severity="CRITICAL",
-            why_flagged="Active employee has a missing, zero, or invalid salary/payrate.",
+            reason="Active employee has a missing, zero, or invalid salary/payrate.",
             current_value=current_value,
-            fix_needed="Enter a valid positive salary or payrate before payroll processing.",
+            recommended_action="Enter a valid positive salary or payrate before payroll processing.",
             source_row=source_row,
             row_number=_row_number_from_index(orig_idx),
         ))
@@ -731,9 +935,9 @@ def _build_fix_list_detail_full_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
         rows.append(_execution_row(
             issue_name="Invalid Dates",
             severity="CRITICAL",
-            why_flagged="Hire date is set in the future.",
+            reason="Hire date is set in the future.",
             current_value=_safe(source_row.get(hire_col, "")),
-            fix_needed="Correct the hire date to today or earlier.",
+            recommended_action="Correct the hire date to today or earlier.",
             source_row=source_row,
             row_number=_row_number_from_index(orig_idx),
         ))
@@ -746,9 +950,9 @@ def _build_fix_list_detail_full_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
             rows.append(_execution_row(
                 issue_name="Invalid Dates",
                 severity="CRITICAL",
-                why_flagged="Termination date is earlier than hire date.",
+                reason="Termination date is earlier than hire date.",
                 current_value=f"Hire Date: {_safe(source_row.get(hire_col, ''))} | Termination Date: {_safe(source_row.get(term_col, ''))}",
-                fix_needed="Update the dates so the termination date is on or after the hire date.",
+                recommended_action="Update the dates so the termination date is on or after the hire date.",
                 source_row=source_row,
                 row_number=_row_number_from_index(orig_idx),
             ))
@@ -774,9 +978,9 @@ def _build_fix_list_detail_full_active_term(df: pd.DataFrame) -> pd.DataFrame:
         rows.append(_execution_row(
             issue_name="Active Employees with Termination Dates",
             severity="CRITICAL",
-            why_flagged="Employee is marked Active but also has a termination date.",
+            reason="Employee is marked Active but also has a termination date.",
             current_value=f"Status: Active | Termination Date: {_safe(source_row.get(term_col, ''))}",
-            fix_needed="Remove the termination date or change the worker status to Terminated.",
+            recommended_action="Remove the termination date or change the worker status to Terminated.",
             source_row=source_row,
             row_number=_row_number_from_index(orig_idx),
         ))
@@ -804,9 +1008,9 @@ def _build_fix_list_detail_full_missing_id(df: pd.DataFrame) -> pd.DataFrame:
         rows.append(_execution_row(
             issue_name="Missing Required Identity Fields",
             severity="CRITICAL",
-            why_flagged=f"Required identity fields are missing: {', '.join(missing)}.",
+            reason=f"Required identity fields are missing: {', '.join(missing)}.",
             current_value="Missing: " + ", ".join(missing),
-            fix_needed="Populate Worker ID, First Name, and Last Name for this employee.",
+            recommended_action="Populate Worker ID, First Name, and Last Name for this employee.",
             source_row=source_row,
             row_number=_row_number_from_index(orig_idx),
         ))
@@ -834,9 +1038,9 @@ def _fix_list_detail_sheet(df: pd.DataFrame, summary: dict, row_annotations: lis
             "Last Name": "",
             "Issue Name": "No Row-Level Issues",
             "Severity": "",
-            "Why Flagged": "No actionable row-level detail was available for this workbook.",
             "Current Value": "",
-            "Fix Needed": "",
+            "Reason": "No actionable row-level detail was available for this workbook.",
+            "Recommended Action": "",
         }])
 
     combined = pd.concat(nonempty, ignore_index=True, sort=False)
@@ -849,63 +1053,65 @@ def _fix_list_detail_sheet(df: pd.DataFrame, summary: dict, row_annotations: lis
         kind="stable",
     ).drop(columns=["__severity_rank", "__worker_sort", "__issue_sort", "__row_sort"], errors="ignore")
 
-    keep_cols = FIX_LIST_DETAIL_COLUMNS[:8]
-    for col in _OPTIONAL_EXECUTION_COLUMNS:
-        if col in combined.columns and combined[col].map(_safe).any():
-            keep_cols.append(col)
-    return combined[keep_cols].reset_index(drop=True)
+    return _trim_optional_execution_columns(combined).reset_index(drop=True)
 
 
 # ── Sheet 4: Findings_Detail (per issue) ─────────────────────────────────────
 
-DETAIL_COLUMNS = ["Worker ID", "First Name", "Last Name",
-                  "Issue Name", "Issue Description", "Current Value", "Expected Fix"]
-
-
 def _detail_note_row(msg: str) -> dict:
-    return {"Worker ID": "ℹ Note", "First Name": None, "Last Name": None,
-            "Issue Name": None, "Issue Description": msg,
-            "Current Value": None, "Expected Fix": None}
+    return {
+        "Worker ID": "Note",
+        "First Name": "",
+        "Last Name": "",
+        "Issue Name": "",
+        "Severity": "",
+        "Current Value": "",
+        "Reason": msg,
+        "Recommended Action": "",
+    }
+
+
+def _detail_columns_for_sheet(sheet_name: str) -> list[str]:
+    return [col for col in ROW_LEVEL_CORE_COLUMNS + ROW_LEVEL_RELEVANT_COLUMNS.get(sheet_name, [])]
 
 
 def _build_sample_detail(
     data_csv_df: pd.DataFrame | None,
     check_name: str,
     finding: dict,
+    sheet_name: str,
 ) -> pd.DataFrame:
     """Build a detail tab from internal_audit_data.csv sample rows."""
     if data_csv_df is None or data_csv_df.empty:
         total = int(finding.get("count", finding.get("row_count", 0)) or 0)
-        return pd.DataFrame([_detail_note_row(
-            f"No row-level sample data available. This issue affects {total:,} records. "
-            "Export internal_audit_data.csv for the full list."
-        )])
+        return _format_detail_sheet(pd.DataFrame([_detail_note_row(
+            f"No row-level sample data available. This issue affects {total:,} records. Export internal_audit_data.csv for the full list."
+        )]), sheet_name)
 
     rows = data_csv_df[data_csv_df["check_name"] == check_name].copy()
     if rows.empty:
         return pd.DataFrame()
 
     total = int(finding.get("count", finding.get("row_count", 0)) or 0)
-
     detail = pd.DataFrame({
-        "Worker ID":       rows["employee_id"].map(_safe),
-        "First Name":      rows["first_name"].map(_safe),
-        "Last Name":       rows["last_name"].map(_safe),
-        "Issue Name":      rows["check_name"].map(_safe),
-        "Issue Description": rows["issue_description"].map(_safe),
-        "Current Value":   rows["value_found"].map(_safe),
-        "Expected Fix":    rows["recommended_action"].map(_safe),
+        "Worker ID": rows["employee_id"].map(_safe),
+        "First Name": rows["first_name"].map(_safe),
+        "Last Name": rows["last_name"].map(_safe),
+        "Issue Name": rows["check_name"].map(_safe),
+        "Severity": str(finding.get("severity", "")).upper(),
+        "Current Value": rows["value_found"].map(_safe),
+        "Reason": rows["issue_description"].map(_safe),
+        "Recommended Action": rows["recommended_action"].map(_safe),
     }).reset_index(drop=True)
 
-    shown = len(detail)
-    if total > shown:
+    if total > len(detail):
         note = _detail_note_row(
-            f"Showing {shown} sample records of {total:,} total. "
-            "See internal_audit_data.csv for the complete list."
+            f"Showing {len(detail)} sample records of {total:,} total. See internal_audit_data.csv for the complete list."
         )
         detail = pd.concat([pd.DataFrame([note]), detail], ignore_index=True)
 
-    return detail
+    detail = detail.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(detail, sheet_name)
 
 
 def _build_full_detail_dup_worker_id(
@@ -913,6 +1119,7 @@ def _build_full_detail_dup_worker_id(
     summary: dict,
     row_annotations: list[dict],
 ) -> pd.DataFrame:
+    sheet_name = "Findings_Dup_WorkerID"
     frames = []
 
     # Canonical conflict rows
@@ -924,15 +1131,14 @@ def _build_full_detail_dup_worker_id(
             row = df.iloc[idx]
         except IndexError:
             continue
-        frames.append({
-            "Worker ID":       _safe(row.get("worker_id", "")),
-            "First Name":      _safe(row.get("first_name", "")),
-            "Last Name":       _safe(row.get("last_name", "")),
-            "Issue Name":      "Duplicate Worker ID (Source Column Conflict)",
-            "Issue Description": "Two source columns map to Worker ID with conflicting values.",
-            "Current Value":   _safe(det.get("duplicate_values", "")),
-            "Expected Fix":    "Decide which source column is authoritative and remove the other.",
-        })
+        frames.append(_detail_row(
+            issue_name="Duplicate Worker ID (Source Column Conflict)",
+            severity="CRITICAL",
+            current_value=_safe(det.get("duplicate_values", "")),
+            reason="Two source columns map to Worker ID with conflicting values.",
+            recommended_action="Decide which source column is authoritative and remove the other.",
+            source_row=row,
+        ))
 
     # Standard duplicate worker_id rows
     if "worker_id" in df.columns:
@@ -941,26 +1147,27 @@ def _build_full_detail_dup_worker_id(
         dup_idx = nonblank[nonblank.duplicated(keep=False)].index
         for orig_idx in dup_idx:
             row = df.loc[orig_idx]
-            frames.append({
-                "Worker ID":       _safe(row.get("worker_id", "")),
-                "First Name":      _safe(row.get("first_name", "")),
-                "Last Name":       _safe(row.get("last_name", "")),
-                "Issue Name":      "Duplicate Worker ID",
-                "Issue Description": "Multiple employees share this Worker ID.",
-                "Current Value":   _safe(row.get("worker_id", "")),
-                "Expected Fix":    "Assign a unique Worker ID to each employee.",
-            })
+            frames.append(_detail_row(
+                issue_name="Duplicate Worker ID",
+                severity="CRITICAL",
+                current_value=_safe(row.get("worker_id", "")),
+                reason="Multiple employees share this Worker ID.",
+                recommended_action="Assign a unique Worker ID to each employee.",
+                source_row=row,
+            ))
 
     if not frames:
         return pd.DataFrame()
-    result = pd.DataFrame(frames, columns=DETAIL_COLUMNS)
+    result = pd.DataFrame(frames)
     if len(result) > DETAIL_ROW_CAP:
         note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
         result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
-    return result
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
 
 
 def _build_full_detail_salary(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Missing_Salary"
     status_col  = ia._status_column(df)
     has_salary  = "salary" in df.columns
     has_payrate = "payrate" in df.columns
@@ -981,27 +1188,29 @@ def _build_full_detail_salary(df: pd.DataFrame) -> pd.DataFrame:
         row = df.loc[orig_idx]
         sal = _safe(row.get("salary", ""))
         pay = _safe(row.get("payrate", ""))
-        current = "Missing" if (not sal and not pay) else (f"Salary: {sal}" if sal else f"Payrate: {pay}")
-        rows.append({
-            "Worker ID":       _safe(row.get("worker_id", "")),
-            "First Name":      _safe(row.get("first_name", "")),
-            "Last Name":       _safe(row.get("last_name", "")),
-            "Issue Name":      "Missing or Invalid Salary",
-            "Issue Description": "Active employee has no valid salary or payrate.",
-            "Current Value":   current,
-            "Expected Fix":    "Enter a valid positive salary or payrate.",
-        })
+        current = "Missing" if (not sal and not pay) else (f"Salary: {sal}" if sal else f"Pay Rate: {pay}")
+        rows.append(_detail_row(
+            issue_name="Missing or Invalid Salary",
+            severity="CRITICAL",
+            current_value=current,
+            reason="Active employee has no valid salary or payrate.",
+            recommended_action="Enter a valid positive salary or payrate.",
+            source_row=row,
+            extra_columns=["Salary", "Pay Rate", "Salary Delta"],
+        ))
 
     if not rows:
         return pd.DataFrame()
-    result = pd.DataFrame(rows, columns=DETAIL_COLUMNS)
+    result = pd.DataFrame(rows)
     if len(result) > DETAIL_ROW_CAP:
         note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows. Full list in internal_audit_data.csv.")
         result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
-    return result
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
 
 
 def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Invalid_Dates"
     hire_col = ia._first_present(df, ["hire_date", "start_date", "date_hired"])
     term_col  = ia._first_present(df, ["termination_date", "term_date", "end_date"])
     if not hire_col:
@@ -1014,44 +1223,43 @@ def _build_full_detail_invalid_dates(df: pd.DataFrame) -> pd.DataFrame:
     future_mask = hire_dates > today
     for orig_idx in df.index[future_mask.fillna(False)]:
         row = df.loc[orig_idx]
-        rows.append({
-            "Worker ID":       _safe(row.get("worker_id", "")),
-            "First Name":      _safe(row.get("first_name", "")),
-            "Last Name":       _safe(row.get("last_name", "")),
-            "Issue Name":      "Invalid Dates",
-            "Issue Description": "Hire date is set in the future.",
-            "Current Value":   _safe(row.get(hire_col, "")),
-            "Expected Fix":    "Correct the hire date to today or earlier.",
-        })
+        rows.append(_detail_row(
+            issue_name="Invalid Dates",
+            severity="CRITICAL",
+            current_value=_safe(row.get(hire_col, "")),
+            reason="Hire date is set in the future.",
+            recommended_action="Correct the hire date to today or earlier.",
+            source_row=row,
+            extra_columns=["Hire Date", "Termination Date"],
+        ))
 
     if term_col:
         term_dates = ia._date_series(df, term_col)
         tbh_mask = (term_dates < hire_dates) & term_dates.notna() & hire_dates.notna()
         for orig_idx in df.index[tbh_mask.fillna(False)]:
             row = df.loc[orig_idx]
-            rows.append({
-                "Worker ID":       _safe(row.get("worker_id", "")),
-                "First Name":      _safe(row.get("first_name", "")),
-                "Last Name":       _safe(row.get("last_name", "")),
-                "Issue Name":      "Invalid Dates",
-                "Issue Description": "Termination date is before hire date.",
-                "Current Value":   (
-                    f"Hired: {_safe(row.get(hire_col, ''))}  |  "
-                    f"Terminated: {_safe(row.get(term_col, ''))}"
-                ),
-                "Expected Fix":    "Ensure termination date is on or after the hire date.",
-            })
+            rows.append(_detail_row(
+                issue_name="Invalid Dates",
+                severity="CRITICAL",
+                current_value=f"Hire Date: {_safe(row.get(hire_col, ''))} | Termination Date: {_safe(row.get(term_col, ''))}",
+                reason="Termination date is before hire date.",
+                recommended_action="Ensure termination date is on or after the hire date.",
+                source_row=row,
+                extra_columns=["Hire Date", "Termination Date"],
+            ))
 
     if not rows:
         return pd.DataFrame()
-    result = pd.DataFrame(rows, columns=DETAIL_COLUMNS)
+    result = pd.DataFrame(rows)
     if len(result) > DETAIL_ROW_CAP:
         note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows.")
         result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
-    return result
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
 
 
 def _build_full_detail_active_term(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Active_Term"
     status_col = ia._status_column(df)
     term_col   = ia._first_present(df, ["termination_date", "term_date", "end_date"])
     if not status_col or not term_col:
@@ -1064,26 +1272,28 @@ def _build_full_detail_active_term(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for orig_idx in df.index[mask.fillna(False)]:
         row = df.loc[orig_idx]
-        rows.append({
-            "Worker ID":       _safe(row.get("worker_id", "")),
-            "First Name":      _safe(row.get("first_name", "")),
-            "Last Name":       _safe(row.get("last_name", "")),
-            "Issue Name":      "Active Employees with Termination Dates",
-            "Issue Description": "Employee is marked Active but also has a termination date.",
-            "Current Value":   f"Status: Active  |  Termination Date: {_safe(row.get(term_col, ''))}",
-            "Expected Fix":    "Remove the termination date, or change status to Terminated.",
-        })
+        rows.append(_detail_row(
+            issue_name="Active Employees with Termination Dates",
+            severity="CRITICAL",
+            current_value=f"Status: Active | Termination Date: {_safe(row.get(term_col, ''))}",
+            reason="Employee is marked Active but also has a termination date.",
+            recommended_action="Remove the termination date, or change status to Terminated.",
+            source_row=row,
+            extra_columns=["Status", "Termination Date"],
+        ))
 
     if not rows:
         return pd.DataFrame()
-    result = pd.DataFrame(rows, columns=DETAIL_COLUMNS)
+    result = pd.DataFrame(rows)
     if len(result) > DETAIL_ROW_CAP:
         note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows.")
         result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
-    return result
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
 
 
 def _build_full_detail_missing_id(df: pd.DataFrame) -> pd.DataFrame:
+    sheet_name = "Findings_Missing_ID"
     required = [f for f in ["worker_id", "first_name", "last_name"] if f in df.columns]
     if not required:
         return pd.DataFrame()
@@ -1098,23 +1308,23 @@ def _build_full_detail_missing_id(df: pd.DataFrame) -> pd.DataFrame:
     for orig_idx in df.index[combined.fillna(False)]:
         row = df.loc[orig_idx]
         missing = [_labels.get(f, f) for f in required if _safe(row.get(f, "")) == ""]
-        rows.append({
-            "Worker ID":       _safe(row.get("worker_id", "")),
-            "First Name":      _safe(row.get("first_name", "")),
-            "Last Name":       _safe(row.get("last_name", "")),
-            "Issue Name":      "Missing Required Identity Fields",
-            "Issue Description": f"Required fields are blank: {', '.join(missing)}.",
-            "Current Value":   "Missing: " + ", ".join(missing),
-            "Expected Fix":    "Provide Worker ID, First Name, and Last Name for every employee.",
-        })
+        rows.append(_detail_row(
+            issue_name="Missing Required Identity Fields",
+            severity="CRITICAL",
+            current_value="Missing: " + ", ".join(missing),
+            reason=f"Required fields are blank: {', '.join(missing)}.",
+            recommended_action="Provide Worker ID, First Name, and Last Name for every employee.",
+            source_row=row,
+        ))
 
     if not rows:
         return pd.DataFrame()
-    result = pd.DataFrame(rows, columns=DETAIL_COLUMNS)
+    result = pd.DataFrame(rows)
     if len(result) > DETAIL_ROW_CAP:
         note = _detail_note_row(f"Truncated to {DETAIL_ROW_CAP:,} rows.")
         result = pd.concat([pd.DataFrame([note]), result.head(DETAIL_ROW_CAP)], ignore_index=True)
-    return result
+    result = result.reindex(columns=_detail_columns_for_sheet(sheet_name), fill_value="")
+    return _format_detail_sheet(result, sheet_name)
 
 
 # Full-detail dispatch table: check_key → builder function (takes df, summary, row_annotations)
@@ -1166,7 +1376,7 @@ def _build_findings_detail_sheets(
         if check_key in _FULL_DETAIL_BUILDERS:
             frame = _FULL_DETAIL_BUILDERS[check_key](df, summary, row_annotations)
         else:
-            frame = _build_sample_detail(data_csv, check_name, finding)
+            frame = _build_sample_detail(data_csv, check_name, finding, detail_sheet)
 
         if frame is not None and not frame.empty:
             result[detail_sheet] = frame
@@ -1234,22 +1444,22 @@ def _build_sheets(
     sheets: dict[str, pd.DataFrame] = {}
 
     # 1. Executive_Summary
-    sheets["Executive_Summary"] = _executive_summary_sheet(summary)
+    sheets["Executive_Summary"] = _fmt(_executive_summary_sheet(summary))
 
     # 2. Fix_List
-    sheets["Fix_List"] = _fix_list_sheet(summary)
+    sheets["Fix_List"] = _fmt(_fix_list_sheet(summary))
 
     # 3. Fix_List_Detail
     sheets["Fix_List_Detail"] = _fix_list_detail_sheet(df, summary, row_annotations)
 
     # 4. Per-issue Findings_* detail tabs (sorted by PDF order)
-    sheets.update({name: _fmt(frame) for name, frame in detail_sheets.items()})
+    sheets.update(detail_sheets)
 
     # 5. Findings_Index
-    sheets["Findings_Index"] = _findings_index_sheet(summary, set(detail_sheets))
+    sheets["Findings_Index"] = _fmt(_findings_index_sheet(summary, set(detail_sheets)))
 
     # 6. Data_Quality_Score
-    sheets["Data_Quality_Score"] = _data_quality_score_sheet(summary)
+    sheets["Data_Quality_Score"] = _fmt(_data_quality_score_sheet(summary))
 
     return sheets
 
