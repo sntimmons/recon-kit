@@ -51,9 +51,9 @@ FIX_COLUMNS = [
     "Last Name",
     "Issue Name",
     "Severity",
-    "Why Flagged",
+    "Reason",
     "Current Value",
-    "Fix Needed",
+    "Recommended Action",
     "Row Number",
 ]
 
@@ -72,7 +72,7 @@ CONTEXT_COLUMNS = [
     "Benefits End Date",
     "Pay Type",
     "Salary",
-    "Payrate",
+    "Pay Rate",
     "Standard Hours",
     "Annualized Pay",
     "Annualized Difference",
@@ -82,12 +82,12 @@ CONTEXT_COLUMNS = [
 ]
 
 REVIEW_METADATA_COLUMNS = [
-    "review_status",
-    "issue_count",
-    "issue_names",
-    "highest_severity",
-    "requires_manual_review",
-    "recommended_next_step",
+    "Review Status",
+    "Issue Count",
+    "Issue Names",
+    "Highest Severity",
+    "Manual Review Required",
+    "Recommended Next Step",
 ]
 
 SEVERITY_RANK = {
@@ -101,6 +101,11 @@ REVIEW_REQUIRED_PRIORITY = [
     "Worker ID",
     "First Name",
     "Last Name",
+    "Review Status",
+    "Highest Severity",
+    "Issue Count",
+    "Issue Names",
+    "Recommended Next Step",
     "Department",
     "Job Title",
     "Status",
@@ -114,7 +119,7 @@ REVIEW_REQUIRED_PRIORITY = [
     "Benefits End Date",
     "Pay Type",
     "Salary",
-    "Payrate",
+    "Pay Rate",
     "Standard Hours",
     "Hire Date",
     "Termination Date",
@@ -205,7 +210,7 @@ CORRECTION_FILE_CONFIG = {
             "Implausible Hourly Pay Rate",
             "Implausible Annual Salary",
         },
-        "extra_columns": ["Pay Type", "Salary", "Payrate", "Standard Hours"],
+        "extra_columns": ["Pay Type", "Salary", "Pay Rate", "Standard Hours"],
     },
     "correction_status.csv": {
         "issue_names": {"Pending Status", "Active Employee with Termination Date"},
@@ -249,18 +254,18 @@ def _context(row: pd.Series) -> dict:
     return {
         "Department":        _get(row, "department", "district"),
         "Job Title":         _get(row, "job_title", "title", "position_title", "position"),
-    "Status":            _get(row, "worker_status", "status"),
-    "Leave Status":      _get(row, "leave_status", "absence_status", "loa_status"),
-    "Worker Type":       _get(row, "worker_type", "employment_type", "pay_type"),
-    "Benefits Eligible": _get(row, "benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"),
-    "Benefit Plan":      _get(row, "benefit_plan", "benefits_plan", "benefit_plan_name", "plan_name"),
-    "Coverage Level":    _get(row, "coverage_level", "benefit_coverage_level", "coverage_tier"),
-    "Dependent Count":   _get(row, "dependent_count", "dependents", "covered_dependents"),
-    "Benefits Start Date": _get(row, "benefits_start_date", "benefit_start_date", "coverage_start_date"),
-    "Benefits End Date": _get(row, "benefits_end_date", "benefit_end_date", "coverage_end_date"),
-    "Pay Type":          _get(row, "pay_type", "worker_type"),
+        "Status":            _get(row, "worker_status", "status"),
+        "Leave Status":      _get(row, "leave_status", "absence_status", "loa_status"),
+        "Worker Type":       _get(row, "worker_type", "employment_type", "pay_type"),
+        "Benefits Eligible": _get(row, "benefits_eligible", "benefit_eligible", "benefits_eligibility", "benefit_eligibility"),
+        "Benefit Plan":      _get(row, "benefit_plan", "benefits_plan", "benefit_plan_name", "plan_name"),
+        "Coverage Level":    _get(row, "coverage_level", "benefit_coverage_level", "coverage_tier"),
+        "Dependent Count":   _get(row, "dependent_count", "dependents", "covered_dependents"),
+        "Benefits Start Date": _get(row, "benefits_start_date", "benefit_start_date", "coverage_start_date"),
+        "Benefits End Date": _get(row, "benefits_end_date", "benefit_end_date", "coverage_end_date"),
+        "Pay Type":          _get(row, "pay_type", "worker_type"),
         "Salary":            _get(row, "salary"),
-        "Payrate":           _get(row, "payrate"),
+        "Pay Rate":          _get(row, "payrate"),
         "Standard Hours":    _get(row, "standard_hours"),
         "Hire Date":         _get(row, "hire_date", "start_date", "date_hired"),
         "Termination Date":  _get(row, "termination_date", "term_date", "end_date"),
@@ -283,9 +288,9 @@ def _make_row(
         "Last Name":    _get(row, "last_name"),
         "Issue Name":   issue_name,
         "Severity":     severity,
-        "Why Flagged":  why_flagged,
+        "Reason":       why_flagged,
         "Current Value": current_value,
-        "Fix Needed":   fix_needed,
+        "Recommended Action": fix_needed,
         "Row Number":   _row_num(orig_idx),
     }
     base.update(_context(row))
@@ -356,7 +361,7 @@ def _display_name(column: str) -> str:
         "pay_type": "Pay Type",
         "worker_type": "Pay Type",
         "salary": "Salary",
-        "payrate": "Payrate",
+        "payrate": "Pay Rate",
         "standard_hours": "Standard Hours",
         "annualized_pay": "Annualized Pay",
         "annualized_difference": "Annualized Difference",
@@ -471,16 +476,16 @@ def _aggregate_review_metadata(issue_rows: pd.DataFrame, clean_base: pd.DataFram
         # REVIEW  = must review before proceeding (HIGH severity or below).
         # This makes the distinction clear: BLOCKED rows need immediate correction;
         # REVIEW rows need a human decision.
-        review_status = "BLOCKED" if highest == "CRITICAL" else "REVIEW"
+        review_status = "Fix Now" if highest == "CRITICAL" else "Review Required"
 
         summaries.append({
             "__row_number": row_number,
-            "review_status": review_status,
-            "issue_count": len(issue_names),
-            "issue_names": "; ".join(issue_names),
-            "highest_severity": highest,
-            "requires_manual_review": "Yes",
-            "recommended_next_step": _recommended_step_from_issues(issue_names, group),
+            "Review Status": review_status,
+            "Issue Count": len(issue_names),
+            "Issue Names": "; ".join(issue_names),
+            "Highest Severity": highest,
+            "Manual Review Required": "Yes",
+            "Recommended Next Step": _recommended_step_from_issues(issue_names, group),
         })
 
     return pd.DataFrame(summaries)
@@ -500,23 +505,40 @@ def _build_clean_review_exports(
     metadata = _aggregate_review_metadata(issue_rows, clean_base)
     clean = clean_base.merge(metadata, on="__row_number", how="left")
 
-    clean["review_status"] = clean["review_status"].fillna("CLEAN")
-    clean["issue_count"] = clean["issue_count"].fillna(0).astype(int)
-    clean["issue_names"] = clean["issue_names"].fillna("")
-    clean["highest_severity"] = clean["highest_severity"].fillna("")
-    clean["requires_manual_review"] = clean["requires_manual_review"].fillna("No")
-    clean["recommended_next_step"] = clean["recommended_next_step"].fillna("No action needed")
+    clean["Review Status"] = clean["Review Status"].fillna("Clean")
+    clean["Issue Count"] = clean["Issue Count"].fillna(0).astype(int)
+    clean["Issue Names"] = clean["Issue Names"].fillna("")
+    clean["Highest Severity"] = clean["Highest Severity"].fillna("")
+    clean["Manual Review Required"] = clean["Manual Review Required"].fillna("No")
+    clean["Recommended Next Step"] = clean["Recommended Next Step"].fillna("No action needed")
 
     source_columns = [c for c in clean.columns if c not in {"__row_number", *REVIEW_METADATA_COLUMNS}]
+    clean_priority_columns = [
+        "Worker ID",
+        "First Name",
+        "Last Name",
+        "Department",
+        "Job Title",
+        "Status",
+        "Worker Type",
+        "Pay Type",
+        "Benefit Plan",
+        "Coverage Level",
+        "Hire Date",
+        "Termination Date",
+    ]
+    ordered_source_columns = [c for c in clean_priority_columns if c in source_columns]
+    remaining_source_columns = [c for c in source_columns if c not in ordered_source_columns]
     clean = clean[[
-        *source_columns,
+        *ordered_source_columns,
         *REVIEW_METADATA_COLUMNS,
+        *remaining_source_columns,
     ]].reset_index(drop=True)
 
     review_required_mask = clean.apply(
         lambda row: _should_include_in_review_required(
-            row.get("highest_severity", ""),
-            row.get("issue_names", ""),
+            row.get("Highest Severity", ""),
+            row.get("Issue Names", ""),
         ),
         axis=1,
     )
@@ -650,7 +672,7 @@ def _primary_salary_correction(
         elif pt == "salaried":
             note = "Enter a valid positive annual salary before payroll processing."
         else:
-            note = "Enter a valid positive salary or payrate before payroll processing."
+            note = "Enter a valid positive salary or pay rate before payroll processing."
     elif primary_raw == "Missing or Invalid Pay Type":
         note = "Enter the correct pay type from the allowed list before payroll processing."
     elif primary_raw == "Compensation Type Mismatch":
@@ -662,9 +684,9 @@ def _primary_salary_correction(
             note = "Enter the correct compensation value for the worker pay type."
     elif primary_raw == "Salary and Pay Rate Conflict":
         if pt == "hourly":
-            note = "Remove the salary value - this worker should have a payrate only."
+            note = "Remove the salary value - this worker should have a pay rate only."
         elif pt == "salaried":
-            note = "Remove the payrate value - this worker should have a salary only."
+            note = "Remove the pay rate value - this worker should have a salary only."
         else:
             note = "Keep only the compensation field that matches the intended pay type."
     elif primary_raw == "Missing Standard Hours for Hourly Worker":
@@ -766,9 +788,9 @@ def _recommended_step_from_issues(
                 return "Enter a valid positive hourly pay rate before payroll processing."
             if pt == "salaried":
                 return "Enter a valid positive annual salary before payroll processing."
-            return "Enter a valid positive salary or payrate before payroll processing."
+            return "Enter a valid positive salary or pay rate before payroll processing."
         if primary == "Implausible Hourly Pay Rate":
-            return "Review the hourly payrate - confirm it is within the expected range."
+            return "Review the hourly pay rate and confirm it is within the expected range."
         if primary == "Implausible Annual Salary":
             return "Review the annual salary - confirm it is within the expected range."
         if primary in ("Missing or Invalid Pay Type", "Compensation Type Mismatch"):
@@ -776,8 +798,8 @@ def _recommended_step_from_issues(
 
     # Non-payroll issues: use original fix-needed style joined step
     fix_needed_raw = (
-        _unique_ordered(group["Fix Needed"].tolist())
-        if "Fix Needed" in group.columns else []
+        _unique_ordered(group["Recommended Action"].tolist())
+        if "Recommended Action" in group.columns else []
     )
     return _recommended_next_step(fix_needed_raw)
 
@@ -821,7 +843,7 @@ def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.D
             current_pay_type = _first_nonblank(correction_group, "Pay Type")
             severity = _first_nonblank(correction_group, "Severity")
             current_salary = _first_nonblank(correction_group, "Salary")
-            current_pay_rate = _first_nonblank(correction_group, "Payrate")
+            current_pay_rate = _first_nonblank(correction_group, "Pay Rate")
 
             # Determine primary issue, related issues, and clean lead note
             primary_label, related_issues, note = _primary_salary_correction(
@@ -851,7 +873,7 @@ def _build_correction_template(issue_frame: pd.DataFrame, filename: str) -> pd.D
     for group in _group_issue_rows(filtered):
         issue_names = _unique_ordered(group["Issue Name"].tolist())
         current_values = _unique_ordered(group["Current Value"].tolist())
-        notes = _unique_ordered(group["Fix Needed"].tolist())
+        notes = _unique_ordered(group["Recommended Action"].tolist())
 
         row = {
             "Worker ID": _first_nonblank(group, "Worker ID"),
@@ -982,14 +1004,14 @@ def _build_duplicates(df: pd.DataFrame, row_annotations: list[dict], summary: di
                 "Last Name":    last,
                 "Issue Name":   "Duplicate Name - Different Worker ID",
                 "Severity":     "MEDIUM",
-                "Why Flagged":  "This employee name appears with different Worker IDs and needs review.",
+                "Reason":       "This employee name appears with different Worker IDs and needs review.",
                 "Current Value": f"{first} {last}".strip() + (f" | Worker ID: {wid}" if wid else ""),
-                "Fix Needed":   "Confirm whether this is a duplicate person or different employees with the same name.",
+                "Recommended Action": "Confirm whether this is a duplicate person or different employees with the same name.",
                 "Row Number":   _safe(sr.get("row_number", "")),
                 "Department":   _safe(sr.get("department", "")),
                 "Status":       _safe(sr.get("status", "")),
                 "Salary":       _safe(sr.get("salary", "")),
-                "Payrate":      _safe(sr.get("payrate", "")),
+                "Pay Rate":     _safe(sr.get("payrate", "")),
                 "Hire Date":    _safe(sr.get("hire_date", "")),
                 "Termination Date": _safe(sr.get("termination_date", "")),
                 "Email":        _safe(sr.get("email", "")),
@@ -1054,20 +1076,20 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
             sal = _safe(source_row.get("salary", ""))
             pay = _safe(source_row.get("payrate", ""))
             if sal and pay:
-                current_value = f"Salary: {sal} | Payrate: {pay}"
+                current_value = f"Salary: {sal} | Pay Rate: {pay}"
             elif sal:
                 current_value = f"Salary: {sal}"
             elif pay:
-                current_value = f"Payrate: {pay}"
+                current_value = f"Pay Rate: {pay}"
             else:
                 current_value = "Missing compensation value"
             rows.append(_make_row(
                 source_row, orig_idx,
                 issue_name="Missing or Invalid Salary",
                 severity="CRITICAL",
-                why_flagged="Active employee has a missing, zero, or invalid salary/payrate.",
+                why_flagged="Active employee has a missing, zero, or invalid salary or pay rate.",
                 current_value=current_value,
-                fix_needed="Enter a valid positive salary or payrate before payroll processing.",
+                fix_needed="Enter a valid positive salary or pay rate before payroll processing.",
             ))
 
     # --- pay_type_missing_or_invalid ---
@@ -1102,9 +1124,9 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                     source_row, orig_idx,
                     issue_name="Compensation Type Mismatch",
                     severity=severity,
-                    why_flagged="Hourly worker is missing a valid payrate for the stated pay type.",
-                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Payrate: {_safe(source_row.get('payrate', ''))}",
-                    fix_needed="Populate a valid payrate that matches the worker pay type before payroll.",
+                    why_flagged="Hourly worker is missing a valid pay rate for the stated pay type.",
+                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                    fix_needed="Populate a valid pay rate that matches the worker pay type before payroll.",
                 ))
             elif pay_class == "salaried" and not salary_valid.at[orig_idx]:
                 severity = "CRITICAL" if is_active else "HIGH"
@@ -1113,7 +1135,7 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                     issue_name="Compensation Type Mismatch",
                     severity=severity,
                     why_flagged="Salaried worker is missing a valid salary for the stated pay type.",
-                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Payrate: {_safe(source_row.get('payrate', ''))}",
+                    current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
                     fix_needed="Populate a valid salary that matches the worker pay type before payroll.",
                 ))
 
@@ -1130,8 +1152,8 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 source_row, orig_idx,
                 issue_name="Salary and Pay Rate Conflict",
                 severity=severity,
-                why_flagged="Both salary and payrate are populated for this worker and conflict with the stated pay type.",
-                current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Payrate: {_safe(source_row.get('payrate', ''))}",
+                why_flagged="Both salary and pay rate are populated for this worker and conflict with the stated pay type.",
+                current_value=f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))}",
                 fix_needed="Review the worker record and keep only the compensation field that matches the intended pay type.",
             ))
 
@@ -1148,8 +1170,8 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 source_row, orig_idx,
                 issue_name="Missing Standard Hours for Hourly Worker",
                 severity=severity,
-                why_flagged="Hourly worker has payrate present but standard hours are missing.",
-                current_value=f"Payrate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, '')) or 'Missing'}",
+                why_flagged="Hourly worker has a pay rate present but standard hours are missing.",
+                current_value=f"Pay Rate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, '')) or 'Missing'}",
                 fix_needed="Populate standard hours for each hourly worker before migration.",
             ))
 
@@ -1168,18 +1190,18 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                     source_row, orig_idx,
                     issue_name="Implausible Hourly Pay Rate",
                     severity="CRITICAL",
-                    why_flagged="Hourly worker has a zero or negative payrate.",
-                    current_value=f"Payrate: {_safe(source_row.get('payrate', ''))}",
-                    fix_needed="Enter a valid positive payrate before payroll.",
+                    why_flagged="Hourly worker has a zero or negative pay rate.",
+                    current_value=f"Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                    fix_needed="Enter a valid positive pay rate before payroll.",
                 ))
             elif value < hourly_min or value > hourly_max:
                 rows.append(_make_row(
                     source_row, orig_idx,
                     issue_name="Implausible Hourly Pay Rate",
                     severity="HIGH",
-                    why_flagged=f"Hourly worker payrate is outside the configured review range of {hourly_min:g} to {hourly_max:g}.",
-                    current_value=f"Payrate: {_safe(source_row.get('payrate', ''))}",
-                    fix_needed=f"Review the hourly payrate and confirm it belongs within the configured range of {hourly_min:g} to {hourly_max:g}.",
+                    why_flagged=f"Hourly worker pay rate is outside the configured review range of {hourly_min:g} to {hourly_max:g}.",
+                    current_value=f"Pay Rate: {_safe(source_row.get('payrate', ''))}",
+                    fix_needed=f"Review the hourly pay rate and confirm it belongs within the configured range of {hourly_min:g} to {hourly_max:g}.",
                 ))
 
     # --- salaried_implausible_salary ---
@@ -1238,9 +1260,9 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 source_row, orig_idx,
                 issue_name="Annualized Compensation Mismatch",
                 severity="HIGH",
-                why_flagged=f"Salary and annualized payrate differ by at least {annualized_threshold_pct:.0%}.",
-                current_value=f"Salary: {_safe(source_row.get('salary', ''))} | Payrate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, ''))}",
-                fix_needed="Review salary, payrate, and standard hours together before payroll or migration.",
+                why_flagged=f"Salary and annualized pay rate differ by at least {annualized_threshold_pct:.0%}.",
+                current_value=f"Salary: {_safe(source_row.get('salary', ''))} | Pay Rate: {_safe(source_row.get('payrate', ''))} | Standard Hours: {_safe(source_row.get(standard_hours_col, ''))}",
+                fix_needed="Review salary, pay rate, and standard hours together before payroll or migration.",
             )
             row["Annualized Pay"] = f"{annualized_pay:.2f}"
             row["Annualized Difference"] = f"{annualized_difference:.2f}"
@@ -1278,7 +1300,7 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                     f"Leave Status: {_safe(source_row.get(leave_status_col, ''))} | "
                     f"Pay Type: {_safe(source_row.get(pay_type_col, ''))} | "
                     f"Salary: {_safe(source_row.get('salary', ''))} | "
-                    f"Payrate: {_safe(source_row.get('payrate', ''))}"
+                    f"Pay Rate: {_safe(source_row.get('payrate', ''))}"
                 ),
                 fix_needed="Review worker status, leave status, and compensation together before payroll or migration.",
             ))
@@ -1322,14 +1344,14 @@ def _build_salary(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
                 "Last Name":    last,
                 "Issue Name":   name_map[ck],
                 "Severity":     sev_map[ck],
-                "Why Flagged":  why_map[ck],
+                "Reason":       why_map[ck],
                 "Current Value": sal,
-                "Fix Needed":   fix_map[ck],
+                "Recommended Action": fix_map[ck],
                 "Row Number":   _safe(sr.get("row_number", "")),
                 "Department":   _safe(sr.get("department", "")),
                 "Status":       _safe(sr.get("status", "")),
                 "Salary":       sal,
-                "Payrate":      _safe(sr.get("payrate", "")),
+                "Pay Rate":     _safe(sr.get("payrate", "")),
                 "Hire Date":    _safe(sr.get("hire_date", "")),
                 "Termination Date": _safe(sr.get("termination_date", "")),
                 "Email":        _safe(sr.get("email", "")),
@@ -1939,7 +1961,7 @@ def main() -> None:
     print("[exports]   duplicate_canonical_conflict   - FULL (row_annotations from canonical analysis)")
     print("[exports]   duplicate_email                - FULL (mask on email column)")
     print("[exports]   duplicate_name_different_id    - SAMPLE (from JSON findings; no reliable full mask)")
-    print("[exports]   active_zero_salary             - FULL (mask on status + salary/payrate)")
+    print("[exports]   active_zero_salary             - FULL (mask on status + salary/pay rate)")
     print("[exports]   salary_suspicious_default      - SAMPLE (from JSON findings)")
     print("[exports]   suspicious_round_salary        - SAMPLE (from JSON findings)")
     print("[exports]   missing_required_identity      - FULL (blank mask on worker_id, first_name, last_name)")

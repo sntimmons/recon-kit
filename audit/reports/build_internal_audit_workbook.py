@@ -85,7 +85,7 @@ _M = {
     "active_zero_salary": (
         "Missing or Invalid Salary",
         "Active employees will not receive pay, causing immediate payroll failures.",
-        "Enter a valid positive salary or payrate for every flagged active employee before any payroll run.",
+        "Enter a valid positive salary or pay rate for every flagged active employee before any payroll run.",
         "Findings_Missing_Salary",
     ),
     "pay_type_missing_or_invalid": (
@@ -846,7 +846,7 @@ def _execution_why_flagged(
     if check_key == "duplicate_email":
         return "Email address appears on more than one employee record."
     if check_key == "active_zero_salary":
-        return "Active employee has a missing, zero, or invalid salary/payrate."
+        return "Active employee has a missing, zero, or invalid salary or pay rate."
     if check_key == "pay_type_missing_or_invalid":
         return "Compensation is present but pay type is blank or invalid."
     if check_key == "compensation_type_mismatch":
@@ -1011,7 +1011,7 @@ def _execution_fix_needed(check_key: str, finding: dict, required_action: str) -
     if check_key == "duplicate_email":
         return "Assign a unique, valid email address to this employee."
     if check_key == "active_zero_salary":
-        return "Enter a valid positive salary or payrate before payroll processing."
+        return "Enter a valid positive salary or pay rate before payroll processing."
     if check_key == "pay_type_missing_or_invalid":
         return "Populate a valid pay type from the controlled allowed list."
     if check_key == "compensation_type_mismatch":
@@ -1297,9 +1297,9 @@ def _build_fix_list_detail_full_salary(df: pd.DataFrame) -> pd.DataFrame:
         rows.append(_execution_row(
             issue_name="Missing or Invalid Salary",
             severity="CRITICAL",
-            reason="Active employee has a missing, zero, or invalid salary/payrate.",
+            reason="Active employee has a missing, zero, or invalid salary or pay rate.",
             current_value=current_value,
-            recommended_action="Enter a valid positive salary or payrate before payroll processing.",
+            recommended_action="Enter a valid positive salary or pay rate before payroll processing.",
             source_row=source_row,
             row_number=_row_number_from_index(orig_idx),
         ))
