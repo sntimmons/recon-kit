@@ -4,7 +4,11 @@ venv
 __pycache__
 *.pyc
 .pytest_cache
+.claude
+.tools
 dashboard_runs
 outputs
+inputs
+audit
 audit.db
 *.log
