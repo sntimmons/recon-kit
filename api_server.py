@@ -87,6 +87,11 @@ def index():
     return send_from_directory(SITE_DIR, "index.html")
 
 
+@app.route("/dashboard")
+def dashboard():
+    return send_from_directory(SITE_DIR, "dashboard.html")
+
+
 @app.route("/<path:filename>")
 def static_files(filename):
     # Serve any file from site/
