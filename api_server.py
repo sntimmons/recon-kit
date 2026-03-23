@@ -302,6 +302,13 @@ def _run_cmd(
     return proc.returncode, "\n".join(lines)
 
 
+def _command_error_message(output: str, default: str) -> str:
+    safe_lines = [line.strip() for line in _sanitize_log_lines(output) if line.strip()]
+    if safe_lines:
+        return safe_lines[-1]
+    return default
+
+
 def _collect_outputs(run_dir: Path) -> list[dict]:
     """Scan a run directory for downloadable output files."""
     wanted = [
@@ -545,7 +552,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         new_in  = run_inputs  / f"new{new_ext}"
         old_out = run_outputs / "mapped_old.csv"
         new_out = run_outputs / "mapped_new.csv"
-        rc, _ = _run_cmd(
+        rc, output = _run_cmd(
             [str(PYTHON), "-c",
              f"from src.mapping import map_file; "
              f"map_file(r'{old_in}', r'{old_out}', 'old', sheet_name={sheet_name!r}); "
@@ -554,35 +561,35 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "mapping", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("Mapping step failed")
+            raise RuntimeError(_command_error_message(output, "Mapping step failed"))
 
         # 3. Matching - RK_WORK_DIR tells matcher.py where to write matched_raw.csv
         _set_step(run_id, "matching")
-        rc, _ = _run_cmd([str(PYTHON), "src/matcher.py"], HERE, run_id, env=run_env)
+        rc, output = _run_cmd([str(PYTHON), "src/matcher.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "matching", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("Matcher step failed")
+            raise RuntimeError(_command_error_message(output, "Matcher step failed"))
 
         # 4. Resolve conflicts - RK_WORK_DIR tells resolve where matched_raw.csv lives
         _set_step(run_id, "resolve")
-        rc, _ = _run_cmd([str(PYTHON), "resolve_matched_raw.py"], HERE, run_id, env=run_env)
+        rc, output = _run_cmd([str(PYTHON), "resolve_matched_raw.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "resolve", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("Resolve step failed")
+            raise RuntimeError(_command_error_message(output, "Resolve step failed"))
 
         # 5. Load SQLite - RK_WORK_DIR tells load_sqlite where to place audit.db
         _set_step(run_id, "load_db")
-        rc, _ = _run_cmd([str(PYTHON), "audit/load_sqlite.py"], HERE, run_id, env=run_env)
+        rc, output = _run_cmd([str(PYTHON), "audit/load_sqlite.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "load_db", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("DB load step failed")
+            raise RuntimeError(_command_error_message(output, "DB load step failed"))
 
         # 6. Run audit queries - RK_WORK_DIR tells run_audit.py which DB to use
         _set_step(run_id, "audit")
-        rc, _ = _run_cmd([str(PYTHON), "audit/run_audit.py"], HERE, run_id, env=run_env)
+        rc, output = _run_cmd([str(PYTHON), "audit/run_audit.py"], HERE, run_id, env=run_env)
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("Audit step failed")
+            raise RuntimeError(_command_error_message(output, "Audit step failed"))
 
         # 7. Optional: sanity gate - write JSON to per-run summary dir
         _gate_blocked = False
@@ -742,7 +749,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
         with _jobs_lock:
             _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = "Processing failed. Please try again or contact support."
+            _jobs[run_id]["error"] = str(exc) or "Processing failed. Please try again or contact support."
 
     finally:
         _delete_uploaded_source_files(run_id, uploaded_paths)
@@ -810,13 +817,13 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
                      "--sheet-name", str(options.get("sheet_name", 0))]
         if options.get("override_gate", False):
             audit_cmd.append("--override-gate")
-        rc, _ = _run_cmd(
+        rc, output = _run_cmd(
             audit_cmd,
             HERE, run_id
         )
         _finish_step(run_id, "audit", "done" if rc == 0 else "error")
         if rc != 0:
-            raise RuntimeError("Internal audit failed")
+            raise RuntimeError(_command_error_message(output, "Internal audit failed"))
 
         _set_step(run_id, "audit_report")
         rc, _ = _run_cmd(
@@ -869,7 +876,7 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
         logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
         with _jobs_lock:
             _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = "Processing failed. Please try again or contact support."
+            _jobs[run_id]["error"] = str(exc) or "Processing failed. Please try again or contact support."
     finally:
         _delete_uploaded_source_files(run_id, uploaded_paths)
 
