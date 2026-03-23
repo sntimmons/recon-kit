@@ -56,6 +56,7 @@ except ImportError:
 _HERE        = Path(__file__).resolve().parent
 _SUMMARY_DIR = _HERE.parent / "summary"
 sys.path.insert(0, str(_SUMMARY_DIR))
+sys.path.insert(0, str(_HERE))  # allow report_theme import
 
 from gating import classify_all, salary_delta, _parse_confidence, _norm
 from sanity_checks import detect_wave_dates
@@ -69,15 +70,23 @@ SANITY_GATE  = ROOT / "audit" / "summary" / "sanity_gate.json"
 OUT_PATH     = _HERE / "audit_report.docx"
 
 # ---------------------------------------------------------------------------
-# Colour palette
+# Colour palette  (sourced from report_theme.py - canonical brand palette)
 # ---------------------------------------------------------------------------
-_BLUE_DARK    = RGBColor(0x2E, 0x75, 0xB6)   # section headings
-_BLUE_LIGHT   = RGBColor(0xBD, 0xD7, 0xEE)   # table header fill
-_RED          = RGBColor(0xC0, 0x00, 0x00)   # critical warnings
-_ORANGE       = RGBColor(0xE2, 0x6B, 0x0A)   # caution
-_GREEN        = RGBColor(0x37, 0x86, 0x45)   # positive
-_GREY_LIGHT   = RGBColor(0xF2, 0xF2, 0xF2)   # alternating rows
-_WHITE        = RGBColor(0xFF, 0xFF, 0xFF)
+import report_theme as _theme
+
+def _rgb(h: str) -> RGBColor:
+    h = h.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+_BLUE_DARK    = _rgb(_theme.HEX_NAVY)       # section headings  (#0A1628)
+_BLUE_LIGHT   = _rgb(_theme.HEX_TEAL)       # table header accent (#00C2CB)
+_RED          = _rgb(_theme.HEX_RED)         # critical warnings  (#DC2626)
+_ORANGE       = _rgb(_theme.HEX_ORANGE)      # caution            (#EA580C)
+_AMBER        = _rgb(_theme.HEX_AMBER)       # medium / caution   (#D97706)
+_GREEN        = _rgb(_theme.HEX_GREEN)       # positive           (#16A34A)
+_SLATE        = _rgb(_theme.HEX_SLATE)       # low / muted        (#475569)
+_GREY_LIGHT   = _rgb(_theme.HEX_OFF_WHITE)   # alternating rows   (#F4F7FA)
+_WHITE        = _rgb(_theme.HEX_WHITE)       # white text
 
 
 # ---------------------------------------------------------------------------
@@ -314,8 +323,8 @@ def _kv_table(doc: Document, rows: list[tuple]) -> None:
         # Bold key column
         for run in cells[0].paragraphs[0].runs:
             run.font.bold = True
-        # Alternating background
-        bg = "F2F2F2" if i % 2 == 0 else "FFFFFF"
+        # Alternating background (brand off-white / white)
+        bg = _theme.BARE_OFF_WHITE if i % 2 == 0 else _theme.BARE_WHITE
         _set_cell_bg(cells[0], bg)
         _set_cell_bg(cells[1], bg)
     # Column widths
@@ -336,23 +345,43 @@ def _data_table(doc: Document, headers: list[str], rows_data: list[list]) -> Non
         run = hdr_cells[i].paragraphs[0].runs[0] if hdr_cells[i].paragraphs[0].runs else hdr_cells[i].paragraphs[0].add_run(h)
         run.font.bold = True
         run.font.color.rgb = _WHITE
-        _set_cell_bg(hdr_cells[i], "2E75B6")
+        _set_cell_bg(hdr_cells[i], _theme.BARE_NAVY)  # brand navy header
 
     # Data rows
     for r_i, row_vals in enumerate(rows_data):
         cells = tbl.rows[r_i + 1].cells
         for c_i, val in enumerate(row_vals):
             cells[c_i].text = str(val) if val is not None else ""
-            bg = "F2F2F2" if r_i % 2 == 0 else "FFFFFF"
+            bg = _theme.BARE_OFF_WHITE if r_i % 2 == 0 else _theme.BARE_WHITE
             _set_cell_bg(cells[c_i], bg)
 
 
 def _callout(doc: Document, text: str, level: str = "warning") -> None:
-    """Add a callout paragraph (bold, coloured text)."""
+    """Add a callout paragraph (bold, coloured text).
+
+    level: "critical" -> RED, "warning" -> ORANGE, "medium" -> AMBER,
+           "low" -> SLATE, "ok" -> GREEN
+    """
+    _level_icon = {
+        "critical": "[CRITICAL]",
+        "warning":  "[HIGH]",
+        "medium":   "[MEDIUM]",
+        "low":      "[LOW]",
+        "ok":       "[OK]",
+    }
+    _level_color = {
+        "critical": _RED,
+        "warning":  _ORANGE,
+        "medium":   _AMBER,
+        "low":      _SLATE,
+        "ok":       _GREEN,
+    }
+    icon  = _level_icon.get(level, "[INFO]")
+    color = _level_color.get(level, _ORANGE)
     p    = doc.add_paragraph()
-    run  = p.add_run(f"{'⚠' if level == 'warning' else '✓'}  {text}")
+    run  = p.add_run(f"{icon}  {text}")
     run.font.bold = True
-    run.font.color.rgb = _RED if level == "critical" else (_ORANGE if level == "warning" else _GREEN)
+    run.font.color.rgb = color
 
 
 def _load_salary_parse_stats(db_path: Path, wide_path: Path) -> dict[str, object]:
@@ -1067,6 +1096,28 @@ def _section_recommendations(doc: Document, df: pd.DataFrame) -> None:
 
     doc.add_paragraph()
 
+    # Severity key
+    _add_heading(doc, "Severity Reference", 2)
+    _data_table(doc,
+        ["Severity", "Priority Score", "Meaning"],
+        [
+            ["CRITICAL", ">= 70", "Resolve before any import - payroll or identity risk"],
+            ["HIGH",     "40-69", "Review before import - data quality concern"],
+            ["MEDIUM",   "20-39", "Spot-check advised"],
+            ["LOW",      "< 20",  "Auto-approve candidate after basic verification"],
+        ]
+    )
+    doc.add_paragraph()
+
+    # Footer
+    footer_p = doc.add_paragraph(
+        f"{_theme.FOOTER_CONFIDENTIAL}  |  {_theme.FOOTER_GENERATED_BY}"
+    )
+    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in footer_p.runs:
+        run.font.size = Pt(8)
+        run.font.color.rgb = _SLATE
+
 
 # ---------------------------------------------------------------------------
 # Node.js generator support
@@ -1432,17 +1483,41 @@ def main(argv: list[str] | None = None) -> None:
     # ---------------------------------------------------------------------------
     doc = Document()
 
-    # Title page
-    title   = doc.add_heading("Data Whisperer - Reconciliation Audit Report", 0)
+    # ---------------------------------------------------------------------------
+    # Title / cover page  (brand-aligned)
+    # ---------------------------------------------------------------------------
+    brand_p = doc.add_paragraph()
+    brand_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    brand_run = brand_p.add_run("DATA  WHISPERER")
+    brand_run.font.bold = True
+    brand_run.font.color.rgb = _BLUE_DARK
+    brand_run.font.size = Pt(11)
+
+    title = doc.add_heading("HR System Reconciliation", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in title.runs:
         run.font.color.rgb = _BLUE_DARK
 
-    subtitle   = doc.add_paragraph(
+    sub2 = doc.add_heading("Internal Audit Report", 1)
+    sub2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in sub2.runs:
+        run.font.color.rgb = _BLUE_DARK
+        run.font.bold = False
+
+    subtitle = doc.add_paragraph(
         f"Generated: {datetime.now().strftime('%B %d, %Y %H:%M')}  |  "
         f"Records: {len(df):,}  |  Source: {db_path.name}"
     )
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in subtitle.runs:
+        run.font.color.rgb = _SLATE
+
+    conf_p = doc.add_paragraph(_theme.FOOTER_CONFIDENTIAL)
+    conf_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in conf_p.runs:
+        run.font.size = Pt(9)
+        run.font.color.rgb = _SLATE
+
     doc.add_paragraph()
 
     # Sections
