@@ -803,7 +803,7 @@
       <div style="display: flex; align-items: center; gap: 12px;">
         <div class="conn-badge" id="conn-badge">
           <span class="conn-dot" id="conn-dot"></span>
-          <span id="conn-label">Checking engine...</span>
+          <span id="conn-label">Checking connection...</span>
         </div>
         <div class="session-badge">
           <span class="session-dot"></span>
@@ -825,10 +825,10 @@
   <section>
     <div class="container">
 
-      <!-- ENGINE NOT CONNECTED WARNING -->
+      <!-- BACKEND NOT CONNECTED WARNING -->
       <div id="conn-warning" style="display:none; margin-bottom: 24px; padding: 16px 20px; background: rgba(232,184,75,0.07); border: 1px solid rgba(232,184,75,0.25); border-radius: var(--radius-lg); font-size: 0.85rem; color: var(--yellow);">
-        <strong>Engine server not detected.</strong>
-        Run <code style="font-family: var(--font-mono); background: var(--bg-3); padding: 2px 6px; border-radius: 4px;">venv/Scripts/python.exe api_server.py</code> in your project directory, then reload this page.
+        <strong>Service temporarily unavailable.</strong>
+        The dashboard could not reach the backend on this site. Please refresh and try again in a moment.
       </div>
 
       <!-- MODE SELECTOR -->
@@ -1088,9 +1088,13 @@
   // CONFIG - change password here
   // -----------------------------------------------------------------------
   var ACCESS_PASSWORD = 'recon2026';
-  var API_BASE        = 'http://localhost:5001';
+  var API_BASE        = '';
   var SESSION_KEY     = 'rk_session';
   // -----------------------------------------------------------------------
+
+  function apiUrl(path) {
+    return API_BASE + path;
+  }
 
   var currentMode  = 'recon';
   var uploadedFiles = { old: null, 'new': null, audit: null };
@@ -1135,7 +1139,7 @@
 
   // ---- Server connection check ----
   function checkServerConnection() {
-    fetch(API_BASE + '/api/ping', { signal: AbortSignal.timeout(3000) })
+    fetch(apiUrl('/api/ping'), { signal: AbortSignal.timeout(3000) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.ok) setConnected(true);
@@ -1150,11 +1154,11 @@
     var warn  = document.getElementById('conn-warning');
     if (ok) {
       badge.className = 'conn-badge conn-badge--connected';
-      label.textContent = 'Engine connected';
+      label.textContent = 'Connected';
       warn.style.display = 'none';
     } else {
       badge.className = 'conn-badge conn-badge--disconnected';
-      label.textContent = 'Engine offline';
+      label.textContent = 'Unavailable';
       warn.style.display = 'block';
     }
   }
@@ -1260,7 +1264,7 @@
     var endpoint;
 
     if (currentMode === 'recon') {
-      endpoint = API_BASE + '/api/run/recon';
+      endpoint = apiUrl('/api/run/recon');
       formData.append('old_file', uploadedFiles.old);
       formData.append('new_file', uploadedFiles['new']);
       formData.append('corrections', document.getElementById('opt-corrections').checked ? 'true' : 'false');
@@ -1269,7 +1273,7 @@
       formData.append('sheet_name',       (document.getElementById('opt-sheet-name').value || '0').trim());
       formData.append('min_approve_rate', (document.getElementById('opt-min-approve-rate').value || '75').trim());
     } else {
-      endpoint = API_BASE + '/api/run/audit';
+      endpoint = apiUrl('/api/run/audit');
       formData.append('audit_file', uploadedFiles.audit);
     }
 
@@ -1289,7 +1293,7 @@
         startPolling(d.run_id);
       })
       .catch(function (err) {
-        showError('Could not reach engine server. Make sure api_server.py is running.\n\n' + err.message);
+        showError('Could not reach the backend on this site.\n\n' + err.message);
         resetRunBtn();
       });
   };
@@ -1324,7 +1328,7 @@
   }
 
   function pollStatus(runId) {
-    fetch(API_BASE + '/api/status/' + runId)
+    fetch(apiUrl('/api/status/' + runId))
       .then(function (r) { return r.json(); })
       .then(function (job) {
         updateProgress(job);
@@ -1656,7 +1660,7 @@
 
       var link = document.createElement('a');
       link.className = 'dl-btn';
-      link.href = API_BASE + '/api/download/' + currentRunId + '/' + encodeURIComponent(f.name);
+      link.href = apiUrl('/api/download/' + currentRunId + '/' + encodeURIComponent(f.name));
       link.textContent = 'Download';
       link.setAttribute('download', f.name);
 
