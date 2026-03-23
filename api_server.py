@@ -19,6 +19,7 @@ import logging
 import hashlib
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -35,10 +36,13 @@ from werkzeug.exceptions import HTTPException
 # ---------------------------------------------------------------------------
 HERE        = Path(__file__).resolve().parent
 SITE_DIR    = HERE / "site"
-RUNS_DIR    = HERE / "dashboard_runs"
+DATA_DIR    = Path(os.environ.get("RK_DATA_DIR", str(HERE)))
+RUNS_DIR    = Path(os.environ.get("RK_RUNS_DIR", str(DATA_DIR / "dashboard_runs")))
+JOBS_DB     = Path(os.environ.get("RK_JOBS_DB", str(DATA_DIR / "jobs.sqlite3")))
 PYTHON      = sys.executable
 
-RUNS_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Concurrency guard: only one full recon pipeline at a time.
@@ -74,9 +78,212 @@ def _warn_if_policy_unavailable() -> None:
 
 _warn_if_policy_unavailable()
 
-# In-memory job registry  { run_id: { status, steps, result, error } }
-_jobs: dict[str, dict] = {}
-_jobs_lock = threading.Lock()
+_job_store_lock = threading.Lock()
+
+
+def _db_connect() -> sqlite3.Connection:
+    con = sqlite3.connect(str(JOBS_DB), timeout=30, check_same_thread=False)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL;")
+    con.execute("PRAGMA synchronous=NORMAL;")
+    return con
+
+
+def _ensure_job_store() -> None:
+    JOBS_DB.parent.mkdir(parents=True, exist_ok=True)
+    with _job_store_lock:
+        with _db_connect() as con:
+            con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jobs (
+                  run_id TEXT PRIMARY KEY,
+                  job_type TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  started REAL NOT NULL,
+                  run_dir TEXT NOT NULL,
+                  input_filenames_json TEXT NOT NULL DEFAULT '[]',
+                  output_files_json TEXT NOT NULL DEFAULT '[]',
+                  steps_json TEXT NOT NULL DEFAULT '[]',
+                  stats_json TEXT NOT NULL DEFAULT '{}',
+                  log_json TEXT NOT NULL DEFAULT '[]',
+                  error_message TEXT,
+                  gate_status TEXT,
+                  gate_message TEXT
+                );
+                """
+            )
+            con.commit()
+
+
+def _json_loads(value: str | None, default):
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except Exception:
+        return default
+
+
+def _job_status_for_api(status: str) -> str:
+    return {
+        "queued": "queued",
+        "running": "running",
+        "completed": "done",
+        "failed": "error",
+    }.get(status, status)
+
+
+def _input_filenames_from_manifest(input_manifest: dict | None = None) -> list[str]:
+    if not input_manifest:
+        return []
+    names: list[str] = []
+    for value in input_manifest.values():
+        if isinstance(value, dict):
+            name = str(value.get("filename") or "").strip()
+            if name:
+                names.append(name)
+    return names
+
+
+def _create_job_record(
+    run_id: str,
+    *,
+    job_type: str,
+    run_dir: Path,
+    input_filenames: list[str] | None = None,
+) -> None:
+    now = _utcnow_iso()
+    with _job_store_lock:
+        with _db_connect() as con:
+            con.execute(
+                """
+                INSERT INTO jobs (
+                  run_id, job_type, status, created_at, updated_at, started, run_dir,
+                  input_filenames_json, output_files_json, steps_json, stats_json, log_json,
+                  error_message, gate_status, gate_message
+                ) VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', NULL, NULL, NULL)
+                """,
+                (
+                    run_id,
+                    job_type,
+                    now,
+                    now,
+                    time.time(),
+                    str(run_dir),
+                    json.dumps(input_filenames or []),
+                ),
+            )
+            con.commit()
+
+
+def _update_job_record(run_id: str, **fields) -> None:
+    if not fields:
+        return
+    fields["updated_at"] = _utcnow_iso()
+    assignments = ", ".join(f"{name} = ?" for name in fields)
+    values = list(fields.values()) + [run_id]
+    with _job_store_lock:
+        with _db_connect() as con:
+            cur = con.execute(f"UPDATE jobs SET {assignments} WHERE run_id = ?", values)
+            con.commit()
+            if cur.rowcount == 0:
+                raise KeyError(run_id)
+
+
+def _get_job_row(run_id: str) -> sqlite3.Row | None:
+    with _job_store_lock:
+        with _db_connect() as con:
+            row = con.execute("SELECT * FROM jobs WHERE run_id = ?", (run_id,)).fetchone()
+    return row
+
+
+def _hydrate_job(row: sqlite3.Row | None) -> dict | None:
+    if row is None:
+        return None
+    run_dir = Path(row["run_dir"])
+    outputs = _json_loads(row["output_files_json"], [])
+    if run_dir.exists():
+        live_outputs = _collect_outputs(run_dir)
+        if live_outputs != outputs:
+            outputs = live_outputs
+            try:
+                _update_job_record(run_id=row["run_id"], output_files_json=json.dumps(outputs))
+            except Exception:
+                pass
+    return {
+        "run_id": row["run_id"],
+        "mode": row["job_type"],
+        "job_type": row["job_type"],
+        "status": _job_status_for_api(row["status"]),
+        "job_status": row["status"],
+        "steps": _json_loads(row["steps_json"], []),
+        "outputs": outputs,
+        "stats": _json_loads(row["stats_json"], {}),
+        "error": row["error_message"],
+        "started": row["started"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "input_filenames": _json_loads(row["input_filenames_json"], []),
+        "gate_status": row["gate_status"],
+        "gate_message": row["gate_message"],
+        "run_dir": row["run_dir"],
+        "log": _json_loads(row["log_json"], []),
+    }
+
+
+def _get_job(run_id: str) -> dict | None:
+    return _hydrate_job(_get_job_row(run_id))
+
+
+def _set_job_status(
+    run_id: str,
+    status: str,
+    *,
+    error: str | None = None,
+    clear_error: bool = False,
+) -> None:
+    fields: dict[str, str | None] = {"status": status}
+    if clear_error or error is not None:
+        fields["error_message"] = error
+    _update_job_record(run_id, **fields)
+
+
+def _append_job_log(run_id: str, lines: list[str]) -> None:
+    if not lines:
+        return
+    row = _get_job_row(run_id)
+    if row is None:
+        return
+    log_lines = _json_loads(row["log_json"], [])
+    log_lines.extend(lines)
+    _update_job_record(run_id, log_json=json.dumps(log_lines))
+
+
+def _set_step(run_id: str, step: str, status: str = "running"):
+    job = _get_job(run_id)
+    if not job:
+        return
+    steps = list(job.get("steps") or [])
+    steps.append({"step": step, "status": status, "ts": time.time()})
+    _update_job_record(run_id, steps_json=json.dumps(steps))
+
+
+def _finish_step(run_id: str, step: str, status: str = "done"):
+    job = _get_job(run_id)
+    if not job:
+        return
+    steps = list(job.get("steps") or [])
+    for entry in reversed(steps):
+        if entry.get("step") == step and entry.get("status") == "running":
+            entry["status"] = status
+            entry["ts_end"] = time.time()
+            break
+    _update_job_record(run_id, steps_json=json.dumps(steps))
+
+
+_ensure_job_store()
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +397,13 @@ def _cleanup_expired_runs(policy: dict | None = None) -> None:
         if _is_audit_trail_only(run_dir):
             continue
         if _purge_run_dir_preserving_audit_trail(run_dir):
+            try:
+                with _job_store_lock:
+                    with _db_connect() as con:
+                        con.execute("DELETE FROM jobs WHERE run_id = ?", (run_dir.name,))
+                        con.commit()
+            except Exception:
+                pass
             logger.info(
                 "Run output %s deleted after %.1f hours (retention policy)",
                 run_dir.name,
@@ -251,20 +465,6 @@ def _validate_uploaded_source(path: Path, *, sheet_name: int | str = 0) -> None:
         raise ValidationError(result.get("error") or "The uploaded file could not be validated.")
 
 
-def _set_step(run_id: str, step: str, status: str = "running"):
-    with _jobs_lock:
-        _jobs[run_id]["steps"].append({"step": step, "status": status, "ts": time.time()})
-
-
-def _finish_step(run_id: str, step: str, status: str = "done"):
-    with _jobs_lock:
-        for s in reversed(_jobs[run_id]["steps"]):
-            if s["step"] == step and s["status"] == "running":
-                s["status"] = status
-                s["ts_end"] = time.time()
-                break
-
-
 def _make_run_env(run_dir: Path) -> dict[str, str]:
     """Build an os.environ copy with per-run path overrides injected."""
     env = os.environ.copy()
@@ -297,8 +497,7 @@ def _run_cmd(
         lines.append(line.rstrip())
     proc.wait()
     safe_lines = _sanitize_log_lines("\n".join(lines))
-    with _jobs_lock:
-        _jobs[run_id].setdefault("log", []).extend(safe_lines)
+    _append_job_log(run_id, safe_lines)
     return proc.returncode, "\n".join(lines)
 
 
@@ -310,7 +509,12 @@ def _command_error_message(output: str, default: str) -> str:
 
 
 def _collect_outputs(run_dir: Path) -> list[dict]:
-    """Scan a run directory for downloadable output files."""
+    """Scan a run directory for downloadable output files.
+
+    Keep the well-known files first, but also pick up newly-added run outputs
+    automatically so the dashboard does not need a backend allowlist update
+    every time we add a new artifact.
+    """
     wanted = [
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
@@ -352,23 +556,42 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "fix_status_full.csv",
         "fix_data_quality_full.csv",
     ]
-    found = []
-    for name in wanted:
-        p = run_dir / name
-        if p.exists() and p.stat().st_size > 0:
-            found.append({"name": name, "size": p.stat().st_size})
-    # Also pick up anything in corrections subfolder
-    corr_dir = run_dir / "corrections"
-    if corr_dir.exists():
-        for p in corr_dir.iterdir():
-            if p.suffix in (".csv", ".xlsx", ".json") and p.name not in [f["name"] for f in found]:
-                found.append({"name": "corrections/" + p.name, "size": p.stat().st_size})
+    skip_names = {
+        "audit.db",
+        "input_manifest.json",
+        "matched_raw.csv",
+    }
+    skip_prefixes = (
+        "old_input",
+        "new_input",
+        "audit_input",
+    )
+    skip_parts = {"inputs"}
+    found: list[dict] = []
+    seen: set[str] = set()
 
-    # Dynamically pick up per-department review queue CSVs
-    existing_names = {f["name"] for f in found}
-    for p in run_dir.glob("review_queue_*.csv"):
-        if p.name not in existing_names and p.exists() and p.stat().st_size > 0:
-            found.append({"name": p.name, "size": p.stat().st_size})
+    def _add_file(path: Path) -> None:
+        if not path.exists() or not path.is_file():
+            return
+        if path.stat().st_size <= 0:
+            return
+        rel = path.relative_to(run_dir).as_posix()
+        if rel in seen:
+            return
+        if path.name in skip_names:
+            return
+        if any(part in skip_parts for part in path.relative_to(run_dir).parts):
+            return
+        if any(path.name.startswith(prefix) for prefix in skip_prefixes):
+            return
+        seen.add(rel)
+        found.append({"name": rel, "size": path.stat().st_size})
+
+    for name in wanted:
+        _add_file(run_dir / name)
+
+    for path in sorted(run_dir.rglob("*")):
+        _add_file(path)
 
     return found
 
@@ -528,8 +751,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
 
     try:
         _RECON_SEMAPHORE.acquire()
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "running"
+        _set_job_status(run_id, "running", clear_error=True)
 
         # Create the per-run directory structure up front
         for d in (run_inputs, run_outputs, run_summary, run_corr):
@@ -739,17 +961,22 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
 
         # Parse stats
         stats = _parse_run_stats(run_dir)
-
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "done"
-            _jobs[run_id]["outputs"] = _collect_outputs(run_dir)
-            _jobs[run_id]["stats"] = stats
+        outputs = _collect_outputs(run_dir)
+        _update_job_record(
+            run_id,
+            status="completed",
+            output_files_json=json.dumps(outputs),
+            stats_json=json.dumps(stats),
+            error_message=None,
+        )
 
     except Exception as exc:
         logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = str(exc) or "Processing failed. Please try again or contact support."
+        _set_job_status(
+            run_id,
+            "failed",
+            error=str(exc) or "Processing failed. Please try again or contact support.",
+        )
 
     finally:
         _delete_uploaded_source_files(run_id, uploaded_paths)
@@ -803,8 +1030,7 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
     options = options or {}
     uploaded_paths = [file_path]
     try:
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "running"
+        _set_job_status(run_id, "running", clear_error=True)
 
         _set_step(run_id, "upload")
         _finish_step(run_id, "upload")
@@ -865,18 +1091,24 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
             except Exception:
                 pass
 
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "done"
-            _jobs[run_id]["outputs"] = _collect_outputs(run_dir)
-            _jobs[run_id]["stats"] = stats
-            _jobs[run_id]["gate_status"] = stats.get("gate_status")
-            _jobs[run_id]["gate_message"] = stats.get("gate_message")
+        outputs = _collect_outputs(run_dir)
+        _update_job_record(
+            run_id,
+            status="completed",
+            output_files_json=json.dumps(outputs),
+            stats_json=json.dumps(stats),
+            gate_status=stats.get("gate_status"),
+            gate_message=stats.get("gate_message"),
+            error_message=None,
+        )
 
     except Exception as exc:
         logger.exception("Pipeline step failed: %s - %s", type(exc).__name__, str(exc))
-        with _jobs_lock:
-            _jobs[run_id]["status"] = "error"
-            _jobs[run_id]["error"] = str(exc) or "Processing failed. Please try again or contact support."
+        _set_job_status(
+            run_id,
+            "failed",
+            error=str(exc) or "Processing failed. Please try again or contact support.",
+        )
     finally:
         _delete_uploaded_source_files(run_id, uploaded_paths)
 
@@ -975,19 +1207,12 @@ def api_run_recon():
         manifest_path = _write_input_manifest(run_dir, input_manifest)
         options["input_manifest_path"] = str(manifest_path)
         options["uploaded_paths"] = [str(p) for p in uploaded_paths]
-
-        with _jobs_lock:
-            _jobs[run_id] = {
-                "run_id": run_id,
-                "mode": "recon",
-                "status": "queued",
-                "steps": [],
-                "log": [],
-                "outputs": [],
-                "stats": {},
-                "error": None,
-                "started": time.time(),
-            }
+        _create_job_record(
+            run_id,
+            job_type="recon",
+            run_dir=run_dir,
+            input_filenames=_input_filenames_from_manifest(input_manifest),
+        )
 
         t = threading.Thread(
             target=_run_recon_pipeline,
@@ -1045,19 +1270,12 @@ def api_run_audit():
             shutil.rmtree(run_dir, ignore_errors=True)
             logger.info("Upload validation failed: %s", result.get("error"))
             return jsonify({"error": result.get("error") or "The uploaded file could not be validated."}), 400
-
-        with _jobs_lock:
-            _jobs[run_id] = {
-                "run_id": run_id,
-                "mode": "audit",
-                "status": "queued",
-                "steps": [],
-                "log": [],
-                "outputs": [],
-                "stats": {},
-                "error": None,
-                "started": time.time(),
-            }
+        _create_job_record(
+            run_id,
+            job_type="audit",
+            run_dir=run_dir,
+            input_filenames=[audit_file.filename or file_path.name],
+        )
 
         t = threading.Thread(
             target=_run_internal_audit,
@@ -1077,8 +1295,7 @@ def api_run_audit():
 @app.get("/api/status/<run_id>")
 def api_status(run_id: str):
     try:
-        with _jobs_lock:
-            job = _jobs.get(run_id)
+        job = _get_job(run_id)
         if not job:
             return jsonify({"error": "Unknown run_id"}), 404
         out = {k: v for k, v in job.items() if k != "log"}
@@ -1091,8 +1308,7 @@ def api_status(run_id: str):
 @app.get("/api/log/<run_id>")
 def api_log(run_id: str):
     try:
-        with _jobs_lock:
-            job = _jobs.get(run_id)
+        job = _get_job(run_id)
         if not job:
             return jsonify({"error": "Unknown run_id"}), 404
         return jsonify({"log": job.get("log", [])})
