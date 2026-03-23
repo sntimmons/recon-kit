@@ -684,6 +684,32 @@
     .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     /* =========================================================
+       DATA NOTICE
+    ========================================================= */
+    .data-notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius-md);
+      padding: 11px 16px;
+      margin-bottom: 20px;
+      line-height: 1.55;
+    }
+    .data-notice__icon { flex-shrink: 0; font-size: 0.95rem; margin-top: 1px; }
+    .data-notice__text { }
+
+    /* =========================================================
+       GLOSSARY TABLE
+    ========================================================= */
+    .glossary-section { margin-top: 32px; }
+    .glossary-section h3 { margin-bottom: 6px; }
+
+    /* =========================================================
        ERROR PANEL
     ========================================================= */
     .error-panel {
@@ -837,6 +863,16 @@
             <div class="upload-zone__file" id="fname-audit"></div>
           </div>
         </div>
+      </div>
+
+      <!-- DATA RETENTION NOTICE -->
+      <div class="data-notice">
+        <span class="data-notice__icon">&#128274;</span>
+        <span class="data-notice__text">
+          Your data is processed locally and is not permanently stored.
+          All uploaded files and generated outputs are automatically deleted after processing.
+          Do not upload sensitive data unless approved by your organization.
+        </span>
       </div>
 
       <!-- RUN OPTIONS (recon only) -->
@@ -1001,6 +1037,59 @@
                 <tr><td>worker_status</td><td>Optional</td><td>Active / Inactive / Leave. Status mismatch detection.</td></tr>
                 <tr><td>position / job_title</td><td>Optional</td><td>Job/org mismatch pack and correction output.</td></tr>
                 <tr><td>last4_ssn / last4_ni</td><td>Optional</td><td>Last-4 identifier for Tier 2 matching. Stripped from all outputs.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- GLOSSARY -->
+      <div class="glossary-section">
+        <h3 style="margin-bottom: 6px;">Terms &amp; Definitions</h3>
+        <p style="font-size: 0.875rem; margin-bottom: 20px; color: var(--text-muted);">Quick reference for key concepts in reconciliation and audit outputs.</p>
+        <div class="panel">
+          <div class="panel__body" style="padding: 0; overflow-x: auto;">
+            <table class="spec-table">
+              <thead>
+                <tr><th>Term</th><th>What It Means</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Match Source</td>
+                  <td>How the system paired the two records. <strong>worker_id</strong> = exact ID match (highest confidence). <strong>dob_name</strong> = matched by name + date of birth (fuzzy).</td>
+                </tr>
+                <tr>
+                  <td>Confidence</td>
+                  <td>How certain the system is in the match (0 to 1.0). 1.0 = exact ID match. Scores below 0.85 are flagged for review.</td>
+                </tr>
+                <tr>
+                  <td>Priority Score</td>
+                  <td>Urgency score for manual review. <strong>70+</strong> = critical (review before import). <strong>40-69</strong> = high. <strong>20-39</strong> = medium. <strong>0-19</strong> = low / auto-approve candidate.</td>
+                </tr>
+                <tr>
+                  <td>Safe</td>
+                  <td>No issues detected. This record passed all automated checks and is approved for import.</td>
+                </tr>
+                <tr>
+                  <td>Needs Review</td>
+                  <td>One or more fields require manual verification before the record can be imported. See the Review_Queue workbook sheet.</td>
+                </tr>
+                <tr>
+                  <td>Wrong Match</td>
+                  <td>The engine could not confirm this pairing is the same person. Verify identity before applying any corrections. See the Held_Corrections sheet.</td>
+                </tr>
+                <tr>
+                  <td>Held</td>
+                  <td>Blocked from automated processing. A manual decision is required before this record can proceed.</td>
+                </tr>
+                <tr>
+                  <td>Fix Types</td>
+                  <td>Which fields changed between systems: <strong>Salary</strong>, <strong>Status</strong>, <strong>Hire Date</strong>, <strong>Job / Org</strong>. A record can have multiple fix types.</td>
+                </tr>
+                <tr>
+                  <td>Sanity Gate</td>
+                  <td>An automated health check that runs before corrections are generated. FAIL means something unusual was detected (e.g. too many active/$0 salary records) and corrections are blocked until resolved.</td>
+                </tr>
               </tbody>
             </table>
           </div>

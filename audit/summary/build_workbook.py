@@ -68,6 +68,7 @@ DB_PATH      = ROOT / "audit" / "audit.db"
 WIDE_CSV     = ROOT / "audit" / "exports" / "out" / "wide_compare.csv"
 REVIEW_CSV   = (_rk_work / "review_queue.csv")                                                  if _rk_work else (_HERE / "review_queue.csv")
 MANIFEST_CSV = (_rk_work / "audit" / "corrections" / "out" / "corrections_manifest.csv")       if _rk_work else (ROOT / "audit" / "corrections" / "out" / "corrections_manifest.csv")
+HELD_CSV     = (_rk_work / "audit" / "corrections" / "out" / "held_corrections.csv")           if _rk_work else (ROOT / "audit" / "corrections" / "out" / "held_corrections.csv")
 OUT_PATH     = _HERE / "recon_workbook.xlsx"
 
 # ---------------------------------------------------------------------------
@@ -82,6 +83,188 @@ _CRIT_HDR_FONT = Font(bold=True, color="FFFFFF")
 # Orange header for rejected-match sheet
 _REJ_HDR_FILL  = PatternFill(start_color="E26B0A", end_color="E26B0A", fill_type="solid")
 _REJ_HDR_FONT  = Font(bold=True, color="FFFFFF")
+# Amber header for held-corrections sheet
+_HELD_HDR_FILL = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+_HELD_HDR_FONT = Font(bold=True, color="000000")
+# Light-gray header for reference-only sheets (Clean_Data, Unmatched)
+_REF_HDR_FILL  = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+_REF_HDR_FONT  = Font(bold=True, color="000000")
+
+# ---------------------------------------------------------------------------
+# Column label mapping (snake_case -> human-readable Title Case)
+# ---------------------------------------------------------------------------
+_COL_LABELS: dict[str, str] = {
+    "pair_id":             "Pair ID",
+    "match_source":        "Match Source",
+    "confidence":          "Confidence",
+    "action":              "Action",
+    "reason":              "Reason",
+    "fix_types":           "Fix Types",
+    "summary":             "Summary",
+    "match_explanation":   "Match Explanation",
+    "priority_score":      "Priority Score",
+    "priority_reason":     "Priority Reason",
+    "old_worker_id":       "Worker ID (Old)",
+    "new_worker_id":       "Worker ID (New)",
+    "old_first_name_norm": "First Name",
+    "new_first_name_norm": "New First Name",
+    "old_last_name_norm":  "Last Name",
+    "new_last_name_norm":  "New Last Name",
+    "old_full_name_norm":  "Full Name (Old)",
+    "new_full_name_norm":  "Full Name (New)",
+    "old_worker_status":   "Status (Old)",
+    "new_worker_status":   "Status (New)",
+    "old_worker_type":     "Worker Type (Old)",
+    "new_worker_type":     "Worker Type (New)",
+    "old_salary":          "Salary (Old)",
+    "new_salary":          "Salary (New)",
+    "salary_delta":        "Salary Change",
+    "salary_ratio":        "Salary Ratio",
+    "old_payrate":         "Pay Rate (Old)",
+    "new_payrate":         "Pay Rate (New)",
+    "payrate_delta":       "Pay Rate Change",
+    "old_hire_date":       "Hire Date (Old)",
+    "new_hire_date":       "Hire Date (New)",
+    "old_position":        "Position (Old)",
+    "new_position":        "Position (New)",
+    "old_district":        "District (Old)",
+    "new_district":        "District (New)",
+    "old_location_state":  "State (Old)",
+    "new_location_state":  "State (New)",
+    "old_location":        "Location (Old)",
+    "new_location":        "Location (New)",
+    "hire_date_pattern":   "Hire Date Pattern",
+    "status_changed":      "Status Changed",
+    "hire_date_changed":   "Hire Date Changed",
+    "job_org_changed":     "Job/Org Changed",
+    "needs_review":        "Needs Review",
+    "suggested_action":    "Suggested Action",
+    # held corrections
+    "worker_id":           "Worker ID",
+    "overall_action":      "Action",
+    "hold_reason":         "Hold Reason",
+    # corrections manifest
+    "correction_id":       "Correction ID",
+    "correction_type":     "Correction Type",
+    "field":               "Field",
+    "old_value":           "Old Value",
+    "new_value":           "New Value",
+    "fix_description":     "Fix Description",
+    "recommended_action":  "Recommended Action",
+}
+
+_ACTION_LABELS: dict[str, str] = {
+    "APPROVE":      "Safe",
+    "REVIEW":       "Needs Review",
+    "REJECT_MATCH": "Wrong Match",
+}
+
+
+def _label(col: str) -> str:
+    """Return human-readable label for a column name."""
+    return _COL_LABELS.get(col, col.replace("_", " ").title())
+
+
+def _transform_action_val(val) -> str:
+    """Map APPROVE/REVIEW/REJECT_MATCH to Safe/Needs Review/Wrong Match."""
+    if val is None:
+        return ""
+    s = str(val).strip().upper()
+    return _ACTION_LABELS.get(s, str(val))
+
+
+def _transform_fix_types_val(val) -> str:
+    """Convert 'salary|status' -> 'Salary, Status'. Empty -> 'No Changes'."""
+    if not val or str(val).strip() in ("", "nan"):
+        return "No Changes"
+    parts = [p.strip() for p in str(val).split("|") if p.strip()]
+    _ft_labels = {
+        "salary":    "Salary",
+        "status":    "Status",
+        "hire_date": "Hire Date",
+        "job_org":   "Job / Org",
+    }
+    return ", ".join(_ft_labels.get(p, p.replace("_", " ").title()) for p in parts)
+
+
+def _slim(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    """Return df restricted to requested columns that exist, in order."""
+    keep = [c for c in cols if c in df.columns]
+    return df[keep].copy()
+
+
+def _apply_labels(df: pd.DataFrame) -> pd.DataFrame:
+    """Transform action/fix_types values and rename columns to human-readable labels."""
+    result = df.copy()
+    if "action" in result.columns:
+        result["action"] = result["action"].apply(_transform_action_val)
+    if "overall_action" in result.columns:
+        result["overall_action"] = result["overall_action"].apply(_transform_action_val)
+    if "fix_types" in result.columns:
+        result["fix_types"] = result["fix_types"].apply(_transform_fix_types_val)
+    result.columns = [_label(c) for c in result.columns]
+    return result
+
+
+def _lookup_names_from_wide(worker_ids, all_df: pd.DataFrame) -> dict:
+    """Build {str(worker_id): (first_name, last_name)} lookup from all_df. O(n)."""
+    result: dict = {}
+    if all_df.empty or not worker_ids:
+        return result
+    id_set = {str(w) for w in worker_ids if w}
+    id_col = "old_worker_id" if "old_worker_id" in all_df.columns else None
+    fn_col = "old_first_name_norm" if "old_first_name_norm" in all_df.columns else None
+    ln_col = "old_last_name_norm" if "old_last_name_norm" in all_df.columns else None
+    if not id_col:
+        return result
+    for row in all_df[[c for c in [id_col, fn_col, ln_col] if c]].itertuples(index=False, name=None):
+        idx = 0
+        wid = str(row[idx])
+        if wid in id_set and wid not in result:
+            first = str(row[1]) if fn_col and len(row) > 1 else ""
+            last  = str(row[2]) if ln_col and len(row) > 2 else ""
+            result[wid] = (first if first != "nan" else "", last if last != "nan" else "")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Slim column lists for each mismatch category
+# ---------------------------------------------------------------------------
+_SALARY_SLIM_COLS = [
+    "pair_id", "match_source", "confidence", "action", "priority_score",
+    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
+    "old_worker_status", "new_worker_status",
+    "old_salary", "new_salary", "salary_delta",
+    "old_payrate", "new_payrate", "payrate_delta",
+    "fix_types", "reason", "summary",
+]
+
+_STATUS_SLIM_COLS = [
+    "pair_id", "match_source", "confidence", "action", "priority_score",
+    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
+    "old_worker_status", "new_worker_status",
+    "old_worker_type", "new_worker_type",
+    "fix_types", "reason", "summary",
+]
+
+_HIRE_DATE_SLIM_COLS = [
+    "pair_id", "match_source", "confidence", "action", "priority_score",
+    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
+    "old_worker_status", "new_worker_status",
+    "old_hire_date", "new_hire_date",
+    "hire_date_pattern",
+    "fix_types", "reason", "summary",
+]
+
+_JOB_ORG_SLIM_COLS = [
+    "pair_id", "match_source", "confidence", "action", "priority_score",
+    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
+    "old_worker_status", "new_worker_status",
+    "old_position", "new_position",
+    "old_district", "new_district",
+    "old_location_state", "new_location_state",
+    "fix_types", "reason", "summary",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +317,115 @@ def _write_df_to_sheet_styled(ws, df: pd.DataFrame, hdr_font=None, hdr_fill=None
         ws.append(list(row_tuple))
 
 
+def _write_mismatch_slim(ws, df: pd.DataFrame, slim_cols: list[str]) -> None:
+    """Write a mismatch sheet slimmed to relevant columns with human-readable labels."""
+    out = _apply_labels(_slim(df, slim_cols))
+    _write_df_to_sheet(ws, out)
+
+
+def _write_held_corrections_sheet(ws, held_df: pd.DataFrame, all_df: pd.DataFrame) -> None:
+    """Write Held_Corrections sheet with amber header and name lookup from all_df."""
+    if held_df.empty:
+        ws.append([WriteOnlyCell(ws, value="No held corrections found.")])
+        return
+    df = held_df.copy()
+    # Inject First Name / Last Name from all_df lookup
+    if "worker_id" in df.columns:
+        wids = df["worker_id"].astype(str).tolist()
+        name_map = _lookup_names_from_wide(wids, all_df)
+        insert_at = 1
+        df.insert(insert_at,     "first_name", df["worker_id"].astype(str).map(lambda w: name_map.get(w, ("", ""))[0]))
+        df.insert(insert_at + 1, "last_name",  df["worker_id"].astype(str).map(lambda w: name_map.get(w, ("", ""))[1]))
+    df = _apply_labels(df)
+    cols = list(df.columns)
+    ws.append([_header_cell_styled(ws, c, font=_HELD_HDR_FONT, fill=_HELD_HDR_FILL) for c in cols])
+    for row_tuple in df.itertuples(index=False, name=None):
+        ws.append(list(row_tuple))
+
+
+def _write_review_queue_slim(ws, review_df: pd.DataFrame, all_df: pd.DataFrame) -> None:
+    """Write Review_Queue sheet slimmed to 8 key columns with derived Recommended Action."""
+    if review_df.empty:
+        ws.append([WriteOnlyCell(ws, value="No records in review queue.")])
+        return
+    df = review_df.copy()
+    # Merge missing columns from all_df via pair_id
+    if "pair_id" in df.columns and not all_df.empty:
+        want = [c for c in ["pair_id", "action", "fix_types", "summary", "reason"]
+                if c in all_df.columns and c not in df.columns]
+        if want:
+            df = df.merge(all_df[["pair_id"] + [c for c in want if c != "pair_id"]],
+                          on="pair_id", how="left")
+    # Derive Recommended Action
+    def _recommended(row) -> str:
+        act = str(row.get("action", "")).strip().upper()
+        ft  = str(row.get("fix_types", "")).strip().lower()
+        if act == "REJECT_MATCH":
+            return "Verify worker identity - match may be wrong"
+        if act == "APPROVE":
+            return "No action needed - auto-approved"
+        fixes = [p.strip() for p in ft.split("|") if p.strip()]
+        parts = []
+        if "salary"    in fixes: parts.append("review salary change")
+        if "status"    in fixes: parts.append("confirm status")
+        if "hire_date" in fixes: parts.append("verify hire date")
+        if "job_org"   in fixes: parts.append("check position / org")
+        return "Manually review: " + ", ".join(parts) if parts else "Manually review"
+
+    df["recommended_action"] = df.apply(_recommended, axis=1)
+    slim_cols = [
+        "old_worker_id", "old_first_name_norm", "old_last_name_norm",
+        "action", "fix_types", "summary", "recommended_action", "priority_score",
+    ]
+    df = _apply_labels(_slim(df, slim_cols))
+    _write_df_to_sheet(ws, df)
+
+
+def _write_unmatched_sheet(ws, unmatched_df: pd.DataFrame) -> None:
+    """Write an unmatched-records sheet with light-gray reference header."""
+    if unmatched_df.empty:
+        ws.append([WriteOnlyCell(ws, value="No unmatched records found.")])
+        return
+    _write_df_to_sheet_styled(ws, unmatched_df, hdr_font=_REF_HDR_FONT, hdr_fill=_REF_HDR_FILL)
+
+
+def _enhance_manifest(manifest_df: pd.DataFrame) -> pd.DataFrame:
+    """Add Fix Description column and transform action/fix_types to human-readable values."""
+    if manifest_df.empty or "note" in manifest_df.columns:
+        return manifest_df  # placeholder or blocked row, leave as-is
+    df = manifest_df.copy()
+    # Transform action columns
+    for col in ("action", "overall_action"):
+        if col in df.columns:
+            df[col] = df[col].apply(_transform_action_val)
+    # Transform fix_types
+    if "fix_types" in df.columns:
+        df["fix_types"] = df["fix_types"].apply(_transform_fix_types_val)
+    # Add fix_description if absent
+    if "fix_description" not in df.columns:
+        old_col = next((c for c in ("old_value", "from_value", "old_salary", "old_worker_status",
+                                     "old_hire_date", "old_position") if c in df.columns), None)
+        new_col = next((c for c in ("new_value", "to_value", "new_salary", "new_worker_status",
+                                     "new_hire_date", "new_position") if c in df.columns), None)
+        ct_col  = next((c for c in ("correction_type", "fix_type", "fix_types") if c in df.columns), None)
+        _ct_map = {
+            "salary":    "Update salary",
+            "status":    "Change status",
+            "hire_date": "Update hire date",
+            "job_org":   "Update position / org",
+        }
+        def _desc(row) -> str:
+            ct  = str(row.get(ct_col, "")).strip().lower() if ct_col else ""
+            old = row.get(old_col, "") if old_col else ""
+            new = row.get(new_col, "") if new_col else ""
+            base = _ct_map.get(ct, "Update field")
+            if old and new:
+                return f"{base}: {old} -> {new}"
+            return base
+        df["fix_description"] = df.apply(_desc, axis=1)
+    return df
+
+
 def validate_active_zero_salary(df: pd.DataFrame) -> pd.DataFrame:
     """
     Return rows where new_worker_status is 'active' and new_salary is $0 or blank.
@@ -172,6 +464,47 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
         else:
             ws.append([label, value])
 
+    # ------------------------------------------------------------------
+    # START HERE section - 5-step guide + priority score legend
+    # ------------------------------------------------------------------
+    def _bold_cell(text: str) -> WriteOnlyCell:
+        c = WriteOnlyCell(ws, value=text)
+        c.font = Font(bold=True, size=12)
+        return c
+
+    def _nav_cell(text: str) -> WriteOnlyCell:
+        c = WriteOnlyCell(ws, value=text)
+        c.font = Font(bold=True, color="0070C0")
+        return c
+
+    ws.append([_bold_cell("START HERE - How to use this workbook")])
+    ws.append([])
+    ws.append(["Step 1", _nav_cell("CRITICAL_Zero_Salary"),
+               "Active workers with $0 salary - fix before any import"])
+    ws.append(["Step 2", _nav_cell("Held_Corrections"),
+               "Records held back: Wrong Match or Needs Review - requires manual decision"])
+    ws.append(["Step 3", _nav_cell("Review_Queue"),
+               "Prioritized list of records needing attention - work top to bottom"])
+    ws.append(["Step 4", _nav_cell("Salary / Status / HireDate / JobOrg sheets"),
+               "Mismatch detail by category - use for context and spot-checking"])
+    ws.append(["Step 5", _nav_cell("Corrections_Manifest"),
+               "Apply Safe corrections to target system"])
+    ws.append([])
+    ws.append([_bold_cell("Priority Score Legend")])
+    ws.append(["70+",   "Critical - must review before import"])
+    ws.append(["40-69", "High - review recommended"])
+    ws.append(["20-39", "Medium - spot check advised"])
+    ws.append(["0-19",  "Low - auto-approve candidate"])
+    ws.append([])
+    ws.append([_bold_cell("Action Labels")])
+    ws.append(["Safe",         "No issues found - approved for import"])
+    ws.append(["Needs Review", "Flagged for manual review before import"])
+    ws.append(["Wrong Match",  "Match confidence too low - verify identity"])
+    ws.append([])
+
+    # ------------------------------------------------------------------
+    # Existing summary statistics
+    # ------------------------------------------------------------------
     _kv("Reconciliation Workbook", "", font=_SUM_HDR_FONT)
     _kv("Generated", datetime.now().strftime("%Y-%m-%d %H:%M"))
     _kv("Source DB", str(db_path.name))
@@ -260,16 +593,24 @@ def _write_summary_sheet(ws, all_df: pd.DataFrame, db_path: Path, wide_src: str,
                 ws.append([lc, n_az])
             _kv()
 
-    _kv("SHEETS", "", bold=True)
-    sheet_info = [
-        ("All_Matches",         total),
-        ("Salary_Mismatches",   int(all_df["fix_types"].str.contains("salary",    na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("Status_Mismatches",   int(all_df["fix_types"].str.contains("status",    na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("HireDate_Mismatches", int(all_df["fix_types"].str.contains("hire_date", na=False).sum()) if "fix_types" in all_df.columns else "?"),
-        ("JobOrg_Mismatches",   int(all_df["fix_types"].str.contains("job_org",   na=False).sum()) if "fix_types" in all_df.columns else "?"),
-    ]
-    for name, cnt in sheet_info:
-        _kv(f"  {name}", cnt)
+    _kv("SHEETS IN THIS WORKBOOK", "", bold=True)
+    _kv("  Review_Queue",         "Prioritized records requiring manual decision")
+    _kv("  Held_Corrections",     "Blocked / wrong-match records - decide before import")
+    _kv("  CRITICAL_Zero_Salary", "Active workers with $0 or missing salary")
+    if "fix_types" in all_df.columns:
+        for sheet, ft in [
+            ("  Salary_Mismatches",   "salary"),
+            ("  Status_Mismatches",   "status"),
+            ("  HireDate_Mismatches", "hire_date"),
+            ("  JobOrg_Mismatches",   "job_org"),
+        ]:
+            cnt = int(all_df["fix_types"].str.contains(ft, na=False).sum())
+            _kv(sheet, cnt)
+    _kv("  Corrections_Manifest",  "Auto-approved corrections ready to apply")
+    _kv("  Unmatched_Old",         unmatched_old)
+    _kv("  Unmatched_New",         unmatched_new)
+    _kv("  Clean_Data",            f"{total:,} rows - full dataset reference")
+    _kv("  All_Matches",           f"{total:,} rows - full matched pairs with all columns")
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +789,12 @@ def main(argv: list[str] | None = None) -> None:
     total = len(all_df)
     print(f"[build_workbook] {total:,} rows loaded.")
 
+    # Strip any SSN/PII columns - they must never appear in any export
+    _PII_DROP = [c for c in ("old_last4_ssn", "new_last4_ssn", "old_dob", "new_dob") if c in all_df.columns]
+    if _PII_DROP:
+        all_df = all_df.drop(columns=_PII_DROP)
+        print(f"[build_workbook] [pii] stripped columns: {_PII_DROP}")
+
     # Ensure numeric columns are stored as numbers
     for num_col in [
         "salary_delta", "salary_ratio", "payrate_delta",
@@ -542,8 +889,55 @@ def main(argv: list[str] | None = None) -> None:
             f"$0 or missing salary in new data - see CRITICAL_Zero_Salary sheet ***\n"
         )
 
+    # ------------------------------------------------------------------
+    # Held corrections (BLOCKED / REJECT_MATCH hold reasons only)
+    # ------------------------------------------------------------------
+    held_path = HELD_CSV
+    if held_path.exists():
+        held_df = pd.read_csv(str(held_path))
+        if not held_df.empty and "hold_reason" in held_df.columns:
+            held_df = held_df[
+                held_df["hold_reason"].str.contains(
+                    r"BLOCKED|REJECT_MATCH|active_zero_salary_blocked", na=False
+                )
+            ].copy()
+        held_src = f"{held_path.name}  ({len(held_df):,} rows)"
+    else:
+        held_df  = pd.DataFrame()
+        held_src = "held_corrections.csv not found"
+
+    # ------------------------------------------------------------------
+    # Unmatched records - load full DataFrames (used for sheets + counts)
+    # ------------------------------------------------------------------
+    _run_outs = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
+    _uo_p = _run_outs / "unmatched_old.csv"
+    _un_p = _run_outs / "unmatched_new.csv"
+
+    if _uo_p.exists():
+        try:
+            unmatched_old_df    = pd.read_csv(str(_uo_p))
+            unmatched_old_count = len(unmatched_old_df)
+        except Exception:
+            unmatched_old_df    = pd.DataFrame()
+            unmatched_old_count = 0
+    else:
+        unmatched_old_df    = pd.DataFrame()
+        unmatched_old_count = 0
+
+    if _un_p.exists():
+        try:
+            unmatched_new_df    = pd.read_csv(str(_un_p))
+            unmatched_new_count = len(unmatched_new_df)
+        except Exception:
+            unmatched_new_df    = pd.DataFrame()
+            unmatched_new_count = 0
+    else:
+        unmatched_new_df    = pd.DataFrame()
+        unmatched_new_count = 0
+
     print(f"  review_queue src       : {review_src}  ({len(review_df):,} rows)")
     print(f"  manifest src           : {manifest_src}  ({len(manifest_df):,} rows)")
+    print(f"  held src               : {held_src}")
     print(f"  Salary_Mismatches      : {len(salary_df):,}")
     print(f"  Status_Mismatches      : {len(status_df):,}")
     print(f"  HireDate_Mismatches    : {len(hire_df):,}")
@@ -551,29 +945,10 @@ def main(argv: list[str] | None = None) -> None:
     if rejected_df is not None:
         print(f"  Rejected_Matches       : {len(rejected_df):,}")
     print(f"  CRITICAL_Zero_Salary   : {len(active_zero_df):,}")
+    print(f"  Unmatched_Old          : {unmatched_old_count:,}")
+    print(f"  Unmatched_New          : {unmatched_new_count:,}")
     if extra_mismatch_df is not None:
         print(f"  Extra_Field_Mismatches : {len(extra_mismatch_df):,}  (mm_ cols: {mm_cols})")
-
-    # ------------------------------------------------------------------
-    # Unmatched record counts (from matcher outputs)
-    # ------------------------------------------------------------------
-    _run_outs = (_rk_work / "outputs") if _rk_work else (ROOT / "outputs")
-    unmatched_old_count = 0
-    unmatched_new_count = 0
-    _uo_p = _run_outs / "unmatched_old.csv"
-    _un_p = _run_outs / "unmatched_new.csv"
-    if _uo_p.exists():
-        try:
-            with _uo_p.open(encoding="utf-8") as _f:
-                unmatched_old_count = max(0, sum(1 for _ in _f) - 1)
-        except Exception:
-            pass
-    if _un_p.exists():
-        try:
-            with _un_p.open(encoding="utf-8") as _f:
-                unmatched_new_count = max(0, sum(1 for _ in _f) - 1)
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     # Build workbook (write_only streaming - no MemoryError on large sets)
@@ -581,33 +956,72 @@ def main(argv: list[str] | None = None) -> None:
     print(f"\n[build_workbook] writing workbook (streaming mode) ...")
     wb = Workbook(write_only=True)
 
+    # 1. Summary (with Start Here guide)
     ws_sum = wb.create_sheet("Summary")
     _write_summary_sheet(ws_sum, all_df, db_path, wide_src, unmatched_old_count, unmatched_new_count)
     print(f"  wrote: Summary")
 
-    data_sheets = [
-        ("All_Matches",          all_df),
-        ("Salary_Mismatches",    salary_df),
-        ("Status_Mismatches",    status_df),
-        ("HireDate_Mismatches",  hire_df),
-        ("JobOrg_Mismatches",    job_org_df),
-        ("Review_Queue",         review_df),
-        ("Corrections_Manifest", manifest_df),
-    ]
-    if rejected_df is not None and not rejected_df.empty:
-        data_sheets.insert(-1, ("Rejected_Matches", rejected_df))
-    if extra_mismatch_df is not None:
-        data_sheets.insert(-1, ("Extra_Field_Mismatches", extra_mismatch_df))
+    # 2. Review_Queue - slim 8-column view, human-readable labels
+    ws_rq = wb.create_sheet("Review_Queue")
+    _write_review_queue_slim(ws_rq, review_df, all_df)
+    print(f"  wrote: {'Review_Queue':<25}  ({len(review_df):,} rows)")
 
-    for sheet_name, df in data_sheets:
-        ws = wb.create_sheet(sheet_name)
-        _write_df_to_sheet(ws, df)
-        print(f"  wrote: {sheet_name:<25}  ({len(df):,} rows)")
+    # 3. Held_Corrections - BLOCKED/REJECT_MATCH only, names joined from all_df
+    ws_held = wb.create_sheet("Held_Corrections")
+    _write_held_corrections_sheet(ws_held, held_df, all_df)
+    print(f"  wrote: {'Held_Corrections':<25}  ({len(held_df):,} rows)")
 
-    # CRITICAL_Zero_Salary sheet with red header - always write (even if 0 rows)
+    # 4. CRITICAL_Zero_Salary - always write (even 0 rows), red header
     ws_crit = wb.create_sheet("CRITICAL_Zero_Salary")
     _write_df_to_sheet_styled(ws_crit, active_zero_df, hdr_font=_CRIT_HDR_FONT, hdr_fill=_CRIT_HDR_FILL)
     print(f"  wrote: {'CRITICAL_Zero_Salary':<25}  ({len(active_zero_df):,} rows)")
+
+    # 5-8. Category mismatch sheets - slimmed to relevant columns
+    mismatch_sheets = [
+        ("Salary_Mismatches",    salary_df,  _SALARY_SLIM_COLS),
+        ("Status_Mismatches",    status_df,  _STATUS_SLIM_COLS),
+        ("HireDate_Mismatches",  hire_df,    _HIRE_DATE_SLIM_COLS),
+        ("JobOrg_Mismatches",    job_org_df, _JOB_ORG_SLIM_COLS),
+    ]
+    for sheet_name, df, slim_cols in mismatch_sheets:
+        ws = wb.create_sheet(sheet_name)
+        _write_mismatch_slim(ws, df, slim_cols)
+        print(f"  wrote: {sheet_name:<25}  ({len(df):,} rows)")
+
+    # 9. Corrections_Manifest - enhanced with fix descriptions and human labels
+    ws_mf = wb.create_sheet("Corrections_Manifest")
+    enhanced_manifest = _enhance_manifest(manifest_df)
+    _write_df_to_sheet(ws_mf, enhanced_manifest)
+    print(f"  wrote: {'Corrections_Manifest':<25}  ({len(manifest_df):,} rows)")
+
+    # 10-11. Unmatched records - full rows, light-gray reference header
+    ws_uo = wb.create_sheet("Unmatched_Old")
+    _write_unmatched_sheet(ws_uo, unmatched_old_df)
+    print(f"  wrote: {'Unmatched_Old':<25}  ({unmatched_old_count:,} rows)")
+
+    ws_un = wb.create_sheet("Unmatched_New")
+    _write_unmatched_sheet(ws_un, unmatched_new_df)
+    print(f"  wrote: {'Unmatched_New':<25}  ({unmatched_new_count:,} rows)")
+
+    # 12. Clean_Data - full dataset, reference only (no transforms, all columns)
+    ws_clean = wb.create_sheet("Clean_Data")
+    _write_df_to_sheet_styled(ws_clean, all_df, hdr_font=_REF_HDR_FONT, hdr_fill=_REF_HDR_FILL)
+    print(f"  wrote: {'Clean_Data':<25}  ({total:,} rows)")
+
+    # 13. All_Matches - full dataset with all columns (backward compat)
+    ws_all = wb.create_sheet("All_Matches")
+    _write_df_to_sheet(ws_all, all_df)
+    print(f"  wrote: {'All_Matches':<25}  ({total:,} rows)")
+
+    # Optional: Rejected_Matches and Extra_Field_Mismatches
+    if rejected_df is not None and not rejected_df.empty:
+        ws_rej = wb.create_sheet("Rejected_Matches")
+        _write_df_to_sheet_styled(ws_rej, rejected_df, hdr_font=_REJ_HDR_FONT, hdr_fill=_REJ_HDR_FILL)
+        print(f"  wrote: {'Rejected_Matches':<25}  ({len(rejected_df):,} rows)")
+    if extra_mismatch_df is not None:
+        ws_ex = wb.create_sheet("Extra_Field_Mismatches")
+        _write_df_to_sheet(ws_ex, extra_mismatch_df)
+        print(f"  wrote: {'Extra_Field_Mismatches':<25}  ({len(extra_mismatch_df):,} rows)")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(out_path))

@@ -247,18 +247,17 @@ _FORMULA_CHARS = frozenset("=+-@\t")
 
 
 def _safe_str(v) -> str:
-    """Prefix formula-starting values with a tab to prevent CSV injection.
+    """Prefix formula-starting values with a single quote to prevent CSV injection.
 
     Excel and Google Sheets treat cells whose first character is =, +, -, @
-    as formulas.  Prepending \\t (horizontal tab) causes the application to
-    render the value as plain text without altering its visible content after
-    the leading whitespace is trimmed by most viewers.
+    as formulas.  Prepending ' (apostrophe) forces the application to treat
+    the cell as plain text.
     """
     if v is None:
         return ""
     s = str(v)
     if s and s[0] in _FORMULA_CHARS:
-        return "\t" + s
+        return "'" + s
     return s
 
 
