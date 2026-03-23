@@ -86,9 +86,9 @@ def _fmt_sal(val: Any) -> str:
 
 
 def _name_of(row: dict) -> str:
-    """Return display name from a wide_compare row dict."""
-    first = str(row.get("old_first_name_norm") or "").strip()
-    last  = str(row.get("old_last_name_norm")  or "").strip()
+    """Return Title Case display name from a wide_compare row dict."""
+    first = str(row.get("old_first_name_norm") or "").strip().title()
+    last  = str(row.get("old_last_name_norm")  or "").strip().title()
     if first or last:
         return f"{first} {last}".strip()
     full = str(row.get("old_full_name_norm") or "").strip()
@@ -243,7 +243,7 @@ def _build_wrong_sample(df: pd.DataFrame) -> list[dict]:
                         else "")
         except (ValueError, TypeError):
             conf_str = ""
-        reason = _translate_reason(str(rd.get("reason", "") or ""))[:45]
+        reason = _translate_reason(str(rd.get("reason", "") or ""))
         rows.append({
             "Pair ID":      str(rd.get("pair_id", ""))[:12],
             "Name":         _name_of(rd)[:22],
@@ -293,6 +293,57 @@ def _build_wave_dates(df: pd.DataFrame) -> dict:
 # ===========================================================================
 # DATA LOADING
 # ===========================================================================
+
+# Field groups for per-field completeness table
+_COMPLETENESS_FIELD_GROUPS: list[tuple[str, list[str]]] = [
+    ("Critical Fields", [
+        "old_worker_id", "new_worker_id",
+        "old_first_name_norm", "old_last_name_norm",
+        "new_worker_status", "old_salary", "new_salary",
+    ]),
+    ("Standard Fields", [
+        "old_hire_date", "new_hire_date",
+        "old_worker_type", "new_worker_type",
+        "match_source", "confidence",
+    ]),
+    ("Optional Fields", [
+        "old_manager_id", "old_department_id",
+        "old_job_code", "old_location_id",
+    ]),
+]
+
+
+def _build_field_completeness(df: pd.DataFrame) -> list[dict]:
+    """Return per-field null count data for the completeness table."""
+    n_total = len(df)
+    rows = []
+    for group, fields in _COMPLETENESS_FIELD_GROUPS:
+        for field in fields:
+            if field not in df.columns:
+                continue
+            n_blank   = int(df[field].isna().sum())
+            n_complete = n_total - n_blank
+            blank_pct = (n_blank / n_total * 100) if n_total else 0.0
+            if blank_pct == 0:
+                status = "Complete"
+                status_level = "pass"
+            elif blank_pct <= 5.0:
+                status = "Acceptable"
+                status_level = "warn"
+            else:
+                status = "Critical Gap"
+                status_level = "fail"
+            display_field = field.replace("old_", "").replace("new_", "").replace("_norm", "").replace("_", " ").title()
+            rows.append({
+                "group":         group,
+                "field":         display_field,
+                "n_complete":    n_complete,
+                "n_total":       n_total,
+                "n_blank":       n_blank,
+                "status":        status,
+                "status_level":  status_level,
+            })
+    return rows
 
 def _active_zero_mask(df: pd.DataFrame) -> "pd.Series":
     """Boolean mask: active workers where new_salary is 0 or null."""
@@ -489,6 +540,8 @@ def load_summary(wide_path: Path,
         "active_zero_sample":   _build_az_sample(active_zero_df),
         # Source file name
         "wide_src":             wide_path.name,
+        # Per-field completeness (null counts from wide_compare)
+        "field_completeness":   _build_field_completeness(all_df),
     }
 
 
@@ -515,7 +568,7 @@ def _draw_exec_summary(c, y: float, page_num: int, total_pages: int,
     n_fuzzy   = int(summary.get("n_fuzzy", 0))
     n_az      = int(summary.get("n_active_zero_salary", 0))
     wide_src  = str(summary.get("wide_src", "wide_compare.csv"))
-    score     = migration_readiness_score(safe_pct, n_az, n_wrong, total)
+    score     = migration_readiness_score(safe_pct, n_az, n_wrong)
 
     # ---- What We Found narrative ----
     y = draw_section_header(c, y, "EXECUTIVE SUMMARY")
@@ -840,15 +893,20 @@ def _draw_findings(c, y_start: float, page_num: int, total_pages: int,
     for f in findings:
         sev_counts[f["sev"]["label"]] = sev_counts.get(f["sev"]["label"], 0) + 1
 
+    # Severity badge summary: evenly spaced colored badges + labels
+    _badge_section_w = TW / len(SEVERITY_LEVELS)
     badge_x = LM
     for sev in SEVERITY_LEVELS:
-        cnt = sev_counts.get(sev["label"], 0)
-        draw_severity_badge(c, badge_x, y + 12, sev, size=16)
-        draw_text(c, badge_x + 20, y + 14,
-                  f"{sev['label']}  {cnt} finding{'s' if cnt != 1 else ''}",
-                  font=FONT_REGULAR, size=8, color=COLOR_MID_GRAY)
-        badge_x += 130
-    y += 26
+        cnt     = sev_counts.get(sev["label"], 0)
+        badge_y = y + 10                          # vertical center of badge row
+        draw_severity_badge(c, badge_x, badge_y, sev, size=18)
+        draw_text(c, badge_x + 24, badge_y + 5,
+                  sev["label"], font=FONT_BOLD, size=8, color=COLOR_CHARCOAL)
+        draw_text(c, badge_x + 24, badge_y + 16,
+                  f"{cnt} finding{'s' if cnt != 1 else ''}",
+                  font=FONT_REGULAR, size=7.5, color=COLOR_MID_GRAY)
+        badge_x += _badge_section_w
+    y += 32
 
     draw_hrule(c, y, color=COLOR_BORDER)
     y += 10
@@ -1315,6 +1373,67 @@ def _draw_match_quality(c, y: float, page_num: int, total_pages: int,
         y = draw_table(c, LM, y, cat_cw, cat_rows, hdr_bg=COLOR_NAVY, font_size=9)
         y += 12
 
+    # ---- Per-Field Data Completeness Table ----
+    field_completeness = summary.get("field_completeness") or []
+    if y + 80 < CONTENT_BOTTOM:
+        y = draw_section_header(c, y, "Data Completeness by Field")
+        if field_completeness:
+            comp_cw = [150, 130, 80, 100, 92]   # = 552pt -> scale to TW 526
+            comp_cw = [140, 130, 76, 96, 84]     # = 526pt
+            comp_hdr = [
+                Paragraph("<b>Field Name</b>",          PS_HDR_SM),
+                Paragraph("<b>Records Complete</b>",    PS_HDR_SM),
+                Paragraph("<b>Blank Count</b>",         PS_HDR_SM),
+                Paragraph("<b>% Complete</b>",          PS_HDR_SM),
+                Paragraph("<b>Status</b>",              PS_HDR_SM),
+            ]
+            comp_rows = [comp_hdr]
+            last_group = None
+            for fc in field_completeness:
+                grp = fc["group"]
+                if grp != last_group:
+                    # Group header row
+                    from reportlab.lib.styles import ParagraphStyle as _PS2
+                    from reportlab.lib.enums import TA_LEFT as _TAL2
+                    _grp_st = _PS2(f"_grp_{grp.replace(' ','')}",
+                                   fontName=FONT_BOLD, fontSize=8,
+                                   textColor=COLOR_NAVY, leading=12,
+                                   alignment=_TAL2, wordWrap="LTR")
+                    comp_rows.append([
+                        Paragraph(grp, _grp_st),
+                        Paragraph("", PS_CELL_SM),
+                        Paragraph("", PS_CELL_SM),
+                        Paragraph("", PS_CELL_SM),
+                        Paragraph("", PS_CELL_SM),
+                    ])
+                    last_group = grp
+                n_complete = fc["n_complete"]
+                n_total    = fc["n_total"]
+                n_blank    = fc["n_blank"]
+                blank_pct  = (n_blank / n_total * 100) if n_total else 0.0
+                status     = fc["status"]
+                slevel     = fc["status_level"]
+                st_style   = PS_PASS if slevel == "pass" else (PS_WARN if slevel == "warn" else PS_FAIL)
+                comp_rows.append([
+                    Paragraph(fc["field"],                           PS_CELL_SM),
+                    Paragraph(f"{n_complete:,} of {n_total:,}",     PS_CELL_SM),
+                    Paragraph(f"{n_blank:,}",                       PS_CELL_SM),
+                    Paragraph(f"{100 - blank_pct:.1f}%",            PS_CELL_SM),
+                    Paragraph(status,                                st_style),
+                ])
+                if y + len(comp_rows) * 18 > CONTENT_BOTTOM and len(comp_rows) > 4:
+                    break
+            if len(comp_rows) > 1:
+                y = draw_table(c, LM, y, comp_cw, comp_rows,
+                               hdr_bg=COLOR_NAVY, font_size=8, pad=4, min_h=16)
+                y += 10
+        else:
+            y = draw_para(c, LM, y,
+                          "Per-field completeness data not available in this run. "
+                          "Re-run with --field-completeness flag to enable.",
+                          PS_BODY_MUT, TW)
+            y += 8
+
     # ---- Key Observations + Recommended Next Steps ----
     if y + 60 < CONTENT_BOTTOM:
         y = draw_section_header(c, y, "Key Observations")
@@ -1461,5 +1580,5 @@ def build_pdf(run_id: str,
 
     print(f"[pdf_generator] wrote: {out_path}  ({actual_pages} pages)")
     print(f"  Gate status: {get_gate_status(summary['safe_pct'], summary['n_active_zero_salary'], summary['n_wrong_match'])[0]}")
-    print(f"  Migration readiness score: {migration_readiness_score(summary['safe_pct'], summary['n_active_zero_salary'], summary['n_wrong_match'], summary['total_matched'])}/100")
+    print(f"  Migration readiness score: {migration_readiness_score(summary['safe_pct'], summary['n_active_zero_salary'], summary['n_wrong_match'])}/100")
     return actual_pages

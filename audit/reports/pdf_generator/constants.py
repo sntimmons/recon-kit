@@ -182,20 +182,23 @@ def get_gate_status(safe_pct: float, n_az: int, n_rejected: int) -> tuple[str, o
 # ---------------------------------------------------------------------------
 
 def migration_readiness_score(safe_pct: float, n_az: int,
-                               n_rejected: int, total: int) -> int:
+                               n_rejected: int) -> int:
     """
     Compute a 0-100 migration readiness score.
 
-    Base  = approval_rate * 100
-    Deductions:
-      -10  per blocked/rejected pair
-      -5   per active/$0 salary employee
-      -2   if approval_rate < 0.80
+    Base  = safe_pct (already as a percentage, e.g. 79.4)
+    Deductions (capped at 45 total):
+      -10  per rejected/wrong-match pair
+      -min(n_az * 0.1, 15)  active/$0 salary employees (capped at 15 pts)
+      -2   if safe_pct < 80.0
     Score  = max(0, min(100, base - deductions))
     """
-    rate = safe_pct / 100.0 if safe_pct <= 100 else safe_pct
-    base = rate * 100.0
-    deductions = (n_rejected * 10) + (n_az * 5) + (2 if rate < 0.80 else 0)
+    base       = float(safe_pct)
+    deductions = 0.0
+    deductions += n_rejected * 10
+    deductions += min(n_az * 0.1, 15.0)   # cap zero-salary penalty at 15 pts
+    deductions += 2.0 if safe_pct < 80.0 else 0.0
+    deductions  = min(deductions, 45.0)   # total deduction cap
     return max(0, min(100, int(round(base - deductions))))
 
 

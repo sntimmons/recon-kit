@@ -333,8 +333,8 @@ def draw_sample_table(c, x: float, y_top: float, inner_w: float,
         row = [Paragraph(str(idx + 1), PS_CELL_SM)]
         for k in keys:
             v = str(sr.get(k, ""))
-            if len(v) > 36:
-                v = v[:33] + "..."
+            if len(v) > 80:
+                v = v[:77] + "..."
             row.append(Paragraph(v, PS_CELL_SM))
         tbl.append(row)
 
@@ -540,14 +540,15 @@ def draw_readiness_bar(c, x: float, y_top: float,
     # Fill
     fill_w = max(4, round(w * score / 100))
     draw_rect(c, x, y_top, fill_w, h, fill=bar_color)
-    # Score label inside bar
-    draw_text(c, x + fill_w / 2, y_top + h - 4,
-              f"{score}", font=FONT_BOLD, size=8,
-              color=COLOR_WHITE, align="center")
-    # "/ 100" label to the right
-    draw_text(c, x + w + 6, y_top + h - 4,
-              f"/ 100", font=FONT_REGULAR, size=8,
-              color=COLOR_MID_GRAY)
+    # Score label inside bar (only if bar is wide enough to show it)
+    if fill_w > 20:
+        draw_text(c, x + fill_w / 2, y_top + h - 4,
+                  f"{score}", font=FONT_BOLD, size=8,
+                  color=COLOR_WHITE, align="center")
+    # "[score] / 100" label to the right of the bar
+    draw_text(c, x + w + 8, y_top + h - 4,
+              f"{score} / 100", font=FONT_BOLD, size=8,
+              color=COLOR_CHARCOAL)
     return y_top + h + 4
 
 
@@ -643,7 +644,7 @@ def draw_cover_page(c, run_id: str, summary: dict,
     n_wrong   = int(summary.get("n_wrong_match", 0))
     safe_pct  = float(summary.get("safe_pct", 0.0))
     gate_lbl, gate_col = get_gate_status(safe_pct, n_az, n_wrong)
-    draw_gate_badge(c, PAGE_W - RM, 14, gate_lbl, gate_col)
+    draw_gate_badge(c, PAGE_W - 20, 14, gate_lbl, gate_col)
 
     # Report title centered in navy block
     title_y = COVER_NAVY_H * 0.38
@@ -661,7 +662,7 @@ def draw_cover_page(c, run_id: str, summary: dict,
     meta_y    = COVER_NAVY_H + 20
     uo_count  = int(summary.get("unmatched_old", 0))
     un_count  = int(summary.get("unmatched_new", 0))
-    score     = migration_readiness_score(safe_pct, n_az, n_wrong, total)
+    score     = migration_readiness_score(safe_pct, n_az, n_wrong)
 
     meta_pairs = [
         ("Organization",       org_name),
@@ -692,11 +693,14 @@ def draw_cover_page(c, run_id: str, summary: dict,
     n_held    = int(summary.get("n_held", 0))
     n_manifest = int(summary.get("n_manifest", 0))
 
+    # If corrections haven't been generated yet, show approved count as "CORRECTIONS READY"
+    _corr_label = "CORRECTIONS" if n_manifest > 0 else "CORRECTIONS READY"
+    _corr_value = n_manifest    if n_manifest > 0 else n_safe
     stats = [
-        {"label": "APPROVED",    "value": n_safe,      "color": COLOR_APPROVED},
-        {"label": "NEEDS REVIEW","value": n_review,    "color": COLOR_REVIEW},
-        {"label": "REJECTED",    "value": n_wrong,     "color": COLOR_REJECTED},
-        {"label": "CORRECTIONS", "value": n_manifest,  "color": COLOR_MEDIUM},
+        {"label": "APPROVED",        "value": n_safe,       "color": COLOR_APPROVED},
+        {"label": "NEEDS REVIEW",    "value": n_review,     "color": COLOR_REVIEW},
+        {"label": "REJECTED",        "value": n_wrong,      "color": COLOR_REJECTED},
+        {"label": _corr_label,       "value": _corr_value,  "color": COLOR_MEDIUM},
     ]
     n_boxes = len(stats)
     box_gap = 8
