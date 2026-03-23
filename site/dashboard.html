@@ -1610,7 +1610,7 @@
 
       document.getElementById('results-label').textContent   = 'Reconciliation complete';
       document.getElementById('results-headline').textContent = 'Your run is ready. Here is what we found.';
-      document.getElementById('results-sub').textContent      = 'Download your outputs below. Correction files are Workday-ready.';
+      document.getElementById('results-sub').textContent      = 'Open the audit report first, then use the action files below. Advanced data is available separately if you need the technical detail.';
       document.getElementById('audit-gate-banner').style.display = 'none';
 
       // Build inline results summary card
@@ -1653,6 +1653,43 @@
     var outputs = job.outputs || [];
 
     var FILE_LABELS = {
+      'Recon Audit Report.pdf':        'Open this first - executive audit summary (PDF)',
+      'Full Summary.csv':              'At-a-glance totals for matched, review, and issue counts',
+      'Clean Employee Data - Old System.csv': 'Clean source data from the old system',
+      'Clean Employee Data - New System.csv': 'Clean source data from the new system',
+      'Employees Requiring Review.csv':'One combined review list with issue type, severity, and department',
+      'Salary Issues to Fix.csv':      'Action file - pay and salary records needing review',
+      'Employee Status Issues.csv':    'Action file - status changes needing review',
+      'Hire Date Issues.csv':          'Action file - hire date changes needing review',
+      'Identity Conflicts to Review.csv':'Action file - identity conflicts needing review',
+      'Job and Organization Issues to Review.csv': 'Action file - job or org mismatches needing review',
+      'details/Full Employee Comparison (Side by Side).csv': 'Advanced data - complete side-by-side comparison',
+      'details/Employees Missing from New System.csv': 'Advanced data - records missing from the new system',
+      'details/Employees Missing from Old System.csv': 'Advanced data - records missing from the old system',
+      'details/Full Excel Workbook.xlsx': 'Advanced data - legacy multi-sheet workbook',
+      'details/Legacy Audit Report.docx': 'Advanced data - legacy Word report',
+      'details/Legacy Audit Report.pdf': 'Advanced data - legacy PDF report',
+      'details/Technical Recon Audit Report.pdf': 'Advanced data - original recon PDF file',
+      'details/Technical Review Queue.csv': 'Advanced data - original technical review queue',
+      'support/Excel Lookup Keys for Validation.csv': 'Advanced data - lookup keys for spreadsheet validation',
+      'support/CHRO Approval Document.pdf': 'Advanced data - CHRO approval packet',
+      'support/Corrections Manifest.csv': 'Advanced data - correction manifest',
+      'support/Held Corrections.csv': 'Advanced data - records held back by the safety gate',
+      'support/Salary Corrections for Loading.csv': 'Advanced data - salary loader file',
+      'support/Status Corrections for Loading.csv': 'Advanced data - status loader file',
+      'support/Hire Date Corrections for Loading.csv': 'Advanced data - hire date loader file',
+      'support/Job and Organization Corrections for Loading.csv': 'Advanced data - job/org loader file',
+      'logs/Data Mapping Summary.json': 'Advanced data - mapping log',
+      'logs/Matching Summary.json': 'Advanced data - matching log',
+      'logs/Data Quality Check Results.json': 'Advanced data - quality check results',
+      'logs/Data Safety Check Results.json': 'Advanced data - safety gate results',
+      'logs/Audit Trail.json': 'Advanced data - immutable audit trail',
+      'logs/Input Manifest.json': 'Advanced data - upload manifest',
+      'logs/Skipped Rows Missing Entity Keys.csv': 'Advanced data - skipped rows log',
+      'logs/Salary Quality Detail.csv': 'Advanced data - salary quality detail',
+      'logs/Hire Date Check Detail.csv': 'Advanced data - hire date detail',
+      'logs/Suspicious Default Values Detail.csv': 'Advanced data - suspicious defaults detail',
+      'audit/System Audit Details.csv': 'Advanced data - combined audit detail file',
       'recon_report.pdf':               'Reconciliation Audit Report (PDF)',
       'audit_report.docx':              'Audit report - executive summary (Word)',
       'audit_report.pdf':               'Audit report (PDF) - legacy',
@@ -1696,6 +1733,16 @@
 
     // Primary files always shown at top (in this order)
     var PRIMARY_NAMES = [
+      'Recon Audit Report.pdf',
+      'Full Summary.csv',
+      'Employees Requiring Review.csv',
+      'Salary Issues to Fix.csv',
+      'Employee Status Issues.csv',
+      'Hire Date Issues.csv',
+      'Identity Conflicts to Review.csv',
+      'Job and Organization Issues to Review.csv',
+      'Clean Employee Data - Old System.csv',
+      'Clean Employee Data - New System.csv',
       'recon_report.pdf',
       'recon_workbook.xlsx',
       'audit_report.docx',
@@ -1788,7 +1835,7 @@
       if (secondary.length > 0) {
         var toggle = document.createElement('div');
         toggle.style.cssText = 'padding:10px 0 4px; cursor:pointer; font-size:0.825rem; color:var(--accent); user-select:none;';
-        toggle.innerHTML = '&#9656; + ' + secondary.length + ' additional files (department queues, correction details)';
+        toggle.innerHTML = '&#9656; Advanced Data (Optional Download) - ' + secondary.length + ' files';
 
         var secWrap = document.createElement('div');
         secWrap.style.display = 'none';
@@ -1800,7 +1847,7 @@
         toggle.addEventListener('click', function() {
           var isOpen = secWrap.style.display !== 'none';
           secWrap.style.display = isOpen ? 'none' : 'block';
-          toggle.innerHTML = (isOpen ? '&#9656;' : '&#9662;') + ' + ' + secondary.length + ' additional files (department queues, correction details)';
+          toggle.innerHTML = (isOpen ? '&#9656;' : '&#9662;') + ' Advanced Data (Optional Download) - ' + secondary.length + ' files';
         });
 
         dl.appendChild(toggle);

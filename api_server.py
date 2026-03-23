@@ -25,6 +25,7 @@ import sys
 import threading
 import time
 import uuid
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -537,6 +538,16 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     every time we add a new artifact.
     """
     wanted = [
+        "Recon Audit Report.pdf",
+        "Full Summary.csv",
+        "Clean Employee Data - Old System.csv",
+        "Clean Employee Data - New System.csv",
+        "Employees Requiring Review.csv",
+        "Salary Issues to Fix.csv",
+        "Employee Status Issues.csv",
+        "Hire Date Issues.csv",
+        "Identity Conflicts to Review.csv",
+        "Job and Organization Issues to Review.csv",
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
         "recon_report.pdf",
@@ -587,8 +598,13 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "old_input",
         "new_input",
         "audit_input",
+        "audit_q",
     )
     skip_parts = {"inputs"}
+    skip_rel_prefixes = (
+        "outputs/",
+        "audit/summary/sanity_",
+    )
     found: list[dict] = []
     seen: set[str] = set()
 
@@ -599,6 +615,8 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
             return
         rel = path.relative_to(run_dir).as_posix()
         if rel in seen:
+            return
+        if any(rel.startswith(prefix) for prefix in skip_rel_prefixes):
             return
         if path.name in skip_names:
             return
@@ -616,6 +634,349 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         _add_file(path)
 
     return found
+
+
+def _csv_row_count(path: Path) -> int:
+    if not path.exists() or not path.is_file():
+        return 0
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            return max(sum(1 for _ in handle) - 1, 0)
+    except Exception:
+        return 0
+
+
+def _read_csv_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    if not path.exists() or not path.is_file():
+        return [], []
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = list(reader.fieldnames or [])
+            rows = [{key: (value if value is not None else "") for key, value in row.items()} for row in reader]
+        return fieldnames, rows
+    except Exception:
+        return [], []
+
+
+def _write_csv_rows(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({name: row.get(name, "") for name in fieldnames})
+
+
+def _copy_file(src: Path, dest: Path) -> None:
+    if not src.exists() or not src.is_file():
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
+
+
+def _move_file(src: Path, dest: Path) -> None:
+    if not src.exists() or not src.is_file():
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if src.resolve() == dest.resolve():
+        return
+    if dest.exists():
+        dest.unlink()
+    shutil.move(str(src), str(dest))
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _friendly_issue_types(fix_types_raw: str) -> str:
+    labels = []
+    seen = set()
+    mapping = {
+        "salary": "Salary",
+        "payrate": "Salary",
+        "status": "Employee Status",
+        "hire_date": "Hire Date",
+        "job_org": "Job and Organization",
+        "identity": "Identity",
+    }
+    for part in str(fix_types_raw or "").split("|"):
+        key = part.strip().lower()
+        if not key:
+            continue
+        label = mapping.get(key, key.replace("_", " ").title())
+        if label not in seen:
+            seen.add(label)
+            labels.append(label)
+    return ", ".join(labels)
+
+
+def _review_severity(priority_score_raw: str) -> str:
+    try:
+        score = int(float(str(priority_score_raw or "0")))
+    except Exception:
+        score = 0
+    if score >= 90:
+        return "Critical"
+    if score >= 60:
+        return "High"
+    if score >= 30:
+        return "Medium"
+    return "Low"
+
+
+def _review_department(row: dict[str, str]) -> str:
+    return (
+        row.get("old_district")
+        or row.get("new_district")
+        or row.get("old_department")
+        or row.get("new_department")
+        or "Unassigned"
+    )
+
+
+def _friendly_review_row(row: dict[str, str], wide_row: dict[str, str] | None = None) -> dict[str, str]:
+    friendly = dict(row)
+    issue_type = _friendly_issue_types(row.get("fix_types", ""))
+    department = _review_department(row)
+    friendly["employee_name"] = row.get("old_full_name_norm") or (wide_row or {}).get("new_full_name_norm", "")
+    friendly["issue_type"] = issue_type or "Review Required"
+    friendly["severity"] = _review_severity(row.get("priority_score", "0"))
+    friendly["department"] = department
+    friendly["what_changed"] = row.get("summary", "")
+    friendly["recommended_action"] = row.get("match_explanation", "") or row.get("reason", "")
+    if wide_row and str(wide_row.get("match_source", "")).strip().lower() != "worker_id":
+        friendly["issue_type"] = (
+            friendly["issue_type"] + ", Identity"
+            if friendly["issue_type"] and "Identity" not in friendly["issue_type"]
+            else "Identity"
+        )
+    return friendly
+
+
+def _has_fix_type(row: dict[str, str], target: str) -> bool:
+    parts = {part.strip().lower() for part in str(row.get("fix_types", "")).split("|") if part.strip()}
+    if target == "salary":
+        return "salary" in parts or "payrate" in parts
+    return target in parts
+
+
+def _build_identity_rows(
+    review_rows: list[dict[str, str]],
+    wide_lookup: dict[str, dict[str, str]],
+    run_dir: Path,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen_keys: set[tuple[str, str, str]] = set()
+
+    for row in review_rows:
+        wide_row = wide_lookup.get(row.get("pair_id", ""))
+        if not wide_row:
+            continue
+        match_source = str(wide_row.get("match_source", "")).strip().lower()
+        name_change = str(wide_row.get("name_change_detected", "")).strip().lower() == "true"
+        if match_source == "worker_id" and not name_change:
+            continue
+        friendly = _friendly_review_row(row, wide_row)
+        friendly["issue_type"] = "Identity"
+        key = (
+            friendly.get("old_worker_id", ""),
+            friendly.get("new_worker_id", ""),
+            friendly.get("employee_name", ""),
+        )
+        if key not in seen_keys:
+            seen_keys.add(key)
+            rows.append(friendly)
+
+    for rel in (
+        "outputs/conflicts_old_worker_id_resolution.csv",
+        "outputs/conflicts_new_worker_id_resolution.csv",
+    ):
+        _, conflict_rows = _read_csv_rows(run_dir / rel)
+        for row in conflict_rows:
+            friendly = dict(row)
+            friendly["employee_name"] = row.get("old_full_name_norm") or row.get("new_full_name_norm", "")
+            friendly["issue_type"] = "Identity"
+            friendly["severity"] = "High"
+            friendly["department"] = row.get("old_district") or row.get("new_district") or "Unassigned"
+            friendly["what_changed"] = "Worker ID conflict requires identity review."
+            friendly["recommended_action"] = "Confirm the correct employee identity before loading corrections."
+            key = (
+                friendly.get("old_worker_id", ""),
+                friendly.get("new_worker_id", ""),
+                friendly.get("employee_name", ""),
+            )
+            if key not in seen_keys:
+                seen_keys.add(key)
+                rows.append(friendly)
+
+    return rows
+
+
+def _combine_audit_details(run_dir: Path) -> None:
+    audit_dir = run_dir / "audit"
+    if not audit_dir.exists():
+        return
+    source_files = sorted(p for p in audit_dir.glob("audit_q*.csv") if p.is_file())
+    if not source_files:
+        return
+
+    combined_rows: list[dict[str, str]] = []
+    combined_fields = ["audit_topic", "source_file"]
+    field_set = set(combined_fields)
+    topic_map = {
+        "q0": "Duplicate Worker IDs",
+        "q1": "Match Source Summary",
+        "q2": "Salary Issues",
+        "q3": "Status Issues",
+        "q4": "Job and Organization Issues",
+        "q5": "Hire Date Issues",
+        "q16": "Hire Date Wave Analysis",
+        "q17": "Salary Anomaly Analysis",
+    }
+
+    for path in source_files:
+        fieldnames, rows = _read_csv_rows(path)
+        stem = path.stem.lower()
+        token = next((part for part in stem.split("_") if part.startswith("q")), "details")
+        topic = topic_map.get(token, path.stem.replace("_", " ").title())
+        for name in fieldnames:
+            if name not in field_set:
+                field_set.add(name)
+                combined_fields.append(name)
+        for row in rows:
+            combined = {"audit_topic": topic, "source_file": path.name}
+            combined.update(row)
+            combined_rows.append(combined)
+
+    _write_csv_rows(audit_dir / "System Audit Details.csv", combined_fields, combined_rows)
+
+
+def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
+    details_dir = run_dir / "details"
+    support_dir = run_dir / "support"
+    logs_dir = run_dir / "logs"
+    audit_dir = run_dir / "audit"
+    details_dir.mkdir(parents=True, exist_ok=True)
+    support_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    wide_fields, wide_rows = _read_csv_rows(run_dir / "wide_compare.csv")
+    wide_lookup = {row.get("pair_id", ""): row for row in wide_rows if row.get("pair_id")}
+    review_fields, review_rows = _read_csv_rows(run_dir / "review_queue.csv")
+
+    friendly_review_rows = [_friendly_review_row(row, wide_lookup.get(row.get("pair_id", ""))) for row in review_rows]
+    review_fieldnames = [
+        "employee_name",
+        "issue_type",
+        "severity",
+        "department",
+        "what_changed",
+        "recommended_action",
+    ]
+    for name in review_fields:
+        if name not in review_fieldnames:
+            review_fieldnames.append(name)
+    _write_csv_rows(run_dir / "Employees Requiring Review.csv", review_fieldnames, friendly_review_rows)
+
+    salary_rows = [row for row in friendly_review_rows if _has_fix_type(row, "salary")]
+    status_rows = [row for row in friendly_review_rows if _has_fix_type(row, "status")]
+    hire_date_rows = [row for row in friendly_review_rows if _has_fix_type(row, "hire_date")]
+    job_org_rows = [row for row in friendly_review_rows if _has_fix_type(row, "job_org")]
+    identity_rows = _build_identity_rows(review_rows, wide_lookup, run_dir)
+    identity_fieldnames = list(review_fieldnames)
+    for row in identity_rows:
+        for name in row:
+            if name not in identity_fieldnames:
+                identity_fieldnames.append(name)
+
+    _write_csv_rows(run_dir / "Salary Issues to Fix.csv", review_fieldnames, salary_rows)
+    _write_csv_rows(run_dir / "Employee Status Issues.csv", review_fieldnames, status_rows)
+    _write_csv_rows(run_dir / "Hire Date Issues.csv", review_fieldnames, hire_date_rows)
+    _write_csv_rows(run_dir / "Job and Organization Issues to Review.csv", review_fieldnames, job_org_rows)
+    _write_csv_rows(run_dir / "Identity Conflicts to Review.csv", identity_fieldnames, identity_rows)
+
+    summary_row = {
+        "run_id": run_id,
+        "total_matched_pairs": stats.get("total_pairs", stats.get("total_matched", len(wide_rows))),
+        "auto_approved_pairs": stats.get("approve_count", max(len(wide_rows) - len(review_rows), 0)),
+        "review_required_pairs": len(review_rows),
+        "unmatched_from_old_system": _csv_row_count(run_dir / "unmatched_old.csv"),
+        "unmatched_from_new_system": _csv_row_count(run_dir / "unmatched_new.csv"),
+        "total_unmatched": _csv_row_count(run_dir / "unmatched_old.csv") + _csv_row_count(run_dir / "unmatched_new.csv"),
+        "salary_issues": len(salary_rows),
+        "employee_status_issues": len(status_rows),
+        "hire_date_issues": len(hire_date_rows),
+        "job_and_organization_issues": len(job_org_rows),
+        "identity_conflicts": len(identity_rows),
+        "gate_passed": "Yes" if stats.get("gate_passed", True) else "No",
+        "gate_reason": " | ".join(stats.get("gate_reasons", [])),
+    }
+    _write_csv_rows(run_dir / "Full Summary.csv", list(summary_row.keys()), [summary_row])
+
+    preferred_pdf = run_dir / "recon_report.pdf"
+    fallback_pdf = run_dir / "audit_report.pdf"
+    report_source = preferred_pdf if preferred_pdf.exists() else fallback_pdf
+    _copy_file(report_source, run_dir / "Recon Audit Report.pdf")
+    _move_file(run_dir / "recon_report.pdf", details_dir / "Technical Recon Audit Report.pdf")
+    _copy_file(run_dir / "outputs" / "mapped_old.csv", run_dir / "Clean Employee Data - Old System.csv")
+    _copy_file(run_dir / "outputs" / "mapped_new.csv", run_dir / "Clean Employee Data - New System.csv")
+
+    _move_file(run_dir / "input_manifest.json", logs_dir / "Input Manifest.json")
+
+    if (run_dir / "review_queue.csv").exists():
+        _move_file(run_dir / "review_queue.csv", details_dir / "Technical Review Queue.csv")
+    for path in run_dir.glob("review_queue_*.csv"):
+        if path.name != "review_queue.csv":
+            path.unlink(missing_ok=True)
+    (run_dir / "review_queue_summary.csv").unlink(missing_ok=True)
+
+    _move_file(run_dir / "wide_compare.csv", details_dir / "Full Employee Comparison (Side by Side).csv")
+    _move_file(run_dir / "unmatched_old.csv", details_dir / "Employees Missing from New System.csv")
+    _move_file(run_dir / "unmatched_new.csv", details_dir / "Employees Missing from Old System.csv")
+    _move_file(run_dir / "recon_workbook.xlsx", details_dir / "Full Excel Workbook.xlsx")
+    _move_file(run_dir / "audit_report.docx", details_dir / "Legacy Audit Report.docx")
+    _move_file(run_dir / "audit_report.pdf", details_dir / "Legacy Audit Report.pdf")
+
+    _move_file(run_dir / "xlookup_keys.csv", support_dir / "Excel Lookup Keys for Validation.csv")
+    _move_file(run_dir / "chro_approval_document.pdf", support_dir / "CHRO Approval Document.pdf")
+    _move_file(run_dir / "corrections_manifest.csv", support_dir / "Corrections Manifest.csv")
+    _move_file(run_dir / "held_corrections.csv", support_dir / "Held Corrections.csv")
+    _move_file(run_dir / "corrections_salary.csv", support_dir / "Salary Corrections for Loading.csv")
+    _move_file(run_dir / "corrections_status.csv", support_dir / "Status Corrections for Loading.csv")
+    _move_file(run_dir / "corrections_hire_date.csv", support_dir / "Hire Date Corrections for Loading.csv")
+    _move_file(run_dir / "corrections_job_org.csv", support_dir / "Job and Organization Corrections for Loading.csv")
+
+    mapping_summary = {}
+    old_map = run_dir / "outputs" / "mapping_report_mapped_old.json"
+    new_map = run_dir / "outputs" / "mapping_report_mapped_new.json"
+    if old_map.exists():
+        mapping_summary["old_system"] = json.loads(old_map.read_text(encoding="utf-8"))
+    if new_map.exists():
+        mapping_summary["new_system"] = json.loads(new_map.read_text(encoding="utf-8"))
+    if mapping_summary:
+        _write_json(logs_dir / "Data Mapping Summary.json", mapping_summary)
+
+    match_report = run_dir / "outputs" / "match_report.json"
+    if match_report.exists():
+        _write_json(logs_dir / "Matching Summary.json", json.loads(match_report.read_text(encoding="utf-8")))
+
+    for src, dest_name in (
+        (run_dir / "sanity_results.json", "Data Quality Check Results.json"),
+        (run_dir / "sanity_gate.json", "Data Safety Check Results.json"),
+        (run_dir / "audit_trail.json", "Audit Trail.json"),
+    ):
+        if src.exists():
+            _move_file(src, logs_dir / dest_name)
+
+    _move_file(run_dir / "outputs" / "skipped_missing_entity_keys.csv", logs_dir / "Skipped Rows Missing Entity Keys.csv")
+    _move_file(run_dir / "audit" / "summary" / "sanity_salary_buckets.csv", logs_dir / "Salary Quality Detail.csv")
+    _move_file(run_dir / "audit" / "summary" / "sanity_hire_date_diff.csv", logs_dir / "Hire Date Check Detail.csv")
+    _move_file(run_dir / "audit" / "summary" / "sanity_suspicious_defaults.csv", logs_dir / "Suspicious Default Values Detail.csv")
+
+    _combine_audit_details(run_dir)
 
 
 def _parse_run_stats(run_dir: Path) -> dict:
@@ -999,6 +1360,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
 
         # Parse stats
         stats = _parse_run_stats(run_dir)
+        _package_recon_outputs(run_id, run_dir, stats)
         outputs = _collect_outputs(run_dir)
         _update_job_record(
             run_id,
