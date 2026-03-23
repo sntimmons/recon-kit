@@ -1,2 +1,1 @@
-# TODO: Modify this Procfile to fit your needs
-web: gunicorn app:app
+web: gunicorn --bind 0.0.0.0:${PORT:-8080} api_server:app
