@@ -155,6 +155,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     wanted = [
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
+        "recon_report.pdf",
         "audit_report.docx",
         "audit_report.pdf",
         "audit_trail.json",
@@ -524,6 +525,22 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
 
         # 13. Promote sub-dir outputs to run_dir root for easy download
         _promote_run_outputs(run_dir)
+
+        # 13.5 Reconciliation Audit PDF (ReportLab - visual redesign)
+        _set_step(run_id, "recon_pdf")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "audit/reports/build_recon_report.py",
+             "--run-id",  run_id,
+             "--wide",    str(run_dir / "wide_compare.csv"),
+             "--held",    str(run_dir / "held_corrections.csv"),
+             "--uo",      str(run_dir / "unmatched_old.csv"),
+             "--un",      str(run_dir / "unmatched_new.csv"),
+             "--manifest",str(run_dir / "corrections_manifest.csv"),
+             "--review",  str(run_dir / "review_queue.csv"),
+             "--out",     str(run_dir / "recon_report.pdf")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "recon_pdf", "done" if rc == 0 else "warn")  # non-fatal
 
         # 14. Build immutable audit trail log
         _set_step(run_id, "audit_trail")
