@@ -1663,6 +1663,12 @@
       'Hire Date Issues.csv':          'Action file - hire date changes needing review',
       'Identity Conflicts to Review.csv':'Action file - identity conflicts needing review',
       'Job and Organization Issues to Review.csv': 'Action file - job or org mismatches needing review',
+      'Salary Mismatches.csv':         'Action file - salary mismatches needing review',
+      'Job and Org Mismatches.csv':    'Action file - job and org mismatches needing review',
+      'Hire Date Mismatches.csv':      'Action file - hire date mismatches needing review',
+      'Status Mismatches.csv':         'Action file - status mismatches needing review',
+      'Rejected Matches.csv':          'Records the engine rejected for safety',
+      'CHRO Summary Report.pdf':       'Executive CHRO summary (PDF)',
       'details/Full Employee Comparison (Side by Side).csv': 'Advanced data - complete side-by-side comparison',
       'details/Employees Missing from New System.csv': 'Advanced data - records missing from the new system',
       'details/Employees Missing from Old System.csv': 'Advanced data - records missing from the old system',
@@ -1734,35 +1740,19 @@
     // Primary files always shown at top (in this order)
     var PRIMARY_NAMES = [
       'Recon Audit Report.pdf',
+      'details/Full Excel Workbook.xlsx',
       'Full Summary.csv',
+      'Salary Mismatches.csv',
+      'Job and Org Mismatches.csv',
+      'Hire Date Mismatches.csv',
+      'Status Mismatches.csv',
       'Employees Requiring Review.csv',
-      'Salary Issues to Fix.csv',
-      'Employee Status Issues.csv',
-      'Hire Date Issues.csv',
-      'Identity Conflicts to Review.csv',
-      'Job and Organization Issues to Review.csv',
-      'Clean Employee Data - Old System.csv',
-      'Clean Employee Data - New System.csv',
-      'recon_report.pdf',
-      'recon_workbook.xlsx',
-      'audit_report.docx',
-      'audit_report.pdf',
-      'internal_audit_report.pdf',
-      'internal_audit_workbook.xlsx',
-      'clean_data_ready_for_review.csv',
-      'review_required_rows.csv',
-      'correction_salary.csv',
-      'correction_status.csv',
-      'correction_dates.csv',
-      'internal_audit_outputs.zip',
-      'chro_approval_document.pdf',
-      'corrections_manifest.csv',
-      'held_corrections.csv',
-      'wide_compare.csv',
-      'review_queue.csv',
-      'unmatched_old.csv',
-      'unmatched_new.csv',
-      'audit_trail.json',
+      'Rejected Matches.csv',
+      'CHRO Summary Report.pdf',
+      'details/Employees Missing from New System.csv',
+      'details/Employees Missing from Old System.csv',
+      '__ZIP__',
+      'support/Excel Lookup Keys for Validation.csv',
     ];
 
     // Secondary files: everything else (dept queues, detail CSVs, raw JSON, etc.)
@@ -1791,6 +1781,9 @@
       var desc = document.createElement('div');
       desc.className = 'download-row__size';
       var label = FILE_LABELS[f.name] || (f.name.startsWith('review_queue_') ? 'Department review queue' : '');
+      if (!label && f.name && f.name.indexOf('recon_outputs_') === 0) {
+        label = 'Complete Package (ZIP)';
+      }
       desc.textContent = label + (f.size ? '  \u00B7  ' + _fmtSize(f.size) : '');
 
       info.appendChild(name);
@@ -1821,15 +1814,22 @@
       // Build index by name for fast lookup
       var outputByName = {};
       outputs.forEach(function(f) { outputByName[f.name] = f; });
+      var reconZip = outputs.find(function(f) { return f.name && f.name.indexOf('recon_outputs_') === 0; });
 
       // --- Primary section ---
       PRIMARY_NAMES.forEach(function(name) {
+        if (name === '__ZIP__') {
+          if (reconZip) dl.appendChild(_makeDownloadRow(reconZip));
+          return;
+        }
         if (outputByName[name]) dl.appendChild(_makeDownloadRow(outputByName[name]));
       });
 
       // --- Secondary section (collapsed by default) ---
       var secondary = outputs.filter(function(f) {
-        return PRIMARY_NAMES.indexOf(f.name) === -1;
+        var isPrimary = PRIMARY_NAMES.indexOf(f.name) !== -1;
+        var isZip = reconZip && f.name === reconZip.name;
+        return !isPrimary && !isZip;
       });
 
       if (secondary.length > 0) {
