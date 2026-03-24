@@ -1824,13 +1824,45 @@ def _build_data_quality(df: pd.DataFrame, summary: dict) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def _create_zip(run_dir: Path, workbook_path: Path, csv_files: list[Path]) -> Path:
+    """
+    Build a slim, human-readable ZIP for internal audit outputs.
+
+    Included (in order, only if non-empty):
+      1. Internal Audit Report.pdf
+      2. Internal Audit Workbook.xlsx
+      3. Internal Audit Data.csv
+      4. Data Completeness.csv
+      5. Salary and Status Summary.csv
+      6. Suspicious Values.csv
+      7. Duplicate Records.csv
+      8. Salary Issues to Fix.csv
+      9. Status Issues to Fix.csv
+      10. Data Quality Issues to Fix.csv
+      11. Clean Employee Data.csv
+    """
+    # Map actual filenames → human-facing names inside the zip
+    candidates: list[tuple[Path, str]] = []
+    def _add(rel_name: str, display_name: str) -> None:
+        p = run_dir / rel_name
+        if p.exists() and p.is_file() and p.stat().st_size > 0:
+            candidates.append((p, display_name))
+
+    _add("internal_audit_report.pdf", "Internal Audit Report.pdf")
+    _add(workbook_path.name, "Internal Audit Workbook.xlsx")
+    _add("internal_audit_data.csv", "Internal Audit Data.csv")
+    _add("internal_audit_completeness.csv", "Data Completeness.csv")
+    _add("internal_audit_distributions.csv", "Salary and Status Summary.csv")
+    _add("internal_audit_suspicious.csv", "Suspicious Values.csv")
+    _add("internal_audit_duplicates.csv", "Duplicate Records.csv")
+    _add("fix_salary_full.csv", "Salary Issues to Fix.csv")
+    _add("fix_status_full.csv", "Status Issues to Fix.csv")
+    _add("fix_data_quality_full.csv", "Data Quality Issues to Fix.csv")
+    _add("clean_data_ready_for_review.csv", "Clean Employee Data.csv")
+
     zip_path = run_dir / "internal_audit_outputs.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        if workbook_path.exists() and workbook_path.stat().st_size > 0:
-            zf.write(workbook_path, workbook_path.name)
-        for csv_path in csv_files:
-            if csv_path.exists() and csv_path.stat().st_size > 0:
-                zf.write(csv_path, csv_path.name)
+        for src, arc in candidates:
+            zf.write(src, arcname=arc)
     return zip_path
 
 
