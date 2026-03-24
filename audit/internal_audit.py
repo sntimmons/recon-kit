@@ -2966,19 +2966,88 @@ def _group_findings_for_pdf(findings: list[dict]) -> list[dict]:
     return list(grouped.values())
 
 
+def _fmt_money(val) -> str:
+    try:
+        num = float(val)
+    except Exception:
+        return _norm_str(val)
+    return f"${num:,.0f}"
+
+
+def _fmt_date(val) -> str:
+    try:
+        dt = pd.to_datetime(val, errors="coerce")
+        if pd.isna(dt):
+            return _norm_str(val)
+        return dt.strftime("%m/%d/%Y")
+    except Exception:
+        return _norm_str(val)
+
+
+def _title_str(val) -> str:
+    s = _norm_str(val)
+    return s.title() if s else s
+
+
+def _format_row(row: dict) -> dict:
+    rename_map = {
+        "worker_id": "Worker ID",
+        "employee_id": "Worker ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "worker_status": "Employment Status",
+    }
+    title_fields = {"First Name", "Last Name", "department", "Department", "job_title", "Job Title", "Employment Status"}
+    money_fields = {"salary", "compensation_amount", "annual_salary"}
+    date_fields = {"hire_date", "termination_date", "benefits_start_date", "benefits_end_date", "benefit_start_date", "benefit_end_date"}
+
+    out: dict[str, str] = {}
+    for key, val in row.items():
+        new_key = rename_map.get(key, key.replace("_", " ").title() if key else key)
+        v = val
+        if new_key in title_fields or key in {"first_name", "last_name", "department", "job_title", "worker_status"}:
+            v = _title_str(v)
+        if key in money_fields or "salary" in key:
+            v = _fmt_money(v)
+        elif key in date_fields or "date" in key:
+            v = _fmt_date(v)
+        out[new_key] = v
+    return out
+
+
+def _map_fieldname(name: str) -> str:
+    rename_map = {
+        "worker_id": "Worker ID",
+        "employee_id": "Worker ID",
+        "first_name": "First Name",
+        "last_name": "Last Name",
+        "worker_status": "Employment Status",
+    }
+    return rename_map.get(name, name.replace("_", " ").title())
+
+
 def _write_csv(path: Path, rows: list[dict], fieldnames: list[str] | None = None) -> None:
     if not rows:
         if fieldnames:
+            mapped_fields = [_map_fieldname(f) for f in fieldnames]
             with path.open("w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=mapped_fields)
                 writer.writeheader()
             return
         path.write_text("", encoding="utf-8")
         return
+
+    formatted_rows = [_format_row(r) for r in rows]
+    if fieldnames:
+        mapped_fields = [_map_fieldname(f) for f in fieldnames]
+    else:
+        mapped_fields = list(formatted_rows[0].keys())
+
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames or list(rows[0].keys()))
+        writer = csv.DictWriter(f, fieldnames=mapped_fields)
         writer.writeheader()
-        writer.writerows(rows)
+        for r in formatted_rows:
+            writer.writerow(r)
 
 
 def run_internal_audit(
@@ -3171,7 +3240,7 @@ def run_internal_audit(
     print(f"[internal_audit] wrote: {report_json}")
 
     # C-1: renamed from internal_audit_blanks.csv
-    completeness_csv = out_dir / "internal_audit_completeness.csv"
+    completeness_csv = out_dir / "Data Completeness.csv"
     _write_csv(
         completeness_csv,
         completeness,
@@ -3184,7 +3253,7 @@ def run_internal_audit(
         dup_df.to_csv(dup_csv, index=False)
         print(f"[internal_audit] wrote: {dup_csv} ({len(dup_df)} rows)")
 
-    suspicious_csv = out_dir / "internal_audit_suspicious.csv"
+    suspicious_csv = out_dir / "Suspicious Values.csv"
     suspicious_rows = [
         {
             "check_name": row["check_name"],
@@ -3204,7 +3273,7 @@ def run_internal_audit(
     )
     print(f"[internal_audit] wrote: {suspicious_csv}")
 
-    distributions_csv = out_dir / "internal_audit_distributions.csv"
+    distributions_csv = out_dir / "Salary and Status Summary.csv"
     _write_csv(
         distributions_csv,
         salary_dist + status_dist,
@@ -3276,7 +3345,7 @@ def run_internal_audit(
         })
         clean_count += 1
 
-    data_csv = out_dir / "internal_audit_data.csv"
+    data_csv = out_dir / "Internal Audit Data.csv"
     _write_csv(
         data_csv,
         data_rows,

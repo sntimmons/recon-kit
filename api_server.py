@@ -537,17 +537,33 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     automatically so the dashboard does not need a backend allowlist update
     every time we add a new artifact.
     """
+    recon_zip = f"recon_outputs_{run_dir.name}.zip"
+    ia_zip = f"internal_audit_outputs_{run_dir.name}.zip"
     wanted = [
+        # Recon primary artifacts
         "Recon Audit Report.pdf",
+        "Full Excel Workbook.xlsx",
         "Full Summary.csv",
+        "Salary Mismatches.csv",
+        "Job and Org Mismatches.csv",
+        "Hire Date Mismatches.csv",
+        "Status Mismatches.csv",
+        "Employees Requiring Review.csv",
+        "Rejected Matches.csv",
+        recon_zip,
+        "Employees Missing from New System.csv",
+        "Employees Missing from Old System.csv",
+        "Excel Lookup Keys for Validation.csv",
         "Clean Employee Data - Old System.csv",
         "Clean Employee Data - New System.csv",
-        "Employees Requiring Review.csv",
-        "Salary Issues to Fix.csv",
-        "Employee Status Issues.csv",
-        "Hire Date Issues.csv",
-        "Identity Conflicts to Review.csv",
-        "Job and Organization Issues to Review.csv",
+        # Internal audit primary artifacts
+        "Internal Audit Report.pdf",
+        "Internal Audit Data.csv",
+        "Data Completeness.csv",
+        "Salary and Status Summary.csv",
+        "Suspicious Values.csv",
+        ia_zip,
+        # Advanced / legacy
         "recon_summary.xlsx",
         "recon_workbook.xlsx",
         "recon_report.pdf",
@@ -569,15 +585,13 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "audit_report.csv",
         "sanity_results.json",
         "sanity_gate.json",
-        "internal_audit_data.csv",
         "internal_audit_workbook.xlsx",
         "clean_data_ready_for_review.csv",
         "review_required_rows.csv",
         "correction_salary.csv",
         "correction_status.csv",
         "correction_dates.csv",
-        "internal_audit_outputs.zip",
-        "internal_audit_report.pdf",
+        "internal_audit_report.pdf",  # legacy name safety
         "internal_audit_duplicates.csv",
         "internal_audit_completeness.csv",
         "internal_audit_suspicious.csv",
@@ -852,6 +866,32 @@ def _combine_audit_details(run_dir: Path) -> None:
             combined_rows.append(combined)
 
     _write_csv_rows(audit_dir / "System Audit Details.csv", combined_fields, combined_rows)
+
+
+def _package_internal_audit_outputs(run_id: str, run_dir: Path) -> None:
+    """Rename internal audit outputs to friendly names and build a ZIP."""
+    ia_report = run_dir / "Internal Audit Report.pdf"
+    ia_data = run_dir / "Internal Audit Data.csv"
+    ia_completeness = run_dir / "Data Completeness.csv"
+    ia_suspicious = run_dir / "Suspicious Values.csv"
+    ia_dist = run_dir / "Salary and Status Summary.csv"
+    ia_zip = run_dir / f"internal_audit_outputs_{run_id}.zip"
+
+    _move_file(run_dir / "internal_audit_report.pdf", ia_report)
+    _move_file(run_dir / "internal_audit_data.csv", ia_data)
+    _move_file(run_dir / "internal_audit_completeness.csv", ia_completeness)
+    _move_file(run_dir / "internal_audit_suspicious.csv", ia_suspicious)
+    _move_file(run_dir / "internal_audit_distributions.csv", ia_dist)
+
+    with zipfile.ZipFile(ia_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in (
+            "Internal Audit Report.pdf",
+            "Internal Audit Data.csv",
+            "Data Completeness.csv",
+        ):
+            path = run_dir / name
+            if path.exists() and path.is_file() and path.stat().st_size > 0:
+                zf.write(path, arcname=name)
 
 
 def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
@@ -1361,6 +1401,7 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         # Parse stats
         stats = _parse_run_stats(run_dir)
         _package_recon_outputs(run_id, run_dir, stats)
+        _package_internal_audit_outputs(run_id, run_dir)
         outputs = _collect_outputs(run_dir)
         _update_job_record(
             run_id,
@@ -1456,7 +1497,7 @@ def _run_internal_audit(run_id: str, run_dir: Path, file_path: Path, options: di
             [str(PYTHON), "audit/reports/build_internal_audit_report.py",
              "--run-id", run_id,
              "--run-dir", str(run_dir),
-             "--out", str(run_dir / "internal_audit_report.pdf")],
+             "--out", str(run_dir / "Internal Audit Report.pdf")],
             HERE, run_id,
         )
         _finish_step(run_id, "audit_report", "done" if rc == 0 else "warn")
