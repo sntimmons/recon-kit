@@ -21,6 +21,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import zipfile
 import sys
 import threading
 import time
@@ -537,57 +538,25 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     automatically so the dashboard does not need a backend allowlist update
     every time we add a new artifact.
     """
+    zip_name = f"recon_outputs_{run_dir.name}.zip"
     wanted = [
         "Recon Audit Report.pdf",
+        "Full Excel Workbook.xlsx",
         "Full Summary.csv",
-        "Clean Employee Data - Old System.csv",
-        "Clean Employee Data - New System.csv",
+        "Salary Mismatches.csv",
+        "Job and Org Mismatches.csv",
+        "Hire Date Mismatches.csv",
+        "Status Mismatches.csv",
         "Employees Requiring Review.csv",
-        "Salary Issues to Fix.csv",
-        "Employee Status Issues.csv",
-        "Hire Date Issues.csv",
+        "Rejected Matches.csv",
+        zip_name,
+        "Employees Missing from New System.csv",
+        "Employees Missing from Old System.csv",
+        "Excel Lookup Keys for Validation.csv",
         "Identity Conflicts to Review.csv",
         "Job and Organization Issues to Review.csv",
-        "recon_summary.xlsx",
-        "recon_workbook.xlsx",
-        "recon_report.pdf",
-        "audit_report.docx",
-        "audit_report.pdf",
-        "chro_approval_document.pdf",
-        "audit_trail.json",
-        "wide_compare.csv",
-        "unmatched_old.csv",
-        "unmatched_new.csv",
-        "review_queue.csv",
-        "review_queue_summary.csv",
-        "corrections_salary.csv",
-        "corrections_status.csv",
-        "corrections_hire_date.csv",
-        "corrections_job_org.csv",
-        "corrections_manifest.csv",
-        "held_corrections.csv",
-        "audit_report.csv",
-        "sanity_results.json",
-        "sanity_gate.json",
-        "internal_audit_data.csv",
-        "internal_audit_workbook.xlsx",
-        "clean_data_ready_for_review.csv",
-        "review_required_rows.csv",
-        "correction_salary.csv",
-        "correction_status.csv",
-        "correction_dates.csv",
-        "internal_audit_outputs.zip",
-        "internal_audit_report.pdf",
-        "internal_audit_duplicates.csv",
-        "internal_audit_completeness.csv",
-        "internal_audit_suspicious.csv",
-        "internal_audit_distributions.csv",
-        "fix_duplicates_full.csv",
-        "fix_salary_full.csv",
-        "fix_identity_full.csv",
-        "fix_dates_full.csv",
-        "fix_status_full.csv",
-        "fix_data_quality_full.csv",
+        "Clean Employee Data - Old System.csv",
+        "Clean Employee Data - New System.csv",
     ]
     skip_names = {
         "audit.db",
@@ -867,6 +836,7 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     wide_lookup = {row.get("pair_id", ""): row for row in wide_rows if row.get("pair_id")}
     review_fields, review_rows = _read_csv_rows(run_dir / "review_queue.csv")
 
+    # Friendly review queue (single file)
     friendly_review_rows = [_friendly_review_row(row, wide_lookup.get(row.get("pair_id", ""))) for row in review_rows]
     review_fieldnames = [
         "employee_name",
@@ -892,40 +862,114 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
             if name not in identity_fieldnames:
                 identity_fieldnames.append(name)
 
-    _write_csv_rows(run_dir / "Salary Issues to Fix.csv", review_fieldnames, salary_rows)
-    _write_csv_rows(run_dir / "Employee Status Issues.csv", review_fieldnames, status_rows)
-    _write_csv_rows(run_dir / "Hire Date Issues.csv", review_fieldnames, hire_date_rows)
-    _write_csv_rows(run_dir / "Job and Organization Issues to Review.csv", review_fieldnames, job_org_rows)
+    _write_csv_rows(run_dir / "Salary Mismatches.csv", review_fieldnames, salary_rows)
+    _write_csv_rows(run_dir / "Status Mismatches.csv", review_fieldnames, status_rows)
+    _write_csv_rows(run_dir / "Hire Date Mismatches.csv", review_fieldnames, hire_date_rows)
+    _write_csv_rows(run_dir / "Job and Org Mismatches.csv", review_fieldnames, job_org_rows)
     _write_csv_rows(run_dir / "Identity Conflicts to Review.csv", identity_fieldnames, identity_rows)
 
-    summary_row = {
-        "run_id": run_id,
-        "total_matched_pairs": stats.get("total_pairs", stats.get("total_matched", len(wide_rows))),
-        "auto_approved_pairs": stats.get("approve_count", max(len(wide_rows) - len(review_rows), 0)),
-        "review_required_pairs": len(review_rows),
-        "unmatched_from_old_system": _csv_row_count(run_dir / "unmatched_old.csv"),
-        "unmatched_from_new_system": _csv_row_count(run_dir / "unmatched_new.csv"),
-        "total_unmatched": _csv_row_count(run_dir / "unmatched_old.csv") + _csv_row_count(run_dir / "unmatched_new.csv"),
-        "salary_issues": len(salary_rows),
-        "employee_status_issues": len(status_rows),
-        "hire_date_issues": len(hire_date_rows),
-        "job_and_organization_issues": len(job_org_rows),
-        "identity_conflicts": len(identity_rows),
-        "gate_passed": "Yes" if stats.get("gate_passed", True) else "No",
-        "gate_reason": " | ".join(stats.get("gate_reasons", [])),
-    }
-    _write_csv_rows(run_dir / "Full Summary.csv", list(summary_row.keys()), [summary_row])
+    rejected_rows = [row for row in wide_rows if str(row.get("action", "")).strip().upper() == "REJECT_MATCH"]
+    if rejected_rows:
+        _write_csv_rows(run_dir / "Rejected Matches.csv", wide_fields, rejected_rows)
 
+    # Full Summary (human-readable, 3 sections)
+    def _manifest_files() -> tuple[str, str]:
+        manifest = run_dir / "input_manifest.json"
+        if not manifest.exists():
+            return "", ""
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            old_name = data.get("old_system", {}).get("filename", "")
+            new_name = data.get("new_system", {}).get("filename", "")
+            return old_name, new_name
+        except Exception:
+            return "", ""
+
+    legacy_file, new_file = _manifest_files()
+    total_pairs = stats.get("total_pairs") or stats.get("total_matched") or len(wide_rows)
+    review_count = len(review_rows)
+    approve_count = stats.get("approve_count", max(total_pairs - review_count, 0))
+    reject_count = stats.get("reject_count") or len(rejected_rows)
+    unmatched_old = _csv_row_count(run_dir / "unmatched_old.csv")
+    unmatched_new = _csv_row_count(run_dir / "unmatched_new.csv")
+    gate_passed = stats.get("gate_passed", True)
+    gate_status = "PASS" if gate_passed else "FAIL"
+    det_raw = stats.get("det_match_rate_raw")
+    det_rate = f"{det_raw * 100:.1f}%" if det_raw is not None else stats.get("det_match_rate", "")
+
+    action_rows = [
+        ("Auto-approved", approve_count, "Ready to load"),
+        ("Needs Review", review_count, "Requires human review"),
+        ("Rejected Matches", reject_count, "Possible wrong match"),
+    ]
+    def _pct(count: int) -> str:
+        return f"{(count / total_pairs * 100):.1f}%" if total_pairs else "0.0%"
+
+    corr_counts = {
+        "Salary": _csv_row_count(run_dir / "corrections_salary.csv"),
+        "Status": _csv_row_count(run_dir / "corrections_status.csv"),
+        "Hire Date": _csv_row_count(run_dir / "corrections_hire_date.csv"),
+        "Job and Org": _csv_row_count(run_dir / "corrections_job_org.csv"),
+    }
+
+    summary_rows: list[dict[str, str]] = []
+    def add(section: str, item: str, value: str | int, desc: str = ""):
+        summary_rows.append({
+            "Section": section,
+            "Item": item,
+            "Value": value,
+            "Description": desc,
+        })
+
+    add("RUN OVERVIEW", "Run ID", run_id)
+    add("RUN OVERVIEW", "Run Date", datetime.now().strftime("%Y-%m-%d"))
+    add("RUN OVERVIEW", "Legacy File", legacy_file)
+    add("RUN OVERVIEW", "New File", new_file)
+    add("RUN OVERVIEW", "Total Records Matched", total_pairs)
+    add("RUN OVERVIEW", "Total Records Reviewed", review_count)
+    add("RUN OVERVIEW", "Total Records Rejected", reject_count)
+    add("RUN OVERVIEW", "Total Unmatched Legacy", unmatched_old)
+    add("RUN OVERVIEW", "Total Unmatched New", unmatched_new)
+    add("RUN OVERVIEW", "Sanity Gate Result", gate_status)
+    add("RUN OVERVIEW", "Deterministic Match Rate", det_rate or "N/A")
+
+    add("ACTION BREAKDOWN", "Action", "Count", "Percentage")
+    for label, count, desc in action_rows:
+        add("", label, count, _pct(count) + " | " + desc)
+
+    add("CORRECTIONS STAGED", "Correction Type", "Count", "Description")
+    for label, count in corr_counts.items():
+        add("", label, count, f"{label} corrections staged")
+
+    _write_csv_rows(
+        run_dir / "Full Summary.csv",
+        ["Section", "Item", "Value", "Description"],
+        summary_rows,
+    )
+
+    # Friendly top-level files
     preferred_pdf = run_dir / "recon_report.pdf"
     fallback_pdf = run_dir / "audit_report.pdf"
     report_source = preferred_pdf if preferred_pdf.exists() else fallback_pdf
     _copy_file(report_source, run_dir / "Recon Audit Report.pdf")
-    _move_file(run_dir / "recon_report.pdf", details_dir / "Technical Recon Audit Report.pdf")
+    _copy_file(run_dir / "recon_workbook.xlsx", run_dir / "Full Excel Workbook.xlsx")
     _copy_file(run_dir / "outputs" / "mapped_old.csv", run_dir / "Clean Employee Data - Old System.csv")
     _copy_file(run_dir / "outputs" / "mapped_new.csv", run_dir / "Clean Employee Data - New System.csv")
+    _copy_file(run_dir / "wide_compare.csv", run_dir / "Full Employee Comparison (Side by Side).csv")
+    _copy_file(run_dir / "unmatched_old.csv", run_dir / "Employees Missing from New System.csv")
+    _copy_file(run_dir / "unmatched_new.csv", run_dir / "Employees Missing from Old System.csv")
+    _copy_file(run_dir / "xlookup_keys.csv", run_dir / "Excel Lookup Keys for Validation.csv")
 
+    # Technical/legacy into folders
+    _move_file(run_dir / "recon_report.pdf", details_dir / "Technical Recon Audit Report.pdf")
+    _move_file(run_dir / "recon_workbook.xlsx", details_dir / "Legacy Full Excel Workbook.xlsx")
+    _move_file(run_dir / "audit_report.docx", details_dir / "Legacy Audit Report.docx")
+    _move_file(run_dir / "audit_report.pdf", details_dir / "Legacy Audit Report.pdf")
+    _move_file(run_dir / "Full Employee Comparison (Side by Side).csv", details_dir / "Full Employee Comparison (Side by Side).csv")
+    _move_file(run_dir / "wide_compare.csv", details_dir / "wide_compare.csv")
+    _move_file(run_dir / "unmatched_old.csv", details_dir / "unmatched_old.csv")
+    _move_file(run_dir / "unmatched_new.csv", details_dir / "unmatched_new.csv")
     _move_file(run_dir / "input_manifest.json", logs_dir / "Input Manifest.json")
-
     if (run_dir / "review_queue.csv").exists():
         _move_file(run_dir / "review_queue.csv", details_dir / "Technical Review Queue.csv")
     for path in run_dir.glob("review_queue_*.csv"):
@@ -933,14 +977,6 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
             path.unlink(missing_ok=True)
     (run_dir / "review_queue_summary.csv").unlink(missing_ok=True)
 
-    _move_file(run_dir / "wide_compare.csv", details_dir / "Full Employee Comparison (Side by Side).csv")
-    _move_file(run_dir / "unmatched_old.csv", details_dir / "Employees Missing from New System.csv")
-    _move_file(run_dir / "unmatched_new.csv", details_dir / "Employees Missing from Old System.csv")
-    _move_file(run_dir / "recon_workbook.xlsx", details_dir / "Full Excel Workbook.xlsx")
-    _move_file(run_dir / "audit_report.docx", details_dir / "Legacy Audit Report.docx")
-    _move_file(run_dir / "audit_report.pdf", details_dir / "Legacy Audit Report.pdf")
-
-    _move_file(run_dir / "xlookup_keys.csv", support_dir / "Excel Lookup Keys for Validation.csv")
     _move_file(run_dir / "chro_approval_document.pdf", support_dir / "CHRO Approval Document.pdf")
     _move_file(run_dir / "corrections_manifest.csv", support_dir / "Corrections Manifest.csv")
     _move_file(run_dir / "held_corrections.csv", support_dir / "Held Corrections.csv")
@@ -948,6 +984,7 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     _move_file(run_dir / "corrections_status.csv", support_dir / "Status Corrections for Loading.csv")
     _move_file(run_dir / "corrections_hire_date.csv", support_dir / "Hire Date Corrections for Loading.csv")
     _move_file(run_dir / "corrections_job_org.csv", support_dir / "Job and Organization Corrections for Loading.csv")
+    _move_file(run_dir / "xlookup_keys.csv", support_dir / "xlookup_keys.csv")
 
     mapping_summary = {}
     old_map = run_dir / "outputs" / "mapping_report_mapped_old.json"
@@ -977,6 +1014,25 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     _move_file(run_dir / "audit" / "summary" / "sanity_suspicious_defaults.csv", logs_dir / "Suspicious Default Values Detail.csv")
 
     _combine_audit_details(run_dir)
+
+    # Build ZIP package with the core human-readable files
+    package_files = [
+        "Recon Audit Report.pdf",
+        "Full Excel Workbook.xlsx",
+        "Full Summary.csv",
+        "Salary Mismatches.csv",
+        "Job and Org Mismatches.csv",
+        "Hire Date Mismatches.csv",
+        "Status Mismatches.csv",
+        "Employees Requiring Review.csv",
+        "Rejected Matches.csv",
+    ]
+    zip_path = run_dir / f"recon_outputs_{run_id}.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name in package_files:
+            path = run_dir / name
+            if path.exists() and path.is_file() and path.stat().st_size > 0 and path.suffix.lower() != ".json":
+                zf.write(path, arcname=name)
 
 
 def _parse_run_stats(run_dir: Path) -> dict:
@@ -1278,15 +1334,8 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
         )
         _finish_step(run_id, "review_queue", "done" if rc == 0 else "warn")
 
-        # 11.5 Split review queue by department
-        _set_step(run_id, "split_rq")
-        rc, _ = _run_cmd(
-            [str(PYTHON), "audit/summary/split_review_queue.py",
-             "--rq",  str(run_dir / "review_queue.csv"),
-             "--out", str(run_dir)],
-            HERE, run_id, env=run_env,
-        )
-        _finish_step(run_id, "split_rq", "done" if rc == 0 else "warn")
+        # 11.5 Split review queue by department (skipped in favor of single combined queue)
+        _set_step(run_id, "split_rq", "done")
 
         # 12. Audit report (.docx) - fully isolated, writes directly to run_dir
         _set_step(run_id, "audit_report")

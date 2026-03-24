@@ -75,8 +75,9 @@ OUT_PATH     = _HERE / "recon_workbook.xlsx"
 # ---------------------------------------------------------------------------
 # Styling constants
 # ---------------------------------------------------------------------------
-_HDR_FILL      = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
-_HDR_FONT      = Font(bold=True)
+_HDR_FILL      = PatternFill(start_color="0A1628", end_color="0A1628", fill_type="solid")
+_HDR_FONT      = Font(bold=True, color="FFFFFF")
+_ALT_FILL      = PatternFill(start_color="F4F7FA", end_color="F4F7FA", fill_type="solid")
 _SUM_HDR_FONT  = Font(bold=True, size=11)
 # Red header for critical warning sheets (Active/$0 salary)
 _CRIT_HDR_FILL = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
@@ -269,53 +270,36 @@ _JOB_ORG_SLIM_COLS = [
 
 
 # ---------------------------------------------------------------------------
-# Sheet writer helpers (write_only compatible)
+# Sheet writer helpers (standard workbook with styling)
 # ---------------------------------------------------------------------------
 
-def _header_cell(ws, value, font=None) -> WriteOnlyCell:
-    """Return a WriteOnlyCell with header formatting."""
-    cell = WriteOnlyCell(ws, value=value)
-    cell.font = font or _HDR_FONT
-    cell.fill = _HDR_FILL
-    return cell
+def _style_header(cells, font=None, fill=None) -> None:
+    for cell in cells:
+        cell.font = font or _HDR_FONT
+        cell.fill = fill or _HDR_FILL
 
 
-def _header_cell_styled(ws, value, font=None, fill=None) -> WriteOnlyCell:
-    """Return a WriteOnlyCell with custom font and fill."""
-    cell = WriteOnlyCell(ws, value=value)
-    cell.font = font or _HDR_FONT
-    cell.fill = fill or _HDR_FILL
-    return cell
-
-
-def _write_df_to_sheet(ws, df: pd.DataFrame) -> None:
-    """Write DataFrame to a write_only worksheet.
-
-    Header row is bold+coloured via WriteOnlyCell.
-    Data rows are written as plain value lists for streaming performance.
-    freeze_panes, auto_filter, and column_dimensions are not available in
-    write_only mode.
-    """
+def _write_df_to_sheet(ws, df: pd.DataFrame, hdr_font=None, hdr_fill=None) -> None:
+    """Write DataFrame with styled header, filters, freeze panes, and banded rows."""
     cols = list(df.columns)
     if not cols:
         return
 
-    # Header row with bold/colour formatting
-    ws.append([_header_cell(ws, c) for c in cols])
+    ws.append(cols)
+    _style_header(ws[1], font=hdr_font or _HDR_FONT, fill=hdr_fill or _HDR_FILL)
 
-    # Data rows - no per-cell formatting for streaming performance
-    for row_tuple in df.itertuples(index=False, name=None):
+    for idx, row_tuple in enumerate(df.itertuples(index=False, name=None), start=2):
         ws.append(list(row_tuple))
+        if idx % 2 == 0:
+            for cell in ws[idx]:
+                cell.fill = _ALT_FILL
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
 
 
 def _write_df_to_sheet_styled(ws, df: pd.DataFrame, hdr_font=None, hdr_fill=None) -> None:
-    """Write DataFrame with custom header styling (for critical/rejected sheets)."""
-    cols = list(df.columns)
-    if not cols:
-        return
-    ws.append([_header_cell_styled(ws, c, font=hdr_font, fill=hdr_fill) for c in cols])
-    for row_tuple in df.itertuples(index=False, name=None):
-        ws.append(list(row_tuple))
+    _write_df_to_sheet(ws, df, hdr_font=hdr_font, hdr_fill=hdr_fill)
 
 
 def _write_mismatch_slim(ws, df: pd.DataFrame, slim_cols: list[str]) -> None:
@@ -327,7 +311,7 @@ def _write_mismatch_slim(ws, df: pd.DataFrame, slim_cols: list[str]) -> None:
 def _write_held_corrections_sheet(ws, held_df: pd.DataFrame, all_df: pd.DataFrame) -> None:
     """Write Held_Corrections sheet with amber header and name lookup from all_df."""
     if held_df.empty:
-        ws.append([WriteOnlyCell(ws, value="No held corrections found.")])
+        ws.append(["No held corrections found."])
         return
     df = held_df.copy()
     # Inject First Name / Last Name from all_df lookup
@@ -339,9 +323,15 @@ def _write_held_corrections_sheet(ws, held_df: pd.DataFrame, all_df: pd.DataFram
         df.insert(insert_at + 1, "last_name",  df["worker_id"].astype(str).map(lambda w: name_map.get(w, ("", ""))[1]))
     df = _apply_labels(df)
     cols = list(df.columns)
-    ws.append([_header_cell_styled(ws, c, font=_HELD_HDR_FONT, fill=_HELD_HDR_FILL) for c in cols])
-    for row_tuple in df.itertuples(index=False, name=None):
+    ws.append(cols)
+    _style_header(ws[1], font=_HELD_HDR_FONT, fill=_HELD_HDR_FILL)
+    for idx, row_tuple in enumerate(df.itertuples(index=False, name=None), start=2):
         ws.append(list(row_tuple))
+        if idx % 2 == 0:
+            for cell in ws[idx]:
+                cell.fill = _ALT_FILL
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
 
 
 def _write_review_queue_slim(ws, review_df: pd.DataFrame, all_df: pd.DataFrame) -> None:
@@ -385,7 +375,7 @@ def _write_review_queue_slim(ws, review_df: pd.DataFrame, all_df: pd.DataFrame) 
 def _write_unmatched_sheet(ws, unmatched_df: pd.DataFrame) -> None:
     """Write an unmatched-records sheet with light-gray reference header."""
     if unmatched_df.empty:
-        ws.append([WriteOnlyCell(ws, value="No unmatched records found.")])
+        ws.append(["No unmatched records found."])
         return
     _write_df_to_sheet_styled(ws, unmatched_df, hdr_font=_REF_HDR_FONT, hdr_fill=_REF_HDR_FILL)
 
@@ -1033,8 +1023,8 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------
     # Build workbook (write_only streaming - no MemoryError on large sets)
     # ------------------------------------------------------------------
-    print(f"\n[build_workbook] writing workbook (streaming mode) ...")
-    wb = Workbook(write_only=True)
+    print(f"\n[build_workbook] writing workbook ...")
+    wb = Workbook(write_only=False)
 
     # 1. Summary (with Start Here guide)
     ws_sum = wb.create_sheet("Summary")
@@ -1049,67 +1039,56 @@ def main(argv: list[str] | None = None) -> None:
     )
     print(f"  wrote: Summary")
 
-    # 2. Review_Queue - slim 8-column view, human-readable labels
-    ws_rq = wb.create_sheet("Review_Queue")
-    _write_review_queue_slim(ws_rq, review_df, all_df)
-    print(f"  wrote: {'Review_Queue':<25}  ({len(review_df):,} rows)")
+    # 2. All Matches - full dataset with all columns
+    ws_all = wb.create_sheet("All Matches")
+    _write_df_to_sheet(ws_all, all_df)
+    print(f"  wrote: {'All Matches':<25}  ({total:,} rows)")
 
-    # 3. Held_Corrections - BLOCKED/REJECT_MATCH only, names joined from all_df
-    ws_held = wb.create_sheet("Held_Corrections")
-    _write_held_corrections_sheet(ws_held, held_df, all_df)
-    print(f"  wrote: {'Held_Corrections':<25}  ({len(held_df):,} rows)")
-
-    # 4. CRITICAL_Zero_Salary - always write (even 0 rows), red header
-    ws_crit = wb.create_sheet("CRITICAL_Zero_Salary")
-    _write_df_to_sheet_styled(ws_crit, active_zero_df, hdr_font=_CRIT_HDR_FONT, hdr_fill=_CRIT_HDR_FILL)
-    print(f"  wrote: {'CRITICAL_Zero_Salary':<25}  ({len(active_zero_df):,} rows)")
-
-    # 5-8. Category mismatch sheets - slimmed to relevant columns
-    mismatch_sheets = [
-        ("Salary_Mismatches",    salary_df,  _SALARY_SLIM_COLS),
-        ("Status_Mismatches",    status_df,  _STATUS_SLIM_COLS),
-        ("HireDate_Mismatches",  hire_df,    _HIRE_DATE_SLIM_COLS),
-        ("JobOrg_Mismatches",    job_org_df, _JOB_ORG_SLIM_COLS),
-    ]
-    for sheet_name, df, slim_cols in mismatch_sheets:
+    # 3-6. Category mismatch sheets - slimmed to relevant columns
+    for sheet_name, df, slim_cols in [
+        ("Salary Mismatches",    salary_df,  _SALARY_SLIM_COLS),
+        ("Job and Org",          job_org_df, _JOB_ORG_SLIM_COLS),
+        ("Hire Date",            hire_df,    _HIRE_DATE_SLIM_COLS),
+        ("Status Changes",       status_df,  _STATUS_SLIM_COLS),
+    ]:
         ws = wb.create_sheet(sheet_name)
         _write_mismatch_slim(ws, df, slim_cols)
         print(f"  wrote: {sheet_name:<25}  ({len(df):,} rows)")
 
-    # 9. Corrections_Manifest - enhanced with fix descriptions and human labels
-    ws_mf = wb.create_sheet("Corrections_Manifest")
+    # 7. Review Queue - slim 8-column view, human-readable labels
+    ws_rq = wb.create_sheet("Review Queue")
+    _write_review_queue_slim(ws_rq, review_df, all_df)
+    print(f"  wrote: {'Review Queue':<25}  ({len(review_df):,} rows)")
+
+    # 8. Rejected Matches
+    if rejected_df is not None and not rejected_df.empty:
+        ws_rej = wb.create_sheet("Rejected Matches")
+        _write_df_to_sheet_styled(ws_rej, rejected_df, hdr_font=_REJ_HDR_FONT, hdr_fill=_REJ_HDR_FILL)
+        print(f"  wrote: {'Rejected Matches':<25}  ({len(rejected_df):,} rows)")
+
+    # Additional reference sheets (kept for data completeness)
+    ws_uo = wb.create_sheet("Unmatched - Old")
+    _write_unmatched_sheet(ws_uo, unmatched_old_df)
+    ws_un = wb.create_sheet("Unmatched - New")
+    _write_unmatched_sheet(ws_un, unmatched_new_df)
+    ws_clean = wb.create_sheet("Clean Data (All Columns)")
+    _write_df_to_sheet_styled(ws_clean, all_df, hdr_font=_REF_HDR_FONT, hdr_fill=_REF_HDR_FILL)
+
+    # Held and critical context (advanced)
+    if not held_df.empty:
+        ws_held = wb.create_sheet("Held Corrections")
+        _write_held_corrections_sheet(ws_held, held_df, all_df)
+    if not active_zero_df.empty:
+        ws_crit = wb.create_sheet("Active Zero Salary")
+        _write_df_to_sheet_styled(ws_crit, active_zero_df, hdr_font=_CRIT_HDR_FONT, hdr_fill=_CRIT_HDR_FILL)
+
+    if extra_mismatch_df is not None and not extra_mismatch_df.empty:
+        ws_ex = wb.create_sheet("Extra Field Mismatches")
+        _write_df_to_sheet(ws_ex, extra_mismatch_df)
+
+    ws_mf = wb.create_sheet("Corrections Manifest")
     enhanced_manifest = _enhance_manifest(manifest_df)
     _write_df_to_sheet(ws_mf, enhanced_manifest)
-    print(f"  wrote: {'Corrections_Manifest':<25}  ({len(manifest_df):,} rows)")
-
-    # 10-11. Unmatched records - full rows, light-gray reference header
-    ws_uo = wb.create_sheet("Unmatched_Old")
-    _write_unmatched_sheet(ws_uo, unmatched_old_df)
-    print(f"  wrote: {'Unmatched_Old':<25}  ({unmatched_old_count:,} rows)")
-
-    ws_un = wb.create_sheet("Unmatched_New")
-    _write_unmatched_sheet(ws_un, unmatched_new_df)
-    print(f"  wrote: {'Unmatched_New':<25}  ({unmatched_new_count:,} rows)")
-
-    # 12. Clean_Data - full dataset, reference only (no transforms, all columns)
-    ws_clean = wb.create_sheet("Clean_Data")
-    _write_df_to_sheet_styled(ws_clean, all_df, hdr_font=_REF_HDR_FONT, hdr_fill=_REF_HDR_FILL)
-    print(f"  wrote: {'Clean_Data':<25}  ({total:,} rows)")
-
-    # 13. All_Matches - full dataset with all columns (backward compat)
-    ws_all = wb.create_sheet("All_Matches")
-    _write_df_to_sheet(ws_all, all_df)
-    print(f"  wrote: {'All_Matches':<25}  ({total:,} rows)")
-
-    # Optional: Rejected_Matches and Extra_Field_Mismatches
-    if rejected_df is not None and not rejected_df.empty:
-        ws_rej = wb.create_sheet("Rejected_Matches")
-        _write_df_to_sheet_styled(ws_rej, rejected_df, hdr_font=_REJ_HDR_FONT, hdr_fill=_REJ_HDR_FILL)
-        print(f"  wrote: {'Rejected_Matches':<25}  ({len(rejected_df):,} rows)")
-    if extra_mismatch_df is not None:
-        ws_ex = wb.create_sheet("Extra_Field_Mismatches")
-        _write_df_to_sheet(ws_ex, extra_mismatch_df)
-        print(f"  wrote: {'Extra_Field_Mismatches':<25}  ({len(extra_mismatch_df):,} rows)")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(str(out_path))
