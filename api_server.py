@@ -26,6 +26,7 @@ import threading
 import time
 import uuid
 import csv
+import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -737,23 +738,149 @@ def _review_department(row: dict[str, str]) -> str:
     )
 
 
+def _name_parts(row: dict[str, str], wide_row: dict[str, str] | None = None) -> tuple[str, str, str]:
+    wr = wide_row or {}
+    first = (
+        row.get("old_first_name_norm")
+        or wr.get("old_first_name_norm")
+        or row.get("new_first_name_norm")
+        or wr.get("new_first_name_norm")
+        or ""
+    )
+    middle = (
+        row.get("old_middle_name")
+        or wr.get("old_middle_name")
+        or row.get("new_middle_name")
+        or wr.get("new_middle_name")
+        or ""
+    )
+    last = (
+        row.get("old_last_name_norm")
+        or wr.get("old_last_name_norm")
+        or row.get("new_last_name_norm")
+        or wr.get("new_last_name_norm")
+        or ""
+    )
+    return str(first), str(middle), str(last)
+
+
+def _preferred_location(row: dict[str, str], wide_row: dict[str, str] | None = None) -> str:
+    wr = wide_row or {}
+    return (
+        row.get("new_location")
+        or wr.get("new_location")
+        or row.get("old_location")
+        or wr.get("old_location")
+        or row.get("new_location_state")
+        or wr.get("new_location_state")
+        or row.get("old_location_state")
+        or wr.get("old_location_state")
+        or ""
+    )
+
+
+def _job_title(row: dict[str, str], wide_row: dict[str, str] | None = None) -> str:
+    wr = wide_row or {}
+    return (
+        row.get("new_position")
+        or wr.get("new_position")
+        or row.get("old_position")
+        or wr.get("old_position")
+        or ""
+    )
+
+
+def _parse_num(val):
+    try:
+        return float(str(val).replace(",", "").replace("$", ""))
+    except Exception:
+        return None
+
+
+def _fmt_money(val):
+    num = _parse_num(val)
+    if num is None:
+        return ""
+    return f"${num:,.0f}" if abs(num - round(num)) < 0.01 else f"${num:,.2f}"
+
+
+def _fmt_percent(val):
+    if val is None or val == "":
+        return ""
+    try:
+        num = float(val)
+    except Exception:
+        return str(val)
+    return f"{num:+.1f}%"
+
+
+def _fmt_date(val):
+    if val in (None, "", "nan"):
+        return ""
+    try:
+        dt = pd.to_datetime(val, errors="coerce")
+    except Exception:
+        dt = None
+    if dt is None or pd.isna(dt):
+        return str(val)
+    return dt.strftime("%m/%d/%Y")
+
+
+_REASON_MAP = {
+    "salary_ratio_extreme": "Salary changed by more than 15%",
+    "salary_ratio_high": "Salary changed by more than 15%",
+    "active_to_terminated": "Changed from Active to Terminated",
+    "terminated_to_active": "Changed from Terminated to Active",
+    "hire_date:year_shift_with_other_mismatches": "Hire date shifted by about a year",
+    "hire_date:year_shift": "Hire date shifted by about a year",
+    "hire_date:default_date": "Default or placeholder hire date",
+    "name_change_detected": "Name change detected",
+}
+
+
+def _human_reason(reason: str) -> str:
+    if not reason:
+        return ""
+    key = str(reason).strip()
+    lower = key.lower()
+    if lower in _REASON_MAP:
+        return _REASON_MAP[lower]
+    simple = lower.split(":")[-1]
+    return simple.replace("_", " ").title()
+
+
+def _base_person(row: dict[str, str], wide_row: dict[str, str] | None = None) -> dict[str, str]:
+    first, middle, last = _name_parts(row, wide_row)
+    return {
+        "Worker ID": row.get("old_worker_id") or row.get("new_worker_id") or "",
+        "First Name": first,
+        "Middle Name": middle,
+        "Last Name": last,
+        "Department": _review_department(row),
+        "Job Title": _job_title(row, wide_row),
+        "Location": _preferred_location(row, wide_row),
+    }
+
+
 def _friendly_review_row(row: dict[str, str], wide_row: dict[str, str] | None = None) -> dict[str, str]:
-    friendly = dict(row)
+    base = _base_person(row, wide_row)
     issue_type = _friendly_issue_types(row.get("fix_types", ""))
-    department = _review_department(row)
-    friendly["employee_name"] = row.get("old_full_name_norm") or (wide_row or {}).get("new_full_name_norm", "")
-    friendly["issue_type"] = issue_type or "Review Required"
-    friendly["severity"] = _review_severity(row.get("priority_score", "0"))
-    friendly["department"] = department
-    friendly["what_changed"] = row.get("summary", "")
-    friendly["recommended_action"] = row.get("match_explanation", "") or row.get("reason", "")
-    if wide_row and str(wide_row.get("match_source", "")).strip().lower() != "worker_id":
-        friendly["issue_type"] = (
-            friendly["issue_type"] + ", Identity"
-            if friendly["issue_type"] and "Identity" not in friendly["issue_type"]
-            else "Identity"
-        )
-    return friendly
+    severity = _review_severity(row.get("priority_score", "0"))
+    what_changed = _human_reason(row.get("reason", "")) or row.get("summary", "")
+    recommended_action = row.get("match_explanation", "") or _human_reason(row.get("reason", "")) or "Review required"
+    match_source = (wide_row or {}).get("match_source", "")
+    if wide_row and str(match_source).strip().lower() != "worker_id":
+        if issue_type and "Identity" not in issue_type:
+            issue_type = issue_type + ", Identity"
+        elif not issue_type:
+            issue_type = "Identity"
+    base.update({
+        "Issue Type": issue_type or "Review Required",
+        "Severity": severity,
+        "Recommended Action": recommended_action,
+        "What Changed": what_changed,
+    })
+    return base
 
 
 def _has_fix_type(row: dict[str, str], target: str) -> bool:
@@ -779,12 +906,15 @@ def _build_identity_rows(
         name_change = str(wide_row.get("name_change_detected", "")).strip().lower() == "true"
         if match_source == "worker_id" and not name_change:
             continue
-        friendly = _friendly_review_row(row, wide_row)
-        friendly["issue_type"] = "Identity"
+        friendly = _base_person(row, wide_row)
+        friendly["Issue Type"] = "Identity"
+        friendly["Severity"] = "High"
+        friendly["Recommended Action"] = "Confirm the correct employee identity before loading corrections."
+        friendly["What Changed"] = "Worker identity needs confirmation."
         key = (
-            friendly.get("old_worker_id", ""),
-            friendly.get("new_worker_id", ""),
-            friendly.get("employee_name", ""),
+            friendly.get("Worker ID", ""),
+            wide_row.get("new_worker_id", ""),
+            friendly.get("First Name", "") + friendly.get("Last Name", ""),
         )
         if key not in seen_keys:
             seen_keys.add(key)
@@ -796,17 +926,15 @@ def _build_identity_rows(
     ):
         _, conflict_rows = _read_csv_rows(run_dir / rel)
         for row in conflict_rows:
-            friendly = dict(row)
-            friendly["employee_name"] = row.get("old_full_name_norm") or row.get("new_full_name_norm", "")
-            friendly["issue_type"] = "Identity"
-            friendly["severity"] = "High"
-            friendly["department"] = row.get("old_district") or row.get("new_district") or "Unassigned"
-            friendly["what_changed"] = "Worker ID conflict requires identity review."
-            friendly["recommended_action"] = "Confirm the correct employee identity before loading corrections."
+            friendly = _base_person(row, row)
+            friendly["Issue Type"] = "Identity"
+            friendly["Severity"] = "High"
+            friendly["Recommended Action"] = "Confirm the correct employee identity before loading corrections."
+            friendly["What Changed"] = "Worker ID conflict requires identity review."
             key = (
-                friendly.get("old_worker_id", ""),
-                friendly.get("new_worker_id", ""),
-                friendly.get("employee_name", ""),
+                friendly.get("Worker ID", ""),
+                row.get("new_worker_id", ""),
+                friendly.get("First Name", "") + friendly.get("Last Name", ""),
             )
             if key not in seen_keys:
                 seen_keys.add(key)
@@ -869,33 +997,151 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
 
     friendly_review_rows = [_friendly_review_row(row, wide_lookup.get(row.get("pair_id", ""))) for row in review_rows]
     review_fieldnames = [
-        "employee_name",
-        "issue_type",
-        "severity",
-        "department",
-        "what_changed",
-        "recommended_action",
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Department",
+        "Job Title",
+        "Location",
+        "Issue Type",
+        "Severity",
+        "Recommended Action",
+        "What Changed",
     ]
-    for name in review_fields:
-        if name not in review_fieldnames:
-            review_fieldnames.append(name)
     _write_csv_rows(run_dir / "Employees Requiring Review.csv", review_fieldnames, friendly_review_rows)
 
-    salary_rows = [row for row in friendly_review_rows if _has_fix_type(row, "salary")]
-    status_rows = [row for row in friendly_review_rows if _has_fix_type(row, "status")]
-    hire_date_rows = [row for row in friendly_review_rows if _has_fix_type(row, "hire_date")]
-    job_org_rows = [row for row in friendly_review_rows if _has_fix_type(row, "job_org")]
-    identity_rows = _build_identity_rows(review_rows, wide_lookup, run_dir)
-    identity_fieldnames = list(review_fieldnames)
-    for row in identity_rows:
-        for name in row:
-            if name not in identity_fieldnames:
-                identity_fieldnames.append(name)
+    def _salary_row(row, wide_row: dict[str, str] | None) -> dict[str, str]:
+        base = _base_person(row, wide_row)
+        old_sal = (wide_row or {}).get("old_salary") or row.get("old_salary", "")
+        new_sal = (wide_row or {}).get("new_salary") or row.get("new_salary", "")
+        base.update({
+            "Legacy Salary": _fmt_money(old_sal),
+            "New Salary": _fmt_money(new_sal),
+        })
+        diff = None
+        try:
+            diff = _parse_num(new_sal) - _parse_num(old_sal) if _parse_num(old_sal) is not None and _parse_num(new_sal) is not None else None
+        except Exception:
+            diff = None
+        base["Difference"] = _fmt_money(diff)
+        pct = None
+        if _parse_num(old_sal) not in (None, 0):
+            pct = ((_parse_num(new_sal) or 0) - (_parse_num(old_sal) or 0)) / (_parse_num(old_sal) or 1) * 100
+        base["Difference Pct"] = _fmt_percent(pct)
+        return base
 
-    _write_csv_rows(run_dir / "Salary Issues to Fix.csv", review_fieldnames, salary_rows)
-    _write_csv_rows(run_dir / "Employee Status Issues.csv", review_fieldnames, status_rows)
-    _write_csv_rows(run_dir / "Hire Date Issues.csv", review_fieldnames, hire_date_rows)
-    _write_csv_rows(run_dir / "Job and Organization Issues to Review.csv", review_fieldnames, job_org_rows)
+    def _status_row(row, wide_row: dict[str, str] | None) -> dict[str, str]:
+        base = _base_person(row, wide_row)
+        base.update({
+            "Legacy Status": _human_reason((wide_row or {}).get("old_worker_status") or row.get("old_worker_status", "")),
+            "New Status": _human_reason((wide_row or {}).get("new_worker_status") or row.get("new_worker_status", "")),
+            "What Changed": _human_reason(row.get("reason", "")) or _human_reason((wide_row or {}).get("reason", "")),
+        })
+        return base
+
+    def _hire_date_row(row, wide_row: dict[str, str] | None) -> dict[str, str]:
+        base = _base_person(row, wide_row)
+        base.update({
+            "Legacy Hire Date": _fmt_date((wide_row or {}).get("old_hire_date") or row.get("old_hire_date", "")),
+            "New Hire Date": _fmt_date((wide_row or {}).get("new_hire_date") or row.get("new_hire_date", "")),
+            "What Changed": _human_reason(row.get("reason", "")) or _human_reason((wide_row or {}).get("reason", "")),
+        })
+        return base
+
+    def _job_org_row(row, wide_row: dict[str, str] | None) -> dict[str, str]:
+        base = _base_person(row, wide_row)
+        base.update({
+            "Legacy Job Title": (wide_row or {}).get("old_position") or row.get("old_position", ""),
+            "New Job Title": (wide_row or {}).get("new_position") or row.get("new_position", ""),
+            "Legacy Department": (wide_row or {}).get("old_district") or row.get("old_district", ""),
+            "New Department": (wide_row or {}).get("new_district") or row.get("new_district", ""),
+            "Legacy State": (wide_row or {}).get("old_location_state") or row.get("old_location_state", ""),
+            "New State": (wide_row or {}).get("new_location_state") or row.get("new_location_state", ""),
+            "What Changed": _human_reason(row.get("reason", "")) or _human_reason((wide_row or {}).get("reason", "")),
+        })
+        return base
+
+    salary_rows = []
+    status_rows = []
+    hire_date_rows = []
+    job_org_rows = []
+    for row in review_rows:
+        wide_row = wide_lookup.get(row.get("pair_id", ""))
+        if _has_fix_type(row, "salary"):
+            salary_rows.append(_salary_row(row, wide_row))
+        if _has_fix_type(row, "status"):
+            status_rows.append(_status_row(row, wide_row))
+        if _has_fix_type(row, "hire_date"):
+            hire_date_rows.append(_hire_date_row(row, wide_row))
+        if _has_fix_type(row, "job_org"):
+            job_org_rows.append(_job_org_row(row, wide_row))
+    identity_rows = _build_identity_rows(review_rows, wide_lookup, run_dir)
+    identity_fieldnames = [
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Department",
+        "Job Title",
+        "Location",
+        "Issue Type",
+        "Severity",
+        "Recommended Action",
+        "What Changed",
+    ]
+
+    _write_csv_rows(run_dir / "Salary Issues to Fix.csv", [
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Location",
+        "Legacy Salary",
+        "New Salary",
+        "Difference",
+        "Difference Pct",
+        "Department",
+        "Job Title",
+    ], salary_rows)
+    _write_csv_rows(run_dir / "Employee Status Issues.csv", [
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Legacy Status",
+        "New Status",
+        "Department",
+        "Job Title",
+        "Location",
+        "What Changed",
+    ], status_rows)
+    _write_csv_rows(run_dir / "Hire Date Issues.csv", [
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Legacy Hire Date",
+        "New Hire Date",
+        "Department",
+        "Job Title",
+        "Location",
+        "What Changed",
+    ], hire_date_rows)
+    _write_csv_rows(run_dir / "Job and Organization Issues to Review.csv", [
+        "Worker ID",
+        "First Name",
+        "Middle Name",
+        "Last Name",
+        "Legacy Job Title",
+        "New Job Title",
+        "Legacy Department",
+        "New Department",
+        "Legacy State",
+        "New State",
+        "Location",
+        "What Changed",
+    ], job_org_rows)
     _write_csv_rows(run_dir / "Identity Conflicts to Review.csv", identity_fieldnames, identity_rows)
 
     summary_row = {

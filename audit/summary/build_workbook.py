@@ -105,35 +105,40 @@ _COL_LABELS: dict[str, str] = {
     "match_explanation":   "Match Explanation",
     "priority_score":      "Priority Score",
     "priority_reason":     "Priority Reason",
-    "old_worker_id":       "Worker ID (Old)",
+    "old_worker_id":       "Worker ID",
     "new_worker_id":       "Worker ID (New)",
     "old_first_name_norm": "First Name",
-    "new_first_name_norm": "New First Name",
+    "old_middle_name":     "Middle Name",
     "old_last_name_norm":  "Last Name",
-    "new_last_name_norm":  "New Last Name",
+    "new_first_name_norm": "First Name (New)",
+    "new_middle_name":     "Middle Name (New)",
+    "new_last_name_norm":  "Last Name (New)",
     "old_full_name_norm":  "Full Name (Old)",
     "new_full_name_norm":  "Full Name (New)",
-    "old_worker_status":   "Status (Old)",
-    "new_worker_status":   "Status (New)",
+    "old_worker_status":   "Legacy Status",
+    "new_worker_status":   "New Status",
     "old_worker_type":     "Worker Type (Old)",
     "new_worker_type":     "Worker Type (New)",
-    "old_salary":          "Salary (Old)",
-    "new_salary":          "Salary (New)",
-    "salary_delta":        "Salary Change",
+    "old_salary":          "Legacy Salary",
+    "new_salary":          "New Salary",
+    "salary_delta":        "Difference",
+    "salary_diff_pct":     "Difference Pct",
     "salary_ratio":        "Salary Ratio",
     "old_payrate":         "Pay Rate (Old)",
     "new_payrate":         "Pay Rate (New)",
     "payrate_delta":       "Pay Rate Change",
-    "old_hire_date":       "Hire Date (Old)",
-    "new_hire_date":       "Hire Date (New)",
-    "old_position":        "Position (Old)",
-    "new_position":        "Position (New)",
-    "old_district":        "District (Old)",
-    "new_district":        "District (New)",
-    "old_location_state":  "State (Old)",
-    "new_location_state":  "State (New)",
+    "old_hire_date":       "Legacy Hire Date",
+    "new_hire_date":       "New Hire Date",
+    "old_position":        "Legacy Job Title",
+    "new_position":        "New Job Title",
+    "job_title":           "Job Title",
+    "old_district":        "Department",
+    "new_district":        "New Department",
+    "old_location_state":  "State",
+    "new_location_state":  "New State",
     "old_location":        "Location (Old)",
     "new_location":        "Location (New)",
+    "location_preferred":  "Location",
     "hire_date_pattern":   "Hire Date Pattern",
     "status_changed":      "Status Changed",
     "hire_date_changed":   "Hire Date Changed",
@@ -164,6 +169,66 @@ _ACTION_LABELS: dict[str, str] = {
 def _label(col: str) -> str:
     """Return human-readable label for a column name."""
     return _COL_LABELS.get(col, col.replace("_", " ").title())
+
+
+def _parse_num(val):
+    try:
+        return float(str(val).replace(",", "").replace("$", ""))
+    except Exception:
+        return None
+
+
+def _fmt_money(val):
+    num = _parse_num(val)
+    if num is None:
+        return ""
+    return f"${num:,.0f}" if abs(num - round(num)) < 0.01 else f"${num:,.2f}"
+
+
+def _fmt_percent(val):
+    if val is None or val == "":
+        return ""
+    try:
+        num = float(val)
+    except Exception:
+        return str(val)
+    return f"{num:+.1f}%"
+
+
+def _fmt_date(val):
+    if val in (None, "", "nan"):
+        return ""
+    try:
+        dt = pd.to_datetime(val, errors="coerce")
+    except Exception:
+        dt = None
+    if dt is None or pd.isna(dt):
+        return str(val)
+    return dt.strftime("%m/%d/%Y")
+
+
+_REASON_MAP = {
+    "salary_ratio_extreme": "Salary changed by more than 15%",
+    "salary_ratio_high": "Salary changed by more than 15%",
+    "active_to_terminated": "Changed from Active to Terminated",
+    "terminated_to_active": "Changed from Terminated to Active",
+    "hire_date:year_shift_with_other_mismatches": "Hire date shifted by about a year",
+    "hire_date:year_shift": "Hire date shifted by about a year",
+    "hire_date:default_date": "Default or placeholder hire date",
+    "name_change_detected": "Name change detected",
+}
+
+
+def _human_reason(reason: str) -> str:
+    if not reason:
+        return ""
+    key = str(reason).strip()
+    lower = key.lower()
+    if lower in _REASON_MAP:
+        return _REASON_MAP[lower]
+    # colon-delimited codes → last segment, underscores to spaces
+    simple = lower.split(":")[-1]
+    return simple.replace("_", " ").title()
 
 
 def _transform_action_val(val) -> str:
@@ -203,6 +268,22 @@ def _apply_labels(df: pd.DataFrame) -> pd.DataFrame:
         result["overall_action"] = result["overall_action"].apply(_transform_action_val)
     if "fix_types" in result.columns:
         result["fix_types"] = result["fix_types"].apply(_transform_fix_types_val)
+    if "reason" in result.columns:
+        result["reason"] = result["reason"].apply(_human_reason)
+
+    money_cols = [c for c in (
+        "old_salary", "new_salary", "salary_delta", "old_payrate", "new_payrate", "payrate_delta"
+    ) if c in result.columns]
+    for col in money_cols:
+        result[col] = result[col].apply(_fmt_money)
+
+    if "salary_diff_pct" in result.columns:
+        result["salary_diff_pct"] = result["salary_diff_pct"].apply(_fmt_percent)
+
+    date_cols = [c for c in ("old_hire_date", "new_hire_date") if c in result.columns]
+    for col in date_cols:
+        result[col] = result[col].apply(_fmt_date)
+
     result.columns = [_label(c) for c in result.columns]
     return result
 
@@ -232,39 +313,58 @@ def _lookup_names_from_wide(worker_ids, all_df: pd.DataFrame) -> dict:
 # Slim column lists for each mismatch category
 # ---------------------------------------------------------------------------
 _SALARY_SLIM_COLS = [
-    "pair_id", "match_source", "confidence", "action", "priority_score",
-    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
-    "old_worker_status", "new_worker_status",
-    "old_salary", "new_salary", "salary_delta",
-    "old_payrate", "new_payrate", "payrate_delta",
-    "fix_types", "reason", "summary",
+    "old_worker_id",
+    "old_first_name_norm",
+    "old_middle_name",
+    "old_last_name_norm",
+    "location_preferred",
+    "old_salary",
+    "new_salary",
+    "salary_delta",
+    "salary_diff_pct",
+    "new_district",
+    "job_title",
 ]
 
 _STATUS_SLIM_COLS = [
-    "pair_id", "match_source", "confidence", "action", "priority_score",
-    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
-    "old_worker_status", "new_worker_status",
-    "old_worker_type", "new_worker_type",
-    "fix_types", "reason", "summary",
+    "old_worker_id",
+    "old_first_name_norm",
+    "old_middle_name",
+    "old_last_name_norm",
+    "old_worker_status",
+    "new_worker_status",
+    "new_district",
+    "job_title",
+    "location_preferred",
+    "reason",
 ]
 
 _HIRE_DATE_SLIM_COLS = [
-    "pair_id", "match_source", "confidence", "action", "priority_score",
-    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
-    "old_worker_status", "new_worker_status",
-    "old_hire_date", "new_hire_date",
-    "hire_date_pattern",
-    "fix_types", "reason", "summary",
+    "old_worker_id",
+    "old_first_name_norm",
+    "old_middle_name",
+    "old_last_name_norm",
+    "old_hire_date",
+    "new_hire_date",
+    "new_district",
+    "job_title",
+    "location_preferred",
+    "reason",
 ]
 
 _JOB_ORG_SLIM_COLS = [
-    "pair_id", "match_source", "confidence", "action", "priority_score",
-    "old_worker_id", "old_first_name_norm", "old_last_name_norm",
-    "old_worker_status", "new_worker_status",
-    "old_position", "new_position",
-    "old_district", "new_district",
-    "old_location_state", "new_location_state",
-    "fix_types", "reason", "summary",
+    "old_worker_id",
+    "old_first_name_norm",
+    "old_middle_name",
+    "old_last_name_norm",
+    "old_position",
+    "new_position",
+    "old_district",
+    "new_district",
+    "old_location_state",
+    "new_location_state",
+    "location_preferred",
+    "reason",
 ]
 
 
@@ -678,6 +778,31 @@ def _salary_ratio(old_sal, new_sal):
         return None
 
 
+def _salary_diff_pct(old_sal, new_sal):
+    try:
+        o = float(str(old_sal or "").replace(",", "").replace("$", ""))
+        n = float(str(new_sal or "").replace(",", "").replace("$", ""))
+        if o == 0:
+            return None
+        return round((n - o) / o * 100, 2)
+    except Exception:
+        return None
+
+
+def _preferred_location(row: dict) -> str:
+    return (
+        row.get("new_location")
+        or row.get("old_location")
+        or row.get("new_location_state")
+        or row.get("old_location_state")
+        or ""
+    )
+
+
+def _job_title(row: dict) -> str:
+    return row.get("new_position") or row.get("old_position") or ""
+
+
 def _priority_score(row: dict, fix_types: list[str], sal_d, result: dict) -> int:
     score = 0
     if "status" in fix_types:
@@ -774,11 +899,13 @@ def _load_wide_from_db(db_path: Path) -> pd.DataFrame:
             "new_location_state": r.get("new_location_state", ""),
             "old_location":       r.get("old_location", "") if has_loc else "",
             "new_location":       r.get("new_location", "") if has_loc else "",
+            "location_preferred": _preferred_location(r),
             "old_salary":         r.get("old_salary"),
             "new_salary":         r.get("new_salary"),
             "old_payrate":        r.get("old_payrate"),
             "new_payrate":        r.get("new_payrate"),
             "salary_delta":       sal_d,
+            "salary_diff_pct":    _salary_diff_pct(r.get("old_salary"), r.get("new_salary")),
             "salary_ratio":       _salary_ratio(r.get("old_salary"), r.get("new_salary")),
             "payrate_delta":      pay_d,
             "status_changed":     not _str_eq(r.get("old_worker_status"), r.get("new_worker_status")),
@@ -788,6 +915,7 @@ def _load_wide_from_db(db_path: Path) -> pd.DataFrame:
                                   if "hire_date" in fix_types else "",
             "needs_review":       result["action"] == "REVIEW",
             "suggested_action":   result["action"],
+            "job_title":          _job_title(r),
         })
 
     return pd.DataFrame(rows)
