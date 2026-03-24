@@ -1713,6 +1713,16 @@
       'fix_dates_full.csv':             'Fix List - Date Issues (CSV)',
       'fix_status_full.csv':            'Fix List - Status Issues (CSV)',
       'fix_data_quality_full.csv':      'Fix List - Data Quality Issues (CSV)',
+      'Internal Audit Report.pdf':      'Internal Audit Report (PDF)',
+      'Internal Audit Workbook.xlsx':   'Internal Audit Workbook (Excel)',
+      'Internal Audit Data.csv':        'Internal Audit Data (CSV)',
+      'Data Completeness.csv':          'Data Completeness (CSV)',
+      'Salary and Status Summary.csv':  'Salary and Status Summary (CSV)',
+      'Suspicious Values.csv':          'Suspicious Values (CSV)',
+      'Duplicate Records.csv':          'Duplicate Records (CSV)',
+      'Salary Issues to Fix.csv':       'Salary Issues to Fix (CSV)',
+      'Status Issues to Fix.csv':       'Status Issues to Fix (CSV)',
+      'Data Quality Issues to Fix.csv': 'Data Quality Issues to Fix (CSV)',
       'chro_approval_document.pdf':     'CHRO Approval Document (PDF)',
       'audit_trail.json':               'Audit trail (JSON) - compliance log',
       'recon_workbook.xlsx':            'Excel workbook (full analysis, 8+ sheets)',
@@ -1737,6 +1747,27 @@
       'internal_audit_distributions.csv': 'Salary and Status Distributions (CSV)',
     };
 
+    var DISPLAY_NAMES = {
+      'internal_audit_report.pdf':        'Internal Audit Report.pdf',
+      'Internal Audit Report.pdf':        'Internal Audit Report.pdf',
+      'internal_audit_workbook.xlsx':     'Internal Audit Workbook.xlsx',
+      'Internal Audit Workbook.xlsx':     'Internal Audit Workbook.xlsx',
+      'internal_audit_data.csv':          'Internal Audit Data.csv',
+      'Internal Audit Data.csv':          'Internal Audit Data.csv',
+      'internal_audit_completeness.csv':  'Data Completeness.csv',
+      'Data Completeness.csv':            'Data Completeness.csv',
+      'internal_audit_distributions.csv': 'Salary and Status Summary.csv',
+      'Salary and Status Summary.csv':    'Salary and Status Summary.csv',
+      'internal_audit_suspicious.csv':    'Suspicious Values.csv',
+      'Suspicious Values.csv':            'Suspicious Values.csv',
+      'internal_audit_duplicates.csv':    'Duplicate Records.csv',
+      'Duplicate Records.csv':            'Duplicate Records.csv',
+      'fix_salary_full.csv':              'Salary Issues to Fix.csv',
+      'fix_status_full.csv':              'Status Issues to Fix.csv',
+      'fix_data_quality_full.csv':        'Data Quality Issues to Fix.csv',
+      'internal_audit_outputs.zip':       'Complete Package (ZIP)',
+    };
+
     // Primary files always shown at top (in this order)
     var PRIMARY_NAMES = [
       'Recon Audit Report.pdf',
@@ -1753,6 +1784,17 @@
       'details/Employees Missing from Old System.csv',
       '__ZIP__',
       'support/Excel Lookup Keys for Validation.csv',
+      'Internal Audit Report.pdf',
+      'Internal Audit Workbook.xlsx',
+      'Internal Audit Data.csv',
+      'Data Completeness.csv',
+      'Salary and Status Summary.csv',
+      'Suspicious Values.csv',
+      'Duplicate Records.csv',
+      'Salary Issues to Fix.csv',
+      'Status Issues to Fix.csv',
+      'Data Quality Issues to Fix.csv',
+      '__IA_ZIP__',
     ];
 
     // Secondary files: everything else (dept queues, detail CSVs, raw JSON, etc.)
@@ -1776,12 +1818,20 @@
 
       var name = document.createElement('div');
       name.className = 'download-row__name';
-      name.textContent = f.name;
+      var displayName = DISPLAY_NAMES[f.name] || f.name;
+      if (f.name && f.name.indexOf('recon_outputs_') === 0) {
+        displayName = 'Complete Package (ZIP)';
+      } else if (f.name && (f.name.indexOf('internal_audit_outputs_') === 0 || f.name === 'internal_audit_outputs.zip')) {
+        displayName = 'Complete Package (ZIP)';
+      }
+      name.textContent = displayName;
 
       var desc = document.createElement('div');
       desc.className = 'download-row__size';
       var label = FILE_LABELS[f.name] || (f.name.startsWith('review_queue_') ? 'Department review queue' : '');
       if (!label && f.name && f.name.indexOf('recon_outputs_') === 0) {
+        label = 'Complete Package (ZIP)';
+      } else if (!label && f.name && (f.name.indexOf('internal_audit_outputs_') === 0 || f.name === 'internal_audit_outputs.zip')) {
         label = 'Complete Package (ZIP)';
       }
       desc.textContent = label + (f.size ? '  \u00B7  ' + _fmtSize(f.size) : '');
@@ -1815,11 +1865,16 @@
       var outputByName = {};
       outputs.forEach(function(f) { outputByName[f.name] = f; });
       var reconZip = outputs.find(function(f) { return f.name && f.name.indexOf('recon_outputs_') === 0; });
+      var iaZip = outputs.find(function(f) { return f.name && (f.name.indexOf('internal_audit_outputs_') === 0 || f.name === 'internal_audit_outputs.zip'); });
 
       // --- Primary section ---
       PRIMARY_NAMES.forEach(function(name) {
         if (name === '__ZIP__') {
           if (reconZip) dl.appendChild(_makeDownloadRow(reconZip));
+          return;
+        }
+        if (name === '__IA_ZIP__') {
+          if (iaZip) dl.appendChild(_makeDownloadRow(iaZip));
           return;
         }
         if (outputByName[name]) dl.appendChild(_makeDownloadRow(outputByName[name]));
@@ -1828,8 +1883,9 @@
       // --- Secondary section (collapsed by default) ---
       var secondary = outputs.filter(function(f) {
         var isPrimary = PRIMARY_NAMES.indexOf(f.name) !== -1;
-        var isZip = reconZip && f.name === reconZip.name;
-        return !isPrimary && !isZip;
+        var isReconZip = reconZip && f.name === reconZip.name;
+        var isIaZip = iaZip && f.name === iaZip.name;
+        return !isPrimary && !isReconZip && !isIaZip;
       });
 
       if (secondary.length > 0) {
