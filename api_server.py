@@ -26,6 +26,8 @@ import threading
 import time
 import uuid
 import csv
+import zipfile
+import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -539,16 +541,21 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
     """
     wanted = [
         "Recon Audit Report.pdf",
+        "details/Full Excel Workbook.xlsx",
         "Full Summary.csv",
+        "Salary Mismatches.csv",
+        "Job and Org Mismatches.csv",
+        "Hire Date Mismatches.csv",
+        "Status Mismatches.csv",
+        "Employees Requiring Review.csv",
+        "Rejected Matches.csv",
+        "CHRO Summary Report.pdf",
+        "details/Employees Missing from New System.csv",
+        "details/Employees Missing from Old System.csv",
+        "recon_outputs.zip",  # placeholder - real zip is recon_outputs_{run_id}.zip
+        "support/Excel Lookup Keys for Validation.csv",
         "Clean Employee Data - Old System.csv",
         "Clean Employee Data - New System.csv",
-        "Employees Requiring Review.csv",
-        "Salary Issues to Fix.csv",
-        "Employee Status Issues.csv",
-        "Hire Date Issues.csv",
-        "Identity Conflicts to Review.csv",
-        "Job and Organization Issues to Review.csv",
-        "recon_summary.xlsx",
         "recon_workbook.xlsx",
         "recon_report.pdf",
         "audit_report.docx",
@@ -898,6 +905,25 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     _write_csv_rows(run_dir / "Job and Organization Issues to Review.csv", review_fieldnames, job_org_rows)
     _write_csv_rows(run_dir / "Identity Conflicts to Review.csv", identity_fieldnames, identity_rows)
 
+    # Aliases for mismatch-focused CSV names
+    def _copy_if_exists(src: Path, dest: Path) -> None:
+        if src.exists() and src.stat().st_size > 0:
+            _copy_file(src, dest)
+
+    _copy_if_exists(run_dir / "Salary Issues to Fix.csv", run_dir / "Salary Mismatches.csv")
+    _copy_if_exists(run_dir / "Job and Organization Issues to Review.csv", run_dir / "Job and Org Mismatches.csv")
+    _copy_if_exists(run_dir / "Hire Date Issues.csv", run_dir / "Hire Date Mismatches.csv")
+    _copy_if_exists(run_dir / "Employee Status Issues.csv", run_dir / "Status Mismatches.csv")
+
+    # Rejected matches (if any) from wide_compare
+    rejected_rows = [row for row in wide_rows if str(row.get("action", "")).strip().upper() == "REJECT_MATCH"]
+    if rejected_rows:
+        rej_fields = ["pair_id", "old_worker_id", "new_worker_id", "match_source", "reason", "summary"]
+        for name in wide_fields:
+            if name not in rej_fields:
+                rej_fields.append(name)
+        _write_csv_rows(run_dir / "Rejected Matches.csv", rej_fields, rejected_rows)
+
     summary_row = {
         "run_id": run_id,
         "total_matched_pairs": stats.get("total_pairs", stats.get("total_matched", len(wide_rows))),
@@ -941,7 +967,9 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     _move_file(run_dir / "audit_report.pdf", details_dir / "Legacy Audit Report.pdf")
 
     _move_file(run_dir / "xlookup_keys.csv", support_dir / "Excel Lookup Keys for Validation.csv")
-    _move_file(run_dir / "chro_approval_document.pdf", support_dir / "CHRO Approval Document.pdf")
+    if (run_dir / "chro_approval_document.pdf").exists():
+        _copy_file(run_dir / "chro_approval_document.pdf", run_dir / "CHRO Summary Report.pdf")
+        _move_file(run_dir / "chro_approval_document.pdf", support_dir / "CHRO Approval Document.pdf")
     _move_file(run_dir / "corrections_manifest.csv", support_dir / "Corrections Manifest.csv")
     _move_file(run_dir / "held_corrections.csv", support_dir / "Held Corrections.csv")
     _move_file(run_dir / "corrections_salary.csv", support_dir / "Salary Corrections for Loading.csv")
@@ -977,6 +1005,32 @@ def _package_recon_outputs(run_id: str, run_dir: Path, stats: dict) -> None:
     _move_file(run_dir / "audit" / "summary" / "sanity_suspicious_defaults.csv", logs_dir / "Suspicious Default Values Detail.csv")
 
     _combine_audit_details(run_dir)
+
+    # Complete package ZIP
+    zip_items = [
+        "Recon Audit Report.pdf",
+        "CHRO Summary Report.pdf",
+        "details/Full Excel Workbook.xlsx",
+        "Full Summary.csv",
+        "Salary Mismatches.csv",
+        "Job and Org Mismatches.csv",
+        "Hire Date Mismatches.csv",
+        "Status Mismatches.csv",
+        "Employees Requiring Review.csv",
+        "Rejected Matches.csv",
+        "details/Employees Missing from New System.csv",
+        "details/Employees Missing from Old System.csv",
+    ]
+    zip_path = run_dir / f"recon_outputs_{run_id}.zip"
+    added = 0
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for rel in zip_items:
+            p = run_dir / rel
+            if p.exists() and p.is_file() and p.stat().st_size > 0:
+                zf.write(p, arcname=rel)
+                added += 1
+    if added == 0 and zip_path.exists():
+        zip_path.unlink(missing_ok=True)
 
 
 def _parse_run_stats(run_dir: Path) -> dict:
