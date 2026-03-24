@@ -1847,17 +1847,17 @@ def _create_zip(run_dir: Path, workbook_path: Path, csv_files: list[Path]) -> Pa
         if p.exists() and p.is_file() and p.stat().st_size > 0:
             candidates.append((p, display_name))
 
-    _add("internal_audit_report.pdf", "Internal Audit Report.pdf")
-    _add(workbook_path.name, "Internal Audit Workbook.xlsx")
-    _add("internal_audit_data.csv", "Internal Audit Data.csv")
-    _add("internal_audit_completeness.csv", "Data Completeness.csv")
-    _add("internal_audit_distributions.csv", "Salary and Status Summary.csv")
-    _add("internal_audit_suspicious.csv", "Suspicious Values.csv")
-    _add("internal_audit_duplicates.csv", "Duplicate Records.csv")
-    _add("fix_salary_full.csv", "Salary Issues to Fix.csv")
-    _add("fix_status_full.csv", "Status Issues to Fix.csv")
-    _add("fix_data_quality_full.csv", "Data Quality Issues to Fix.csv")
-    _add("clean_data_ready_for_review.csv", "Clean Employee Data.csv")
+    _add("internal_audit_report.pdf",        "01 - Internal Audit Report.pdf")
+    _add(workbook_path.name,                 "02 - Internal Audit Workbook.xlsx")
+    _add("internal_audit_data.csv",          "03 - Internal Audit Data.csv")
+    _add("internal_audit_completeness.csv",  "04 - Data Completeness.csv")
+    _add("internal_audit_distributions.csv", "05 - Salary and Status Summary.csv")
+    _add("internal_audit_suspicious.csv",    "06 - Suspicious Values.csv")
+    _add("internal_audit_duplicates.csv",    "07 - Duplicate Records.csv")
+    _add("fix_salary_full.csv",              "08 - Salary Issues to Fix.csv")
+    _add("fix_status_full.csv",              "09 - Status Issues to Fix.csv")
+    _add("fix_data_quality_full.csv",        "10 - Data Quality Issues to Fix.csv")
+    _add("clean_data_ready_for_review.csv",  "11 - Clean Employee Data.csv")
 
     zip_path = run_dir / "internal_audit_outputs.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
