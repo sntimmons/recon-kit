@@ -1,6 +1,7 @@
 # src/run_pipeline.py
 from __future__ import annotations
 
+import csv
 import json
 import os
 import subprocess
@@ -468,10 +469,46 @@ def main() -> None:
         sys.stdout = _orig_stdout
 
         artifact_result = copy_artifacts_to_run(run_id, run_paths)
+
+        # ------------------------------------------------------------------
+        # Run summary (high-level, user-friendly status of where records ended up)
+        # ------------------------------------------------------------------
+        run_summary_path = run_paths["run"] / "run_summary.csv"
+        summary_rows = []
+
+        matched_count = _csv_rows(root / "outputs" / "matched_raw.csv") or 0
+        review_count = _csv_rows(root / "audit" / "summary" / "review_queue.csv") or 0
+        unmatched_old_count = _csv_rows(root / "outputs" / "unmatched_old.csv") or 0
+        unmatched_new_count = _csv_rows(root / "outputs" / "unmatched_new.csv") or 0
+        conflicts_old_count = _csv_rows(root / "outputs" / "conflicts_old_worker_id_resolution.csv") or 0
+        conflicts_new_count = _csv_rows(root / "outputs" / "conflicts_new_worker_id_resolution.csv") or 0
+        skipped_missing_count = _csv_rows(root / "outputs" / "skipped_missing_entity_keys.csv") or 0
+
+        ambiguous_path = root / "audit" / "summary" / "ambiguous_identity_groups.csv"
+        ambiguous_count = _csv_rows(ambiguous_path) if ambiguous_path.exists() else 0
+
+        summary_rows.extend([
+            ("Clean matched records", matched_count, "Records auto-matched by the system.", "outputs/matched_raw.csv"),
+            ("Records requiring review", review_count, "Candidate pairs requiring manual review in review_queue.csv.", "audit/summary/review_queue.csv"),
+            ("Unmatched source records", unmatched_old_count, "Old-source records with no safe match.", "outputs/unmatched_old.csv"),
+            ("Unmatched target records", unmatched_new_count, "New-target records with no safe match.", "outputs/unmatched_new.csv"),
+            ("Ambiguous identity records", ambiguous_count, "Rows that could not be resolved due to ambiguous identity.", "audit/summary/ambiguous_identity_groups.csv"),
+            ("Conflicts (old side)", conflicts_old_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_old_worker_id_resolution.csv"),
+            ("Conflicts (new side)", conflicts_new_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_new_worker_id_resolution.csv"),
+            ("Skipped missing entity keys", skipped_missing_count, "Rows omitted due to missing entity keys required for safe resolution.", "outputs/skipped_missing_entity_keys.csv"),
+        ])
+
+        with open(str(run_summary_path), "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["category", "record_count", "explanation", "file_reference"])
+            for row in summary_rows:
+                writer.writerow(row)
+
         write_run_manifest(run_id, run_paths, extra={
             "artifact_copy": artifact_result,
             "pipeline_ok":   pipeline_ok,
             "gate_status":   "PASS" if gate_passed else "FAIL",
+            "run_summary":   str(run_summary_path),
         })
 
         n_copied  = len(artifact_result["copied"])

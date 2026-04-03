@@ -97,6 +97,11 @@ def resolve(input_path: Path, output_path: Path) -> None:
         )
     ]
 
+    # For no-ID fallback matches, assign synthetic entity keys to enforce 1-to-1
+    no_id_mask = df.get("match_method", pd.Series([""] * len(df))) == "no_id_fallback"
+    df.loc[no_id_mask, "old_entity_key"] = ["old_no_id_" + fn + "_" + str(i) for i, fn in enumerate(df.loc[no_id_mask, "old_full_name_norm"])]
+    df.loc[no_id_mask, "new_entity_key"] = ["new_no_id_" + fn + "_" + str(i) for i, fn in enumerate(df.loc[no_id_mask, "new_full_name_norm"])]
+
     # Pair id uses entity keys so it works even when worker_id is blank.
     df["pair_id"] = [
         _pair_id(o, n)
@@ -119,8 +124,10 @@ def resolve(input_path: Path, output_path: Path) -> None:
     # Stable ordering
     df["_ord"] = range(len(df))
 
-    # Skip rows where we cannot enforce 1-to-1 at all
+    # Skip rows where we cannot enforce 1-to-1 at all, except for no-ID fallback matches
     missing_mask = (df["old_entity_key"] == "") | (df["new_entity_key"] == "")
+    no_id_fallback_mask = df.get("match_method", pd.Series([""] * len(df))) == "no_id_fallback"
+    missing_mask = missing_mask & ~no_id_fallback_mask
     skipped_missing = df[missing_mask].drop(columns=_INTERNAL_COLS, errors="ignore").copy()
 
     work = df[~missing_mask].copy()
@@ -157,6 +164,11 @@ def resolve(input_path: Path, output_path: Path) -> None:
     else:
         conflicts_old = work.copy()
         conflicts_new = work.copy()
+
+    # Add human-readable reason for why these rows were held back.
+    conflicts_old["Reason"] = "Held back to preserve one-to-one mapping on source key."
+    conflicts_new["Reason"] = "Held back to preserve one-to-one mapping on target key."
+    skipped_missing["Reason"] = "Missing required entity key (worker_id/recon_id/pk); cannot safely resolve."
 
     # Strip internal columns before writing any output file
     out = out.drop(columns=_INTERNAL_COLS, errors="ignore")

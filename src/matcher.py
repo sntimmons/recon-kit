@@ -183,14 +183,7 @@ def main() -> None:
     def _is_missing_id(v: object) -> bool:
         return _norm_id_for_match(v) == ""
 
-    old_no_id = pd.DataFrame(columns=old.columns)
-    new_no_id = pd.DataFrame(columns=new.columns)
-    if "worker_id" in old.columns:
-        old_no_id = old[old["worker_id"].apply(_is_missing_id)].copy()
-        old = old[~old["worker_id"].apply(_is_missing_id)].copy()
-    if "worker_id" in new.columns:
-        new_no_id = new[new["worker_id"].apply(_is_missing_id)].copy()
-        new = new[~new["worker_id"].apply(_is_missing_id)].copy()
+    # Do NOT remove blank worker_id rows before tiered matching - allow them into fallback tiers
 
     report: Dict[str, Any] = {
         "matched_total": 0,
@@ -317,6 +310,11 @@ def main() -> None:
         base["confidence"] = [
             compute_confidence(r) for r in base.to_dict(orient="records")
         ]
+        # Add match_method for traceability: "exact" if both worker_ids present, "no_id_fallback" otherwise
+        base["match_method"] = [
+            "exact" if (not pd.isna(r.get("old_worker_id")) and not pd.isna(r.get("new_worker_id"))) else "no_id_fallback"
+            for r in base.to_dict(orient="records")
+        ]
         matched_raw = base
     else:
         # Zero-match case: emit all standard columns so that downstream steps
@@ -340,26 +338,26 @@ def main() -> None:
             "old_location_state", "new_location_state",
             "old_worker_status",  "new_worker_status",
             "old_worker_type",    "new_worker_type",
-            "match_source",  "confidence",
+            "match_source",  "confidence", "match_method",
         ])
 
     matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
 
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
-    old = old.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-    old["unmatched_reason"] = "no_match_found"
-    if not old_no_id.empty:
-        old_no_id = old_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-        old_no_id["unmatched_reason"] = "no_id"
-        old = pd.concat([old, old_no_id], ignore_index=True)
+    old = old.drop(columns=["_match_worker_id", "_match_recon_id", "_had_blank_worker_id"], errors="ignore").copy()
+    old["unmatched_reason"] = old["worker_id"].apply(lambda v: "no_id" if _is_missing_id(v) else "no_match_found")
+    old["Reason"] = old["unmatched_reason"].map({
+        "no_id": "Blank worker ID; no fallback match was accepted.",
+        "no_match_found": "No safe match was found for this record.",
+    }).fillna("No match reason available.")
 
-    new = new.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-    new["unmatched_reason"] = "no_match_found"
-    if not new_no_id.empty:
-        new_no_id = new_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-        new_no_id["unmatched_reason"] = "no_id"
-        new = pd.concat([new, new_no_id], ignore_index=True)
+    new = new.drop(columns=["_match_worker_id", "_match_recon_id", "_had_blank_worker_id"], errors="ignore").copy()
+    new["unmatched_reason"] = new["worker_id"].apply(lambda v: "no_id" if _is_missing_id(v) else "no_match_found")
+    new["Reason"] = new["unmatched_reason"].map({
+        "no_id": "Blank worker ID; no fallback match was accepted.",
+        "no_match_found": "No safe match was found for this record.",
+    }).fillna("No match reason available.")
 
     old.to_csv(OUT / "unmatched_old.csv", index=False)
     new.to_csv(OUT / "unmatched_new.csv", index=False)
