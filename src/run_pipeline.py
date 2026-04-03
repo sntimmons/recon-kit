@@ -1,6 +1,7 @@
 # src/run_pipeline.py
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
@@ -12,6 +13,85 @@ from datetime import datetime
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+FOCUS_OPTIONS = {
+    "full",
+    "identity",
+    "compensation",
+    "status",
+    "dates",
+    "job_org",
+    "corrections",
+}
+
+FOCUS_AUDIT_QS = {
+    "full": {"q0_old", "q0_new", "q1", "q2", "q3", "q4", "q5"},
+    "identity": {"q0_old", "q0_new", "q1"},
+    "compensation": {"q1", "q2"},
+    "status": {"q1", "q3"},
+    "dates": {"q1", "q5"},
+    "job_org": {"q1", "q4"},
+    "corrections": {"q1"},
+}
+
+ISSUE_TEMPLATES = [
+    {
+        "issue": "Duplicate old worker IDs",
+        "file": "audit/audit_q0_duplicate_old_worker_id.csv",
+        "severity": "Critical",
+        "why": "Duplicate old worker IDs risk bad reconciliation and payroll errors.",
+        "what": "De-duplicate old records; choose canonical row; and sync changes.",
+    },
+    {
+        "issue": "Duplicate new worker IDs",
+        "file": "audit/audit_q0_duplicate_new_worker_id.csv",
+        "severity": "Critical",
+        "why": "Duplicate new worker IDs risk wrong downstream worker mapping.",
+        "what": "De-duplicate new records and ensure one worker ID per person.",
+    },
+    {
+        "issue": "Pay mismatches",
+        "file": "audit/audit_q2_pay_mismatches.csv",
+        "severity": "High",
+        "why": "Pay mismatches indicate payroll values are out of sync and high-risk.",
+        "what": "Validate and correct salary/pay values in source and target records.",
+    },
+    {
+        "issue": "Status mismatches",
+        "file": "audit/audit_q3_status_mismatches.csv",
+        "severity": "High",
+        "why": "Status mismatches may cause improper active/inactive employer actions.",
+        "what": "Align worker status between systems for highlighted rows.",
+    },
+    {
+        "issue": "Job org mismatches",
+        "file": "audit/audit_q4_job_org_mismatches.csv",
+        "severity": "Medium",
+        "why": "Job/org mismatches impact cost accounting and reporting structures.",
+        "what": "Update job and organizational fields in authoritative record.",
+    },
+    {
+        "issue": "Hire date mismatches",
+        "file": "audit/audit_q5_hire_date_mismatches.csv",
+        "severity": "Medium",
+        "why": "Hire date mismatches affect tenure, benefits and compliance reporting.",
+        "what": "Confirm and correct hire dates from HR master data source.",
+    },
+    {
+        "issue": "Corrections manifest",
+        "file": "audit/corrections/out/corrections_manifest.csv",
+        "severity": "Medium",
+        "why": "Corrections manifest shows aggregated correction candidates.",
+        "what": "Review and approve correction actions; deploy approved corrections.",
+    },
+    {
+        "issue": "Records requiring review",
+        "file": "audit/summary/review_queue.csv",
+        "severity": "High",
+        "why": "These records require manual review before automatic acceptance.",
+        "what": "Open review queue and resolve each candidate per policy.",
+    },
+]
 
 
 # ---------------------------------------------------------------------------
@@ -130,11 +210,142 @@ def _csv_rows(path) -> int | None:
         return None
 
 
+def _write_audit_action_plan(root: Path, run_path: Path, focus: str) -> None:
+    """Create audit_action_plan.csv in run root based on the focus area."""
+    out_path = run_path / "audit_action_plan.csv"
+    rows = []
+
+    focus_issues = {
+        "full": {
+            "Duplicate old worker IDs",
+            "Duplicate new worker IDs",
+            "Pay mismatches",
+            "Status mismatches",
+            "Job org mismatches",
+            "Hire date mismatches",
+            "Corrections manifest",
+            "Records requiring review",
+        },
+        "identity": {"Duplicate old worker IDs", "Duplicate new worker IDs", "Records requiring review"},
+        "compensation": {"Pay mismatches", "Corrections manifest", "Records requiring review"},
+        "status": {"Status mismatches", "Corrections manifest", "Records requiring review"},
+        "dates": {"Hire date mismatches", "Corrections manifest", "Records requiring review"},
+        "job_org": {"Job org mismatches", "Corrections manifest", "Records requiring review"},
+        "corrections": {"Corrections manifest", "Records requiring review"},
+    }.get(focus, set())
+
+    for template in ISSUE_TEMPLATES:
+        if template["issue"] not in focus_issues:
+            continue
+
+        file_path = root / template["file"]
+        count = _csv_rows(file_path) or 0
+
+        rows.append(
+            (
+                template["issue"],
+                count,
+                template["severity"],
+                template["why"],
+                template["what"],
+                str(file_path),
+            )
+        )
+
+    if not rows:
+        # At least include note so the file is not empty.
+        rows.append(("No relevant audit actions", "N/A", "Info", "No rows for this focus area.", "", ""))
+
+    with open(str(out_path), "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Issue", "Count", "Severity", "Why it matters", "What to do", "Where to look"])
+        for row in rows:
+            writer.writerow(row)
+
+
+def _write_run_summary_with_focus(root: Path, run_path: Path, focus: str) -> None:
+    """Write run_summary.csv including focus scope and evaluated/missing info."""
+    path = run_path / "run_summary.csv"
+    summary_rows = []
+
+    summary_rows.extend([
+        ("Run Type", "Focused Run (MVP)", "Type of this run", ""),
+        ("Focus Area", focus, "Selected focus area", ""),
+        ("Scope Note", f"Focused Run: {focus}. Only this category was evaluated. Other issue types were not analyzed.", "", ""),
+    ])
+
+    matched_count = _csv_rows(root / "outputs" / "matched_raw.csv") or 0
+    review_count = _csv_rows(root / "audit" / "summary" / "review_queue.csv") or 0
+    unmatched_old_count = _csv_rows(root / "outputs" / "unmatched_old.csv") or 0
+    unmatched_new_count = _csv_rows(root / "outputs" / "unmatched_new.csv") or 0
+    conflicts_old_count = _csv_rows(root / "outputs" / "conflicts_old_worker_id_resolution.csv") or 0
+    conflicts_new_count = _csv_rows(root / "outputs" / "conflicts_new_worker_id_resolution.csv") or 0
+    skipped_missing_count = _csv_rows(root / "outputs" / "skipped_missing_entity_keys.csv") or 0
+    ambiguous_path = root / "audit" / "summary" / "ambiguous_identity_groups.csv"
+    ambiguous_count = _csv_rows(ambiguous_path) if ambiguous_path.exists() else 0
+
+    summary_rows.extend([
+        ("Clean matched records", matched_count, "Records auto-matched by the system.", "outputs/matched_raw.csv"),
+        ("Records requiring review", review_count, "Candidate pairs requiring manual review in review_queue.csv.", "audit/summary/review_queue.csv"),
+        ("Unmatched source records", unmatched_old_count, "Old-source records with no safe match.", "outputs/unmatched_old.csv"),
+        ("Unmatched target records", unmatched_new_count, "New-target records with no safe match.", "outputs/unmatched_new.csv"),
+        ("Ambiguous identity records", ambiguous_count, "Rows that could not be resolved due to ambiguous identity.", "audit/summary/ambiguous_identity_groups.csv"),
+        ("Conflicts (old side)", conflicts_old_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_old_worker_id_resolution.csv"),
+        ("Conflicts (new side)", conflicts_new_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_new_worker_id_resolution.csv"),
+        ("Skipped missing entity keys", skipped_missing_count, "Rows omitted due to missing entity keys required for safe resolution.", "outputs/skipped_missing_entity_keys.csv"),
+    ])
+
+    focus_issue_keys = FOCUS_AUDIT_QS.get(focus, set())
+
+    def issue_entry(issue, key, file):
+        if focus == "full" or key in focus_issue_keys:
+            val = _csv_rows(root / file)
+            if val is None:
+                val = 0
+            return val
+        return "Not evaluated in this run"
+
+    summary_rows.extend([
+        ("Duplicate old worker IDs", issue_entry("Duplicate old worker IDs", "q0_old", "audit/audit_q0_duplicate_old_worker_id.csv"), "Duplicate old worker IDs risk bad reconciliation and payroll errors.", "audit/audit_q0_duplicate_old_worker_id.csv"),
+        ("Duplicate new worker IDs", issue_entry("Duplicate new worker IDs", "q0_new", "audit/audit_q0_duplicate_new_worker_id.csv"), "Duplicate new worker IDs risk wrong downstream worker mapping.", "audit/audit_q0_duplicate_new_worker_id.csv"),
+        ("Pay mismatches", issue_entry("Pay mismatches", "q2", "audit/audit_q2_pay_mismatches.csv"), "Pay mismatches indicate payroll values are out of sync and high-risk.", "audit/audit_q2_pay_mismatches.csv"),
+        ("Status mismatches", issue_entry("Status mismatches", "q3", "audit/audit_q3_status_mismatches.csv"), "Status mismatches may cause improper active/inactive employer actions.", "audit/audit_q3_status_mismatches.csv"),
+        ("Job org mismatches", issue_entry("Job org mismatches", "q4", "audit/audit_q4_job_org_mismatches.csv"), "Job/org mismatches impact cost accounting and reporting structures.", "audit/audit_q4_job_org_mismatches.csv"),
+        ("Hire date mismatches", issue_entry("Hire date mismatches", "q5", "audit/audit_q5_hire_date_mismatches.csv"), "Hire date mismatches affect tenure; benefits and compliance reporting.", "audit/audit_q5_hire_date_mismatches.csv"),
+    ])
+
+    # Corrections separately
+    corrections_file = "audit/corrections/out/corrections_manifest.csv"
+    corrections_count = _csv_rows(root / corrections_file)
+    if corrections_count is None:
+        corrections_count = "Not evaluated in this run"
+    summary_rows.append(("Corrections manifest", corrections_count, "Corrections manifest shows aggregated correction candidates.", corrections_file))
+
+    summary_rows.append(("Audit actions available", "", "See audit_action_plan.csv for prioritized issues", "audit_action_plan.csv"))
+
+    with open(str(path), "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["category", "record_count", "explanation", "file_reference"])
+        for row in summary_rows:
+            writer.writerow(row)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the recon pipeline with optional focus area.")
+    parser.add_argument(
+        "--focus",
+        choices=sorted(FOCUS_OPTIONS),
+        default="full",
+        help="Scoped focus for audit layer: full, identity, compensation, status, dates, job_org, corrections",
+    )
+    return parser.parse_args()
+
+
+def main(focus: str = "full") -> None:
     from run_manager import make_run_id, ensure_run_dirs, copy_artifacts_to_run, write_run_manifest
 
     run_id    = make_run_id()
@@ -470,45 +681,16 @@ def main() -> None:
 
         artifact_result = copy_artifacts_to_run(run_id, run_paths)
 
-        # ------------------------------------------------------------------
-        # Run summary (high-level, user-friendly status of where records ended up)
-        # ------------------------------------------------------------------
+        _write_run_summary_with_focus(root, run_paths["run"], focus)
+        _write_audit_action_plan(root, run_paths["run"], focus)
+
         run_summary_path = run_paths["run"] / "run_summary.csv"
-        summary_rows = []
-
-        matched_count = _csv_rows(root / "outputs" / "matched_raw.csv") or 0
-        review_count = _csv_rows(root / "audit" / "summary" / "review_queue.csv") or 0
-        unmatched_old_count = _csv_rows(root / "outputs" / "unmatched_old.csv") or 0
-        unmatched_new_count = _csv_rows(root / "outputs" / "unmatched_new.csv") or 0
-        conflicts_old_count = _csv_rows(root / "outputs" / "conflicts_old_worker_id_resolution.csv") or 0
-        conflicts_new_count = _csv_rows(root / "outputs" / "conflicts_new_worker_id_resolution.csv") or 0
-        skipped_missing_count = _csv_rows(root / "outputs" / "skipped_missing_entity_keys.csv") or 0
-
-        ambiguous_path = root / "audit" / "summary" / "ambiguous_identity_groups.csv"
-        ambiguous_count = _csv_rows(ambiguous_path) if ambiguous_path.exists() else 0
-
-        summary_rows.extend([
-            ("Clean matched records", matched_count, "Records auto-matched by the system.", "outputs/matched_raw.csv"),
-            ("Records requiring review", review_count, "Candidate pairs requiring manual review in review_queue.csv.", "audit/summary/review_queue.csv"),
-            ("Unmatched source records", unmatched_old_count, "Old-source records with no safe match.", "outputs/unmatched_old.csv"),
-            ("Unmatched target records", unmatched_new_count, "New-target records with no safe match.", "outputs/unmatched_new.csv"),
-            ("Ambiguous identity records", ambiguous_count, "Rows that could not be resolved due to ambiguous identity.", "audit/summary/ambiguous_identity_groups.csv"),
-            ("Conflicts (old side)", conflicts_old_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_old_worker_id_resolution.csv"),
-            ("Conflicts (new side)", conflicts_new_count, "Rows blocked by one-to-one conflict while resolving matches.", "outputs/conflicts_new_worker_id_resolution.csv"),
-            ("Skipped missing entity keys", skipped_missing_count, "Rows omitted due to missing entity keys required for safe resolution.", "outputs/skipped_missing_entity_keys.csv"),
-        ])
-
-        with open(str(run_summary_path), "w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["category", "record_count", "explanation", "file_reference"])
-            for row in summary_rows:
-                writer.writerow(row)
-
         write_run_manifest(run_id, run_paths, extra={
             "artifact_copy": artifact_result,
             "pipeline_ok":   pipeline_ok,
             "gate_status":   "PASS" if gate_passed else "FAIL",
             "run_summary":   str(run_summary_path),
+            "audit_action_plan": str(run_paths["run"] / "audit_action_plan.csv"),
         })
 
         n_copied  = len(artifact_result["copied"])
@@ -536,4 +718,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    args = _parse_args()
+    main(args.focus)
