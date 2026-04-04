@@ -42,6 +42,10 @@ from confidence_policy import is_auto_approve_source
 # Human-readable labels for known match_source values
 _SOURCE_LABELS: dict[str, str] = {
     "worker_id":      "Worker ID",
+    "pk":             "primary key",
+    "recon_id":       "reconciliation ID",
+    "last4_dob":      "last 4 SSN and date of birth",
+    "dob_name":       "date of birth and name",
     "name_hire_date": "name and hire date",
     "name":           "name only",
     "name_dob":       "name and date of birth",

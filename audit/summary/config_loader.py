@@ -121,6 +121,8 @@ _DEFAULT_POLICY: dict = {
         "pay_equity_min_group_size": 3,
         "ghost_employee_check": True,
         "manager_loop_check": True,
+        "future_hire_tolerance_days": 60,
+        "part_time_benefits_eligible": False,
     },
 }
 
@@ -290,6 +292,8 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
         pay_equity_min_group_size (int)
         ghost_employee_check (bool)
         manager_loop_check (bool)
+        future_hire_tolerance_days (int)   - days; hire dates within this window are MEDIUM not CRITICAL
+        part_time_benefits_eligible (bool) - set True if company offers benefits to part-time workers
     """
     if policy is None:
         policy = load_policy()
@@ -314,6 +318,8 @@ def load_internal_audit_config(policy: dict | None = None) -> dict:
             "pay_equity_min_group_size": 3,
             "ghost_employee_check": True,
             "manager_loop_check": True,
+            "future_hire_tolerance_days": 60,
+            "part_time_benefits_eligible": False,
         },
     )
 

@@ -30,7 +30,6 @@ sys.path.insert(0, str(ROOT / "audit" / "summary"))
 
 from config_loader import load_internal_audit_config, load_policy
 
-DEFAULT_SUSPICIOUS_SALARIES = [40000, 40003, 40013, 40073, 50000, 60000, 99999, 100000]
 DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES = ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"]
 DEFAULT_SUSPICIOUS_STATUSES = ["unknown", "n/a", "na", "null", "none", "test"]
 DEFAULT_DUPLICATE_FIELDS = ["worker_id", "email", "last4_ssn"]
@@ -46,6 +45,8 @@ DEFAULT_SALARIED_SALARY_MAX = 1000000.00
 DEFAULT_ANNUALIZED_COMP_MISMATCH_PCT = 0.10
 DEFAULT_BENEFITS_TERMINATION_GRACE_DAYS = 30
 DEFAULT_BENEFITS_WAITING_PERIOD_DAYS = 30
+DEFAULT_FUTURE_HIRE_TOLERANCE_DAYS = 60    # days; hire dates within this window are MEDIUM, not CRITICAL
+DEFAULT_PART_TIME_BENEFITS_ELIGIBLE = False  # set True in policy.yaml if company offers benefits to part-time
 
 BENEFITS_ELIGIBLE_TRUE_VALUES = {"true", "yes", "y", "1", "eligible", "enrolled"}
 BENEFITS_ELIGIBLE_FALSE_VALUES = {"false", "no", "n", "0", "not eligible", "ineligible"}
@@ -125,7 +126,6 @@ ALIASES: dict[str, str] = {
     "dob": "date_of_birth",
     "department": "department",
     "dept": "department",
-    "business_unit": "department",
     "department_region": "department",
     "job_title": "job_title",
     "title": "job_title",
@@ -261,10 +261,11 @@ def _load_config() -> dict:
         policy = load_policy(ROOT / "config" / "policy.yaml")
         cfg = load_internal_audit_config(policy)
     except Exception:
-        cfg = {}
+        # Fall back to config_loader defaults - policy.yaml is the single source at runtime.
+        cfg = load_internal_audit_config({})
     return {
         "high_blank_rate_threshold": float(cfg.get("high_blank_rate_threshold", DEFAULT_HIGH_BLANK_RATE_THRESHOLD) or DEFAULT_HIGH_BLANK_RATE_THRESHOLD),
-        "suspicious_salary_values": list(cfg.get("suspicious_salary_values", DEFAULT_SUSPICIOUS_SALARIES) or DEFAULT_SUSPICIOUS_SALARIES),
+        "suspicious_salary_values": list(cfg.get("suspicious_salary_values") or []),
         "suspicious_hire_date_prefixes": list(cfg.get("suspicious_hire_date_prefixes", DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES) or DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES),
         "suspicious_status_values": [_norm_lower(v) for v in (cfg.get("suspicious_status_values", DEFAULT_SUSPICIOUS_STATUSES) or DEFAULT_SUSPICIOUS_STATUSES)],
         "duplicate_check_fields": [str(v).strip() for v in (cfg.get("duplicate_check_fields", DEFAULT_DUPLICATE_FIELDS) or DEFAULT_DUPLICATE_FIELDS) if str(v).strip()],
@@ -281,6 +282,8 @@ def _load_config() -> dict:
         "benefits_waiting_period_days": int(cfg.get("benefits_waiting_period_days", DEFAULT_BENEFITS_WAITING_PERIOD_DAYS) or DEFAULT_BENEFITS_WAITING_PERIOD_DAYS),
         "ghost_employee_check": bool(cfg.get("ghost_employee_check", True)),
         "manager_loop_check": bool(cfg.get("manager_loop_check", True)),
+        "future_hire_tolerance_days": int(cfg.get("future_hire_tolerance_days", DEFAULT_FUTURE_HIRE_TOLERANCE_DAYS) or DEFAULT_FUTURE_HIRE_TOLERANCE_DAYS),
+        "part_time_benefits_eligible": bool(cfg.get("part_time_benefits_eligible", DEFAULT_PART_TIME_BENEFITS_ELIGIBLE)),
     }
 
 
@@ -1767,7 +1770,7 @@ def _detect_benefits_waiting_period_violation(df: pd.DataFrame, config: dict) ->
     return findings
 
 
-def _detect_employment_type_eligibility_conflict(df: pd.DataFrame) -> list[dict]:
+def _detect_employment_type_eligibility_conflict(df: pd.DataFrame, config: dict) -> list[dict]:
     findings: list[dict] = []
     status_col = _status_column(df)
     worker_type_col = _pay_type_column(df)
@@ -1776,6 +1779,10 @@ def _detect_employment_type_eligibility_conflict(df: pd.DataFrame) -> list[dict]
     if not status_col or not worker_type_col or not eligible_col:
         return findings
 
+    # When part_time_benefits_eligible=True (set in policy.yaml), part-time workers
+    # with benefits are intentional - do not flag as a conflict.
+    part_time_eligible_policy = bool(config.get("part_time_benefits_eligible", DEFAULT_PART_TIME_BENEFITS_ELIGIBLE))
+
     high_mask = pd.Series(False, index=df.index)
     for idx in df.index:
         worker_type_class = _classify_employment_type_for_benefits(df.at[idx, worker_type_col])
@@ -1783,7 +1790,7 @@ def _detect_employment_type_eligibility_conflict(df: pd.DataFrame) -> list[dict]
             continue
         eligibility = _classify_benefits_eligible(df.at[idx, eligible_col])
         has_plan = _benefit_plan_present(df.at[idx, plan_col]) if plan_col else False
-        if worker_type_class == "part_time" and eligibility == "eligible":
+        if worker_type_class == "part_time" and eligibility == "eligible" and not part_time_eligible_policy:
             high_mask.at[idx] = True
         elif worker_type_class in {"contractor", "temporary"} and (eligibility == "eligible" or has_plan):
             high_mask.at[idx] = True
@@ -1906,7 +1913,7 @@ def _detect_coverage_vs_dependent_sanity(df: pd.DataFrame) -> list[dict]:
     return findings
 
 
-def _detect_invalid_date_logic(df: pd.DataFrame) -> list[dict]:
+def _detect_invalid_date_logic(df: pd.DataFrame, config: dict) -> list[dict]:
     findings: list[dict] = []
     hire_col = _first_present(df, ["hire_date", "start_date", "date_hired"])
     term_col = _first_present(df, ["termination_date", "term_date", "end_date"])
@@ -1914,26 +1921,44 @@ def _detect_invalid_date_logic(df: pd.DataFrame) -> list[dict]:
         return findings
 
     today = pd.Timestamp(datetime.now().date())
+    tolerance_days = int(config.get("future_hire_tolerance_days", DEFAULT_FUTURE_HIRE_TOLERANCE_DAYS))
+    tolerance_cutoff = today + pd.Timedelta(days=tolerance_days)
+
     hire_dates = _date_series(df, hire_col)
     term_dates = _date_series(df, term_col)
-    invalid_rows: list[dict] = []
+    critical_rows: list[dict] = []
+    near_future_rows: list[dict] = []
 
-    future_hire = hire_dates > today
-    for idx in df.index[future_hire.fillna(False)]:
-        invalid_rows.append(
+    # Hire dates beyond the tolerance window: genuine data problem → CRITICAL
+    far_future_hire = hire_dates > tolerance_cutoff
+    for idx in df.index[far_future_hire.fillna(False)]:
+        critical_rows.append(
             {
                 "row_number": int(idx) + 2,
                 "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
                 "field_name": hire_col,
                 "field_value": _safe_json_value(df.at[idx, hire_col]),
-                "why_flagged": "Hire date is in the future",
+                "why_flagged": f"Hire date is in the future (beyond {tolerance_days}-day tolerance window)",
+            }
+        )
+
+    # Hire dates within the tolerance window: likely pre-loaded new hires → MEDIUM
+    near_future_hire = (hire_dates > today) & ~(hire_dates > tolerance_cutoff)
+    for idx in df.index[near_future_hire.fillna(False)]:
+        near_future_rows.append(
+            {
+                "row_number": int(idx) + 2,
+                "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
+                "field_name": hire_col,
+                "field_value": _safe_json_value(df.at[idx, hire_col]),
+                "why_flagged": f"Hire date is in the near future (within {tolerance_days}-day tolerance window - likely a pre-loaded new hire)",
             }
         )
 
     if term_col:
         term_before_hire = term_dates < hire_dates
         for idx in df.index[term_before_hire.fillna(False)]:
-            invalid_rows.append(
+            critical_rows.append(
                 {
                     "row_number": int(idx) + 2,
                     "worker_id": _safe_json_value(df.at[idx, "worker_id"]) if "worker_id" in df.columns else "",
@@ -1943,7 +1968,7 @@ def _detect_invalid_date_logic(df: pd.DataFrame) -> list[dict]:
                 }
             )
 
-    if invalid_rows:
+    if critical_rows:
         findings.append(
             {
                 "section": "CRITICAL_CHECKS",
@@ -1951,12 +1976,31 @@ def _detect_invalid_date_logic(df: pd.DataFrame) -> list[dict]:
                 "check_name": "Invalid date logic",
                 "field": hire_col,
                 "severity": "CRITICAL",
-                "count": len(invalid_rows),
-                "pct": round(len(invalid_rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "count": len(critical_rows),
+                "pct": round(len(critical_rows) / len(df) * 100, 2) if len(df) else 0.0,
                 "description": "Hire date is in the future or termination date is before hire date.",
-                "sample_rows": invalid_rows[:8],
+                "sample_rows": critical_rows[:8],
             }
         )
+
+    if near_future_rows:
+        findings.append(
+            {
+                "section": "DATE_CHECKS",
+                "check_key": "invalid_date_logic",
+                "check_name": "Near-future hire date",
+                "field": hire_col,
+                "severity": "MEDIUM",
+                "count": len(near_future_rows),
+                "pct": round(len(near_future_rows) / len(df) * 100, 2) if len(df) else 0.0,
+                "description": (
+                    f"Hire date is in the near future (within the {tolerance_days}-day tolerance window). "
+                    "Likely pre-loaded new hires - verify before treating as data errors."
+                ),
+                "sample_rows": near_future_rows[:8],
+            }
+        )
+
     return findings
 
 
@@ -3041,12 +3085,12 @@ def run_internal_audit(
     benefits_start_before_hire_findings = _detect_benefits_start_before_hire(df_norm)
     benefits_after_termination_window_findings = _detect_benefits_after_termination_window(df_norm, config)
     benefits_waiting_period_violation_findings = _detect_benefits_waiting_period_violation(df_norm, config)
-    employment_type_eligibility_conflict_findings = _detect_employment_type_eligibility_conflict(df_norm)
+    employment_type_eligibility_conflict_findings = _detect_employment_type_eligibility_conflict(df_norm, config)
     multiple_active_benefit_plans_findings = _detect_multiple_active_benefit_plans(df_norm)
     coverage_vs_dependent_sanity_findings = _detect_coverage_vs_dependent_sanity(df_norm)
     dual_comp_findings = _detect_comp_dual_value_conflict(df_norm)
     missing_standard_hours_findings = _detect_missing_standard_hours_hourly(df_norm)
-    invalid_date_logic_findings = _detect_invalid_date_logic(df_norm)
+    invalid_date_logic_findings = _detect_invalid_date_logic(df_norm, config)
     impossible_date_findings = _detect_impossible_dates(df_norm)
     active_with_term_findings = _detect_active_with_termination_date(df_norm)
     status_mismatch_findings = _detect_status_hire_date_mismatch(df_norm)

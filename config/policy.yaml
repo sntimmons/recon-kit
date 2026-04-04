@@ -47,6 +47,17 @@ internal_audit:
   ghost_employee_check: true
   manager_loop_check: true
 
+  # Hire date tolerance: dates within this many days in the future are flagged MEDIUM
+  # (likely pre-loaded new hires), not CRITICAL. Set 0 to disable tolerance.
+  future_hire_tolerance_days: 60
+
+  # Set true if this company offers benefits to part-time workers.
+  # When false (default), part-time workers marked benefits-eligible are flagged HIGH.
+  part_time_benefits_eligible: false
+
+  # Authoritative suspicious salary list - edit here only.
+  # internal_audit.py reads this at runtime; the Python-level constants are fallbacks only.
+
 # ---------------------------------------------------------------------------
 # Confidence gating policy
 # ---------------------------------------------------------------------------
