@@ -136,7 +136,11 @@ def export_records(data, run_path, filename):
     return str(target)
 
 
-def generate_corrections(data, run_path):
+def export_correction_subset(data, run_path):
+    """
+    This function exports a subset of records for review or correction preparation.
+    It does NOT apply approval gating or validation logic.
+    """
     if not data:
         return "No data to generate corrections for."
     run_root = ensure_path(run_path)
@@ -269,6 +273,18 @@ def run_guided_action_flow(run_path, issue_type, action, filters=None):
 
     confirm = confirm_action(normalized_action, record_count, target_filename)
     if not confirm["confirmed"]:
+        # If no records, treat as success with a clear message
+        if record_count == 0:
+            return {
+                "status": "success",
+                "run_path": run_path,
+                "issue_type": issue_type,
+                "action": action,
+                "record_count": 0,
+                "output_path": None,
+                "message": "No records matched the selected filters",
+            }
+        # Otherwise, treat as cancelled or error
         return {
             "status": "error",
             "run_path": run_path,
@@ -302,7 +318,7 @@ def run_guided_action_flow(run_path, issue_type, action, filters=None):
 
     elif normalized_action == "generate_corrections":
         try:
-            output_path = generate_corrections(data, run_path)
+            output_path = export_correction_subset(data, run_path)
             message = f"Generated corrections for {record_count} record(s) at {output_path}."
         except Exception as exc:  # noqa: BLE001
             return {

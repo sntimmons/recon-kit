@@ -56,7 +56,6 @@ _rk_work = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.enviro
 DB_PATH  = (_rk_work / "audit" / "audit.db")            if _rk_work else (ROOT / "audit" / "audit.db")
 OUT_DIR  = (_rk_work / "audit" / "corrections" / "out") if _rk_work else (_HERE / "out")
 
-TODAY = date.today().isoformat()    # YYYY-MM-DD, determined once at import time
 
 # ---------------------------------------------------------------------------
 # Required columns for corrections to be possible
