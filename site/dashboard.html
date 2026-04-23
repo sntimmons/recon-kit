@@ -1,3 +1,21 @@
+// ---- API Key Support ----
+function getApiKey() {
+  // Option 1: Prompt user once per session (simple, for demo)
+  // return sessionStorage.getItem('API_KEY') || prompt('Enter API Key:');
+  // Option 2: Read from a hidden input or config (recommended for real use)
+  return sessionStorage.getItem('API_KEY') || '';
+}
+
+function setApiKey(key) {
+  sessionStorage.setItem('API_KEY', key);
+}
+
+function apiFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers['X-API-KEY'] = getApiKey();
+  return fetch(url, opts);
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -808,6 +826,15 @@
         placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
         autocomplete="current-password"
         autofocus
+        style="margin-bottom:8px;"
+      >
+      <input
+        class="lock-input"
+        type="text"
+        id="api-key-input"
+        placeholder="API Key (if required)"
+        autocomplete="off"
+        style="margin-bottom:8px;"
       >
       <div class="lock-error" id="lock-error">Incorrect password. Try again.</div>
       <button type="submit" class="btn btn--primary" style="width: 100%;">Unlock</button>
@@ -1196,11 +1223,18 @@
   window.unlock = function (e) {
     e.preventDefault();
     var inp = document.getElementById('lock-password');
+    var apiInp = document.getElementById('api-key-input');
     var err = document.getElementById('lock-error');
     inp.classList.remove('lock-input--error');
     err.style.display = 'none';
     if (inp.value === ACCESS_PASSWORD) {
       sessionStorage.setItem(SESSION_KEY, '1');
+      // Save API key if entered
+      if (apiInp.value && apiInp.value.trim().length > 0) {
+        sessionStorage.setItem('API_KEY', apiInp.value.trim());
+      } else {
+        sessionStorage.removeItem('API_KEY');
+      }
       showInterface();
     } else {
       inp.classList.add('lock-input--error');
@@ -1228,7 +1262,7 @@
 
   // ---- Server connection check ----
   function checkServerConnection() {
-    fetch(apiUrl('/api/ping'), { signal: AbortSignal.timeout(3000) })
+    apiFetch(apiUrl('/api/ping'), { signal: AbortSignal.timeout(3000) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.ok) setConnected(true);
@@ -1372,7 +1406,7 @@
     document.getElementById('progress-spinner').style.display = 'block';
     document.getElementById('step-list').innerHTML = '';
 
-    fetch(endpoint, { method: 'POST', body: formData })
+    apiFetch(endpoint, { method: 'POST', body: formData })
       .then(function (r) {
         if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Server error'); });
         return r.json();
@@ -1417,7 +1451,7 @@
   }
 
   function pollStatus(runId) {
-    fetch(apiUrl('/api/status/' + runId))
+    apiFetch(apiUrl('/api/status/' + runId))
       .then(function (r) { return r.json(); })
       .then(function (job) {
         updateProgress(job);
@@ -1841,7 +1875,28 @@
 
       var link = document.createElement('a');
       link.className = 'dl-btn';
-      link.href = apiUrl('/api/download/' + currentRunId + '/' + encodeURIComponent(f.name));
+      link.href = apiUrl('/api/download/' + currentRunId + '/' + encodeURIComponent(f.name)); // Download links must be handled via fetch if auth needed
+      link.onclick = function(e) {
+        e.preventDefault();
+        apiFetch(link.href)
+          .then(r => {
+            if (!r.ok) throw new Error('Download failed');
+            return r.blob();
+          })
+          .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = f.name;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              window.URL.revokeObjectURL(url);
+              a.remove();
+            }, 100);
+          })
+          .catch(() => alert('Download failed. Check your API key.'));
+      };
       link.textContent = 'Download';
       link.setAttribute('download', f.name);
 

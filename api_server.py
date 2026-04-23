@@ -31,7 +31,18 @@ import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, abort
+from flask import Flask, jsonify, request, send_from_directory, abort, make_response
+import functools
+def require_api_key(view_func):
+    """Decorator to require X-API-KEY header matching env secret, or allow if unset."""
+    @functools.wraps(view_func)
+    def wrapped(*args, **kwargs):
+        api_key = request.headers.get("X-API-KEY")
+        secret = os.environ.get("RK_API_SECRET")
+        if secret and api_key != secret:
+            return make_response(jsonify({"error": "Unauthorized"}), 401)
+        return view_func(*args, **kwargs)
+    return wrapped
 from werkzeug.exceptions import HTTPException
 
 # ---------------------------------------------------------------------------
@@ -1580,6 +1591,7 @@ def _safe_ext(filename: str) -> str:
 
 
 @app.post("/api/run/recon")
+@require_api_key
 def api_run_recon():
     run_dir: Path | None = None
     try:
@@ -1689,6 +1701,7 @@ def api_run_recon():
 
 
 @app.post("/api/run/audit")
+@require_api_key
 def api_run_audit():
     run_dir: Path | None = None
     try:
@@ -1747,6 +1760,7 @@ def api_run_audit():
 
 
 @app.get("/api/status/<run_id>")
+@require_api_key
 def api_status(run_id: str):
     try:
         job = _get_job(run_id)
@@ -1760,6 +1774,7 @@ def api_status(run_id: str):
 
 
 @app.get("/api/log/<run_id>")
+@require_api_key
 def api_log(run_id: str):
     try:
         job = _get_job(run_id)
@@ -1772,6 +1787,7 @@ def api_log(run_id: str):
 
 
 @app.get("/api/download/<run_id>/<path:filename>")
+@require_api_key
 def api_download(run_id: str, filename: str):
     try:
         run_dir = RUNS_DIR / run_id
@@ -1817,6 +1833,7 @@ def api_download(run_id: str, filename: str):
 
 
 @app.get("/api/ping")
+@require_api_key
 def api_ping():
     try:
         return jsonify({"ok": True, "server": "recon-kit-api"})
