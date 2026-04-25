@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Tuple
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -343,7 +344,7 @@ def main() -> None:
             "match_source",  "confidence",
         ])
 
-    matched_raw.to_csv(OUT / "matched_raw.csv", index=False)
+    safe_to_csv(matched_raw, OUT / "matched_raw.csv")
 
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
@@ -361,8 +362,8 @@ def main() -> None:
         new_no_id["unmatched_reason"] = "no_id"
         new = pd.concat([new, new_no_id], ignore_index=True)
 
-    old.to_csv(OUT / "unmatched_old.csv", index=False)
-    new.to_csv(OUT / "unmatched_new.csv", index=False)
+    safe_to_csv(old, OUT / "unmatched_old.csv")
+    safe_to_csv(new, OUT / "unmatched_new.csv")
 
     report["matched_total"] = int(len(matched_raw))
     report["unmatched_old"] = int(len(old))

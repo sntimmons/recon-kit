@@ -41,6 +41,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 ROOT         = Path(__file__).resolve().parents[1]
 _SUMMARY_DIR = ROOT / "audit" / "summary"
 sys.path.insert(0, str(_SUMMARY_DIR))
@@ -361,7 +363,7 @@ def main(argv: list[str] | None = None) -> None:
     def _write_csv(rows: list[dict], cols: list[str], name: str) -> Path:
         path = out_dir / name
         df = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
-        df.to_csv(str(path), index=False)
+        safe_to_csv(df, str(path))
         print(f"  wrote: {name} ({len(df):,} rows)")
         return path
 

@@ -49,6 +49,9 @@ from sanity_checks import detect_wave_dates
 
 import os as _os_rk
 ROOT    = _HERE.parents[1]          # repo root
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
 
 # Per-run isolation: when RK_WORK_DIR is set by api_server.py, use the
 # per-run DB.  The --db / --out-dir CLI args take precedence over this.
@@ -238,41 +241,13 @@ def _build_manifest_row(
 
 
 # ---------------------------------------------------------------------------
-# CSV injection sanitization
-# ---------------------------------------------------------------------------
-
-# Characters that cause spreadsheet applications (Excel, Google Sheets) to
-# interpret a cell as a formula when they appear as the first character.
-_FORMULA_CHARS = frozenset("=+-@\t")
-
-
-def _safe_str(v) -> str:
-    """Prefix formula-starting values with a single quote to prevent CSV injection.
-
-    Excel and Google Sheets treat cells whose first character is =, +, -, @
-    as formulas.  Prepending ' (apostrophe) forces the application to treat
-    the cell as plain text.
-    """
-    if v is None:
-        return ""
-    s = str(v)
-    if s and s[0] in _FORMULA_CHARS:
-        return "'" + s
-    return s
-
-
-# ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------
 
 def _write(rows: list[dict], cols: list[str], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows, columns=cols) if rows else pd.DataFrame(columns=cols)
-    # Sanitize all string-typed columns to prevent formula injection when
-    # the output CSV is opened in Excel or Google Sheets.
-    for col in df.select_dtypes(include="object").columns:
-        df[col] = df[col].apply(lambda v: _safe_str(v) if pd.notna(v) else v)
-    df.to_csv(str(path), index=False)
+    safe_to_csv(df, str(path))
     print(f"  wrote: {path.relative_to(ROOT)}  ({len(df):,} rows)")
 
 

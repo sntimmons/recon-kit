@@ -28,7 +28,9 @@ import pandas as pd
 
 _HERE        = Path(__file__).resolve().parent    # audit/exports/
 _SUMMARY_DIR = _HERE.parent / "summary"           # audit/summary/
+_ROOT        = _HERE.parents[1]                   # repo root
 sys.path.insert(0, str(_SUMMARY_DIR))
+sys.path.insert(0, str(_ROOT / "src"))
 
 from gating import (
     classify_all,
@@ -41,6 +43,7 @@ from gating import (
 from config_loader import load_policy, load_extra_fields, load_pii_config, load_audit_config
 from explanation import generate_explanation
 from sanity_checks import detect_wave_dates
+from csv_safe import safe_to_csv
 
 ROOT    = _HERE.parents[1]
 _rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
@@ -364,7 +367,7 @@ def main(argv: list[str] | None = None) -> None:
         if xlookup_rows
         else pd.DataFrame(columns=_XLOOKUP_COLS)
     )
-    xl_df.to_csv(str(out_dir / "xlookup_keys.csv"), index=False)
+    safe_to_csv(xl_df, str(out_dir / "xlookup_keys.csv"))
     print(f"\n  wrote: xlookup_keys.csv   ({len(xl_df):,} rows)")
 
     wide_df = (
@@ -372,7 +375,7 @@ def main(argv: list[str] | None = None) -> None:
         if wide_rows
         else pd.DataFrame(columns=final_wide_cols)
     )
-    wide_df.to_csv(str(out_dir / "wide_compare.csv"), index=False)
+    safe_to_csv(wide_df, str(out_dir / "wide_compare.csv"))
     print(f"  wrote: wide_compare.csv   ({len(wide_df):,} rows)")
     if extra_cols:
         print(f"  extra columns appended   : {extra_cols}")

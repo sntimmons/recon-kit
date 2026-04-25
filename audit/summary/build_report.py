@@ -11,6 +11,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
+
 DB_PATH = ROOT / "audit" / "audit.db"
 SUMMARY_DIR = ROOT / "audit" / "summary"
 CHARTS_DIR = SUMMARY_DIR / "charts"
@@ -621,7 +625,7 @@ def main() -> None:
     print("[build_report] building review queue ...")
     queue = _build_review_queue(df)
     queue_path = SUMMARY_DIR / "review_queue.csv"
-    queue.to_csv(str(queue_path), index=False)
+    safe_to_csv(queue, str(queue_path))
     print(f"  wrote: {queue_path.relative_to(ROOT)}  ({len(queue):,} rows)")
 
     print("[build_report] writing markdown report ...")

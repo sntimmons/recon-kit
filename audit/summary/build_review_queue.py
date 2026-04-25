@@ -41,11 +41,13 @@ import pandas as pd
 # Allow sibling imports regardless of working directory.
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
+sys.path.insert(0, str(_HERE.parents[1] / "src"))
 
 import gating
 from confidence_policy import is_auto_approve_source
 from sanity_checks import detect_wave_dates
 from explanation import generate_explanation
+from csv_safe import safe_to_csv
 
 import os as _os_rk
 ROOT    = _HERE.parents[1]
@@ -223,7 +225,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if not out_rows:
         print("[build_review_queue] no mismatches found - empty review queue.")
-        pd.DataFrame(columns=[
+        empty_queue = pd.DataFrame(columns=[
             "pair_id", "match_source", "old_worker_id", "new_worker_id",
             "old_full_name_norm", "fix_types", "confidence", "action", "reason",
             "priority_score", "priority_labels", "summary", "match_explanation",
@@ -234,7 +236,8 @@ def main(argv: list[str] | None = None) -> None:
             "old_position", "new_position",
             "old_district", "new_district",
             "old_location_state", "new_location_state",
-        ]).to_csv(str(out_csv), index=False)
+        ])
+        safe_to_csv(empty_queue, str(out_csv))
         try:
             print(f"  wrote: {out_csv.relative_to(ROOT)}  (0 rows)")
         except ValueError:
@@ -251,7 +254,7 @@ def main(argv: list[str] | None = None) -> None:
     ).drop(columns=["_abs_sal"])
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    queue.to_csv(str(out_csv), index=False)
+    safe_to_csv(queue, str(out_csv))
 
     # Print action summary by fix_type
     n_approve = int((queue["action"] == "APPROVE").sum())

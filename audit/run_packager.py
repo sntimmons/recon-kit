@@ -7,11 +7,15 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 AUDIT_DIR = Path(__file__).parent
 PROJECT_ROOT = AUDIT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from csv_safe import sanitize_row
 RUNS_DIR = AUDIT_DIR / "audit_runs"
 ARCHIVE_DIR = AUDIT_DIR / "audit_archive"
 
@@ -242,7 +246,7 @@ def package_run(
         writer = csv.writer(f)
         writer.writerow(sq_headers)
         for row in salary_quality:
-            writer.writerow([row[h] for h in sq_headers])
+            writer.writerow(sanitize_row([row[h] for h in sq_headers]))
 
     # --- inputs_manifest.json ---
     source_files = []

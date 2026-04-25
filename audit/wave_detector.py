@@ -4,7 +4,13 @@ from pathlib import Path
 import pandas as pd
 
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
+
 AUDIT = ROOT / "audit"
 OUTPUTS = ROOT / "outputs"
 
@@ -85,7 +91,7 @@ def main() -> None:
 
     # Write summary
     OUT_SUMMARY.parent.mkdir(parents=True, exist_ok=True)
-    summary.to_csv(OUT_SUMMARY, index=False)
+    safe_to_csv(summary, OUT_SUMMARY)
 
     # Drilldown rows: attach total counts and rate to each mismatch row
     q5_rows = q5.merge(
@@ -103,7 +109,7 @@ def main() -> None:
             .reset_index(name="cnt")
             .sort_values("cnt", ascending=False)
         )
-        new_date_counts.to_csv(OUT_TOP_NEW_DATES, index=False)
+        safe_to_csv(new_date_counts, OUT_TOP_NEW_DATES)
 
         # Add wave_rank bucket
         # Top dates get labeled as wave candidates
@@ -113,7 +119,7 @@ def main() -> None:
     else:
         q5_rows["wave_candidate"] = "no"
 
-    q5_rows.to_csv(OUT_ROWS, index=False)
+    safe_to_csv(q5_rows, OUT_ROWS)
 
     print("[wave-detector] wrote:", OUT_SUMMARY)
     print("[wave-detector] wrote:", OUT_ROWS)

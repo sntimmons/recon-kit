@@ -29,7 +29,9 @@ import pandas as pd
 
 _HERE        = Path(__file__).resolve().parent    # audit/ui/
 _SUMMARY_DIR = _HERE.parent / "summary"           # audit/summary/
+_ROOT        = _HERE.parents[1]                   # repo root
 sys.path.insert(0, str(_SUMMARY_DIR))
+sys.path.insert(0, str(_ROOT / "src"))
 
 from gating import (                              # noqa: E402
     classify_all,
@@ -42,6 +44,7 @@ from gating import (                              # noqa: E402
 )
 from confidence_policy import is_auto_approve_source  # noqa: E402
 from config_loader import load_policy, load_extra_fields, load_pii_config, load_audit_config  # noqa: E402
+from csv_safe import safe_to_csv  # noqa: E402
 
 ROOT    = _HERE.parents[1]
 _rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
@@ -308,7 +311,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_df.to_csv(str(out_path), index=False)
+    safe_to_csv(out_df, str(out_path))
 
     n_approve  = int((out_df["action"] == "APPROVE").sum())
     n_review   = int((out_df["action"] == "REVIEW").sum())

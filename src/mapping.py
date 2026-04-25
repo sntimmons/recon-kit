@@ -9,6 +9,8 @@ from typing import Dict, Any
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 # ---------------------------------------------------------------------------
 # Column alias resolution
 # ---------------------------------------------------------------------------
@@ -725,7 +727,7 @@ def map_file(
         else:
             df[field] = pd.NA
 
-    df.to_csv(output_path, index=False)
+    safe_to_csv(df, output_path)
 
     report_path = output_path.parent / f"mapping_report_{output_path.stem}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")

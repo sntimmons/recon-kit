@@ -27,8 +27,10 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "audit" / "summary"))
+sys.path.insert(0, str(ROOT / "src"))
 
 from config_loader import load_internal_audit_config, load_policy
+from csv_safe import safe_to_csv, sanitize_dict_row
 
 DEFAULT_SUSPICIOUS_SALARIES = [40000, 40003, 40013, 40073, 50000, 60000, 99999, 100000]
 DEFAULT_SUSPICIOUS_HIRE_DATE_PREFIXES = ["2026-02", "2026-03", "1900-", "1970-01-01", "2000-01-01"]
@@ -2978,7 +2980,8 @@ def _write_csv(path: Path, rows: list[dict], fieldnames: list[str] | None = None
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames or list(rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow(sanitize_dict_row(row))
 
 
 def run_internal_audit(
@@ -3181,7 +3184,7 @@ def run_internal_audit(
 
     if not dup_df.empty:
         dup_csv = out_dir / "internal_audit_duplicates.csv"
-        dup_df.to_csv(dup_csv, index=False)
+        safe_to_csv(dup_df, dup_csv)
         print(f"[internal_audit] wrote: {dup_csv} ({len(dup_df)} rows)")
 
     suspicious_csv = out_dir / "internal_audit_suspicious.csv"

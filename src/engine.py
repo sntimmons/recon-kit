@@ -7,6 +7,7 @@ from matcher import match_records
 from policy import MatchPolicy
 from differ import diff_auto_matches
 from history import utc_now_iso, file_fingerprint, append_run_history
+from csv_safe import safe_to_csv
 
 DATA_DIR = "data"
 OUT_DIR = "outputs"
@@ -51,7 +52,7 @@ def _safe_read_csv(path: str) -> pd.DataFrame:
 
 def _write_df(path: str, df: pd.DataFrame) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    df.to_csv(path, index=False)
+    safe_to_csv(df, path)
 
 def _ensure_confirmation_file(needs_confirmation_df: pd.DataFrame) -> None:
     """

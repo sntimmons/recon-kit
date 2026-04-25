@@ -4,6 +4,8 @@ import os
 import difflib
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 
 OLD_PATH = "outputs/mapped_unmatched_old.csv"
 NEW_PATH = "outputs/mapped_unmatched_new.csv"
@@ -139,7 +141,7 @@ def main() -> None:
     out = out.sort_values(["conf_rank", "score", "name_similarity", "last4_ssn"], ascending=[True, False, False, True]).drop(columns=["conf_rank"])
 
     os.makedirs(os.path.dirname(OUT_PATH) or ".", exist_ok=True)
-    out.to_csv(OUT_PATH, index=False)
+    safe_to_csv(out, OUT_PATH)
 
     print("REVIEW PAIRS REPORT")
     print("-------------------")

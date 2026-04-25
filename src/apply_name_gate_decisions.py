@@ -35,6 +35,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 # -------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------
@@ -64,7 +66,7 @@ def _check_no_dup(combined: pd.DataFrame, col: str, out_dir: Path) -> None:
     if dupes.empty:
         return
     evidence_path = out_dir / f"_dup_integrity_{col}.csv"
-    dupes.to_csv(evidence_path, index=False)
+    safe_to_csv(dupes, evidence_path)
     raise ValueError(
         f"Integrity failure: duplicate '{col}' values after append "
         f"({len(dupes)} rows). Evidence written to: {evidence_path}"
@@ -169,7 +171,7 @@ def apply_decisions(
     # ------------------------------------------------------------------
     # Write
     # ------------------------------------------------------------------
-    combined.to_csv(out_path, index=False)
+    safe_to_csv(combined, out_path)
     print(f"[apply_decisions] final matched_raw   : {len(combined)} rows")
     print(f"[apply_decisions] written to          : {out_path}")
 

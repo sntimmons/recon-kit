@@ -38,8 +38,10 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
 from audit import internal_audit as ia
+from csv_safe import safe_to_csv
 
 
 # ---------------------------------------------------------------------------
@@ -561,13 +563,13 @@ def _write_csv(df: pd.DataFrame, path: Path) -> int:
     """Write dataframe to CSV, return row count (excluding header)."""
     if df.empty:
         return 0
-    df.to_csv(path, index=False, encoding="utf-8")
+    safe_to_csv(df, path, encoding="utf-8")
     return len(df)
 
 
 def _write_required_csv(df: pd.DataFrame, path: Path) -> int:
     """Always write required CSV outputs, even if only the header is present."""
-    df.to_csv(path, index=False, encoding="utf-8")
+    safe_to_csv(df, path, encoding="utf-8")
     return len(df)
 
 

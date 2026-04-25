@@ -5,6 +5,8 @@ import os
 import difflib
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 
 OLD_PATH = "outputs/unmatched_old.csv"
 NEW_PATH = "outputs/unmatched_new.csv"
@@ -158,7 +160,7 @@ def main() -> None:
     ).drop(columns=["confidence_rank"])
 
     os.makedirs(os.path.dirname(OUT_PATH) or ".", exist_ok=True)
-    review.to_csv(OUT_PATH, index=False)
+    safe_to_csv(review, OUT_PATH)
 
     print("NEEDS REVIEW REPORT")
     print("-------------------")

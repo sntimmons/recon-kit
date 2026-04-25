@@ -34,6 +34,9 @@ import pandas as pd
 
 _HERE = Path(__file__).resolve().parent   # audit/summary/
 ROOT  = _HERE.parents[1]                  # repo root
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
 
 sys.path.insert(0, str(_HERE))
 from config_loader import load_policy      # noqa: E402
@@ -173,17 +176,18 @@ def main(argv: list[str] | None = None) -> None:
 
     # Write summary CSV
     defaults_path = out_dir / "root_cause_hire_date_defaults.csv"
-    pd.DataFrame(summary_rows, columns=[
+    safe_to_csv(pd.DataFrame(summary_rows, columns=[
         "pattern", "total_rows", "pct_of_all_pairs", "match_source_breakdown_json",
-    ]).to_csv(str(defaults_path), index=False)
+    ]), str(defaults_path))
 
     # Write samples CSV
     samples_path = out_dir / "root_cause_hire_date_samples.csv"
-    (
+    safe_to_csv(
         pd.DataFrame(sample_rows, columns=_SAMPLE_COLS)
         if sample_rows
-        else pd.DataFrame(columns=_SAMPLE_COLS)
-    ).to_csv(str(samples_path), index=False)
+        else pd.DataFrame(columns=_SAMPLE_COLS),
+        str(samples_path),
+    )
 
     # Console summary
     W = 60

@@ -8,6 +8,8 @@ from typing import Dict, List, Optional, Set
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 # Normalize confidence values before gate check.
 # "med" is treated as equivalent to "medium".
 _CONF_NORM: dict[str, str] = {
@@ -222,10 +224,10 @@ def finalize(
     ambiguous_out_cols += [c for c in ambiguous.columns if c not in ambiguous_out_cols]
 
     os.makedirs(os.path.dirname(out_ambiguous_csv) or ".", exist_ok=True)
-    ambiguous[ambiguous_out_cols].to_csv(out_ambiguous_csv, index=False)
+    safe_to_csv(ambiguous[ambiguous_out_cols], out_ambiguous_csv)
 
     os.makedirs(os.path.dirname(out_matches_csv) or ".", exist_ok=True)
-    clean_matches.to_csv(out_matches_csv, index=False)
+    safe_to_csv(clean_matches, out_matches_csv)
 
     report = {
         "review_csv": review_csv,
