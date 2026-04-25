@@ -40,8 +40,9 @@ def _pick_finalized_csv() -> Optional[Path]:
 
 
 # PII columns to strip from matched_pairs_raw when loading into SQLite.
-# These columns are used during matching but serve no audit purpose in the DB
-# and should not propagate to any downstream output file.
+# matcher.py already omits these when writing matched_raw.csv (confidence is
+# computed before the file is written), so this is a defensive fallback for
+# any pre-existing CSVs that still contain the columns.
 _STRIP_COLS: frozenset[str] = frozenset({"old_last4_ssn", "new_last4_ssn"})
 
 

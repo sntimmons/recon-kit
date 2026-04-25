@@ -314,7 +314,7 @@ def main() -> None:
             base[f"new_{_field}"] = matched.get(f"{_field}_new", pd.NA)
 
         # Compute confidence score for every matched pair.
-        # Uses signals available before PII stripping (last4_ssn still present here).
+        # last4_ssn is still present in base here and used by compute_confidence.
         base["confidence"] = [
             compute_confidence(r) for r in base.to_dict(orient="records")
         ]
@@ -333,7 +333,6 @@ def main() -> None:
             "name_change_detected",
             "old_dob",       "new_dob",
             "old_hire_date", "new_hire_date",
-            "old_last4_ssn", "new_last4_ssn",
             "old_salary",    "new_salary",
             "old_payrate",   "new_payrate",
             "old_position",  "new_position",
@@ -344,7 +343,13 @@ def main() -> None:
             "match_source",  "confidence",
         ])
 
-    safe_to_csv(matched_raw, OUT / "matched_raw.csv")
+    # Strip SSN last4 before writing, then sanitize CSV output.
+    safe_to_csv(
+        matched_raw.drop(
+            columns=["old_last4_ssn", "new_last4_ssn"], errors="ignore"
+        ),
+        OUT / "matched_raw.csv"
+    )
 
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
