@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
+from src.column_safe import sanitize_column_name
 
 from csv_safe import safe_to_csv
 
@@ -630,6 +632,7 @@ def map_file(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     ext = input_path.suffix.lower()
+
     if ext in (".xlsx", ".xls", ".xlsm", ".xlsb"):
         print(f"[map_file] reading Excel file: {input_path.name}  sheet={sheet_name!r}")
         df = pd.read_excel(input_path, sheet_name=sheet_name, dtype=str)
@@ -637,10 +640,53 @@ def map_file(
         df = pd.read_csv(input_path)
     df.columns = [c.strip() for c in df.columns]
 
-    # Resolve non-standard column names (e.g. "Associate_ID" → "worker_id",
-    # "Date_of_Birth" → "dob", "Annual_Salary" → "salary", etc.) before any
-    # downstream normalization so that the rest of the function always sees
-    # the expected standard names.
+    # --- S1-4: Column/header sanitization ---
+    original_columns = list(df.columns)
+    sanitized_columns = []
+    col_count = {}
+    orig_to_sanitized = {}
+    for col in original_columns:
+        sanitized = sanitize_column_name(col)
+        # Handle collisions
+        base = sanitized
+        idx = 1
+        while sanitized in sanitized_columns:
+            sanitized = f"{base}_{idx}"
+            idx += 1
+        sanitized_columns.append(sanitized)
+        orig_to_sanitized[col] = sanitized
+    df.columns = sanitized_columns
+
+
+    # Write column mapping to the run directory, using the same isolation
+    # pattern as matcher.py: RK_WORK_DIR in API mode, output_path.parent in CLI.
+    _rk_work = Path(os.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in os.environ else None
+    mapping_out_dir = _rk_work if _rk_work else output_path.parent
+    mapping_out_dir.mkdir(parents=True, exist_ok=True)
+    mapping_path = mapping_out_dir / "column_mapping.json"
+    # Merge with any prior mapping from the same run (map_file is called once
+    # per input file, so old + new both accumulate into one JSON).
+    existing_map: dict[str, str] = {}
+    if mapping_path.exists():
+        try:
+            existing_map = json.loads(
+                mapping_path.read_text(encoding="utf-8")
+            ).get("original_to_sanitized", {})
+        except Exception:
+            pass
+    merged_map = {**existing_map, **orig_to_sanitized}
+    mapping_path.write_text(
+        json.dumps({"original_to_sanitized": merged_map}, indent=2),
+        encoding="utf-8",
+    )
+
+    # Guard: ensure all columns are sanitized
+    for col in df.columns:
+        if not re.fullmatch(r"col_[a-z0-9_]{1,64}|[a-z_][a-z0-9_]{0,63}", col):
+            raise RuntimeError(f"Unsafe column name after sanitization: {col}")
+
+
+    # Alias system: run alias mapping against sanitized names
     df = _apply_aliases(df)
 
     expected = [
