@@ -23,6 +23,11 @@ from pathlib import Path
 
 import pandas as pd
 
+_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "src"))
+
+from csv_safe import safe_to_csv
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -103,7 +108,7 @@ def split_review_queue(rq_path: Path, out_dir: Path) -> dict:
 
         fname  = f"review_queue_{slug}.csv"
         fpath  = out_dir / fname
-        subset.to_csv(fpath, index=False)
+        safe_to_csv(subset, fpath)
         dept_files.append(fname)
 
         max_prio = None
@@ -123,7 +128,7 @@ def split_review_queue(rq_path: Path, out_dir: Path) -> dict:
         "record_count", ascending=False
     )
     summary_path = out_dir / "review_queue_summary.csv"
-    summary_df.to_csv(summary_path, index=False)
+    safe_to_csv(summary_df, summary_path)
 
     print(
         f"[split_rq] {len(rq):,} rows split across {n_depts} departments. "

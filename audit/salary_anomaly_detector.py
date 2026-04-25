@@ -5,7 +5,13 @@ import pandas as pd
 import numpy as np
 
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
+
 AUDIT = ROOT / "audit"
 OUTPUTS = ROOT / "outputs"
 
@@ -71,7 +77,7 @@ def main():
     df_anom = df_anom.sort_values("salary_change_pct", ascending=False)
 
     AUDIT.mkdir(parents=True, exist_ok=True)
-    df_anom.to_csv(OUT_ROWS, index=False)
+    safe_to_csv(df_anom, OUT_ROWS)
 
     # ----------------------------
     # Summary counts
@@ -85,7 +91,7 @@ def main():
 
     summary["percent_of_total"] = summary["count"] / len(df_valid)
 
-    summary.to_csv(OUT_SUMMARY, index=False)
+    safe_to_csv(summary, OUT_SUMMARY)
 
     # ----------------------------
     # District clustering
@@ -97,7 +103,7 @@ def main():
             .reset_index(name="anomaly_count")
             .sort_values("anomaly_count", ascending=False)
         )
-        district.to_csv(OUT_DISTRICT, index=False)
+        safe_to_csv(district, OUT_DISTRICT)
 
     # ----------------------------
     # Position clustering
@@ -109,7 +115,7 @@ def main():
             .reset_index(name="anomaly_count")
             .sort_values("anomaly_count", ascending=False)
         )
-        position.to_csv(OUT_POSITION, index=False)
+        safe_to_csv(position, OUT_POSITION)
 
     print("[salary-detector] wrote:", OUT_ROWS)
     print("[salary-detector] wrote:", OUT_SUMMARY)

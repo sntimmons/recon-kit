@@ -37,6 +37,11 @@ from pathlib import Path
 
 import pandas as pd
 
+_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "src"))
+
+from csv_safe import safe_to_csv
+
 try:
     from rapidfuzz import fuzz as _rfuzz
     _HAS_RAPIDFUZZ = True
@@ -272,7 +277,7 @@ def annotate_wide(
     wide["action"]           = new_actions
     wide["reason"]           = new_reasons
 
-    wide.to_csv(out_path, index=False)
+    safe_to_csv(wide, out_path)
 
     n_total = len(wide)
     print(

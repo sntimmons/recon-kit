@@ -44,6 +44,7 @@ def require_api_key(view_func):
         return view_func(*args, **kwargs)
     return wrapped
 from werkzeug.exceptions import HTTPException
+from src.csv_safe import sanitize_dict_row
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -683,7 +684,7 @@ def _write_csv_rows(path: Path, fieldnames: list[str], rows: list[dict[str, str]
         writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         for row in rows:
-            writer.writerow({name: row.get(name, "") for name in fieldnames})
+            writer.writerow(sanitize_dict_row({name: row.get(name, "") for name in fieldnames}))
 
 
 def _copy_file(src: Path, dest: Path) -> None:

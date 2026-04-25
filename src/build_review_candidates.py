@@ -6,6 +6,8 @@ import re
 
 import pandas as pd
 
+from csv_safe import safe_to_csv
+
 _WDX_RE = re.compile(r'^wdX\d+$')
 
 
@@ -208,7 +210,7 @@ def build_review_candidates(
     all_pairs = pd.concat([pairs_a, pairs_b], ignore_index=True)
 
     os.makedirs(os.path.dirname(out_csv) or ".", exist_ok=True)
-    all_pairs.to_csv(out_csv, index=False)
+    safe_to_csv(all_pairs, out_csv)
 
     print(f"Tier A (name+dob) after resolution    : {len(pairs_a)} pairs")
     print(f"Tier B (name+birth_year+lname3)       : {len(pairs_b)} pairs")

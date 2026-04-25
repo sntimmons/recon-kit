@@ -3,6 +3,8 @@ import csv
 import hashlib
 from datetime import datetime, timezone
 
+from csv_safe import sanitize_dict_row
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -23,4 +25,4 @@ def append_run_history(out_dir: str, row: dict) -> None:
         w = csv.DictWriter(f, fieldnames=list(row.keys()))
         if write_header:
             w.writeheader()
-        w.writerow(row)
+        w.writerow(sanitize_dict_row(row))

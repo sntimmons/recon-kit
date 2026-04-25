@@ -14,6 +14,9 @@ from load_sqlite import DB_PATH, _pick_finalized_csv
 
 import os as _os_rk
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import safe_to_csv
 
 # Per-run isolation: write audit CSV outputs into the per-run audit/ subdir.
 _rk_work  = Path(_os_rk.environ["RK_WORK_DIR"]) if "RK_WORK_DIR" in _os_rk.environ else None
@@ -56,7 +59,7 @@ def _check_finalized_schema(path: Path) -> tuple[bool, set[str]]:
 
 def _write(df: pd.DataFrame, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_path, index=False)
+    safe_to_csv(df, out_path)
     print(f"  wrote: {out_path}")
 
 

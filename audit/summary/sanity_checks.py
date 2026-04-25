@@ -32,6 +32,10 @@ from pathlib import Path
 
 _HERE   = Path(__file__).resolve().parent    # audit/summary/
 ROOT    = _HERE.parents[1]                   # repo root
+sys.path.insert(0, str(ROOT / "src"))
+
+from csv_safe import sanitize_row, sanitize_dict_row
+
 DB_PATH = ROOT / "audit" / "audit.db"
 OUT_DIR = _HERE
 
@@ -316,13 +320,13 @@ def _write_salary_buckets(path: Path, salary_data: dict) -> None:
             deltas = bd["deltas"]
             n      = len(deltas)
             if n == 0:
-                w.writerow([label, 0, 0, 0, 0.0, 0.0, 0.0])
+                w.writerow(sanitize_row([label, 0, 0, 0, 0.0, 0.0, 0.0]))
             else:
                 avg_d = round(sum(deltas) / n, 2)
-                w.writerow([
+                w.writerow(sanitize_row([
                     label, n, bd["increase"], bd["decrease"],
                     avg_d, _pct(deltas, 50), _pct(deltas, 90),
-                ])
+                ]))
 
 
 def _write_hire_date_buckets(path: Path, hire_data: dict) -> None:
@@ -332,7 +336,7 @@ def _write_hire_date_buckets(path: Path, hire_data: dict) -> None:
         for label, _, _ in _HIRE_DATE_BUCKETS:
             bd       = hire_data[label]
             examples = "|".join(bd["examples"]) if bd["examples"] else ""
-            w.writerow([label, bd["count"], examples])
+            w.writerow(sanitize_row([label, bd["count"], examples]))
 
 
 def _write_suspicious(path: Path, rows: list[dict]) -> None:
@@ -340,7 +344,7 @@ def _write_suspicious(path: Path, rows: list[dict]) -> None:
         w = csv.DictWriter(f, fieldnames=_SUSP_COLS)
         w.writeheader()
         for row in rows:
-            w.writerow(row)
+            w.writerow(sanitize_dict_row(row))
 
 
 # ---------------------------------------------------------------------------

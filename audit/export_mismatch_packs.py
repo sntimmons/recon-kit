@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import csv
 import sqlite3
+import sys
 from pathlib import Path
 
 AUDIT_DIR = Path(__file__).parent
+_ROOT = AUDIT_DIR.parent
+sys.path.insert(0, str(_ROOT / "src"))
+
+from csv_safe import sanitize_row
+
 DB_PATH = AUDIT_DIR / "audit.db"
 
 _HEADERS = [
@@ -175,7 +181,7 @@ def export_all(reports_dir: Path, db_path: Path = DB_PATH) -> None:
             writer = csv.writer(f)
             writer.writerow(_HEADERS)
             for row in rows:
-                writer.writerow([row[h] for h in _HEADERS])
+                writer.writerow(sanitize_row([row[h] for h in _HEADERS]))
         print(f"  {filename:<40} {len(rows):>6} rows")
 
     con.close()

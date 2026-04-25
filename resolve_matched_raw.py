@@ -6,6 +6,8 @@ from pathlib import Path
 import hashlib
 import pandas as pd
 
+from src.csv_safe import safe_to_csv
+
 
 def _s(series: pd.Series) -> pd.Series:
     return series.astype("string").fillna("").str.strip()
@@ -56,7 +58,7 @@ def resolve(input_path: Path, output_path: Path) -> None:
     df = pd.read_csv(input_path, dtype="string", keep_default_na=False)
 
     if df.empty:
-        df.to_csv(output_path, index=False)
+        safe_to_csv(df, output_path)
         print("[resolve] loaded 0 candidate rows from matched_raw.csv")
         print("[resolve] wrote 0 1-to-1 rows -> matched_raw.csv")
         print("[resolve] conflicts_new_worker_id_resolution.csv: 0 rows written")
@@ -164,11 +166,11 @@ def resolve(input_path: Path, output_path: Path) -> None:
     conflicts_new = conflicts_new.drop(columns=_INTERNAL_COLS, errors="ignore")
 
     root = output_path.resolve().parents[0]
-    conflicts_new.to_csv(root / "conflicts_new_worker_id_resolution.csv", index=False)
-    conflicts_old.to_csv(root / "conflicts_old_worker_id_resolution.csv", index=False)
-    skipped_missing.to_csv(root / "skipped_missing_entity_keys.csv", index=False)
+    safe_to_csv(conflicts_new, root / "conflicts_new_worker_id_resolution.csv")
+    safe_to_csv(conflicts_old, root / "conflicts_old_worker_id_resolution.csv")
+    safe_to_csv(skipped_missing, root / "skipped_missing_entity_keys.csv")
 
-    out.to_csv(output_path, index=False)
+    safe_to_csv(out, output_path)
 
     print(f"[resolve] loaded {len(df):,} candidate rows from matched_raw.csv")
     print(f"[resolve] wrote {len(out):,} 1-to-1 rows -> matched_raw.csv")
