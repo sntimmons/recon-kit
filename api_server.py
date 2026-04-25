@@ -532,6 +532,51 @@ def _command_error_message(output: str, default: str) -> str:
     return default
 
 
+# ---------------------------------------------------------------------------
+# Download gating — shared between _collect_outputs and api_download.
+# Any path that matches these rules is blocked from both the UI listing and
+# the direct-download endpoint so they stay in sync automatically.
+# ---------------------------------------------------------------------------
+_DL_SKIP_NAMES: frozenset[str] = frozenset({
+    "audit.db",
+    "input_manifest.json",
+    "matched_raw.csv",
+    # Identity-review files that contain SSN last4 / DOB — internal use only.
+    "needs_review_last4_conflicts.csv",
+    "review_last4_pairs.csv",
+    "review_candidates.csv",
+})
+
+_DL_SKIP_PREFIXES: tuple[str, ...] = (
+    "old_input",
+    "new_input",
+    "audit_input",
+    "audit_q",
+)
+
+_DL_SKIP_PARTS: frozenset[str] = frozenset({"inputs"})
+
+_DL_SKIP_REL_PREFIXES: tuple[str, ...] = (
+    "outputs/",
+    "audit/summary/sanity_",
+)
+
+
+def _is_blocked_path(rel: str) -> bool:
+    """Return True if a run-relative path should be blocked from download."""
+    parts = rel.split("/")
+    basename = parts[-1]
+    if basename in _DL_SKIP_NAMES:
+        return True
+    if any(p in _DL_SKIP_PARTS for p in parts[:-1]):
+        return True
+    if any(basename.startswith(pfx) for pfx in _DL_SKIP_PREFIXES):
+        return True
+    if any(rel.startswith(pfx) for pfx in _DL_SKIP_REL_PREFIXES):
+        return True
+    return False
+
+
 def _collect_outputs(run_dir: Path) -> list[dict]:
     """Scan a run directory for downloadable output files.
 
@@ -596,22 +641,6 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         "fix_status_full.csv",
         "fix_data_quality_full.csv",
     ]
-    skip_names = {
-        "audit.db",
-        "input_manifest.json",
-        "matched_raw.csv",
-    }
-    skip_prefixes = (
-        "old_input",
-        "new_input",
-        "audit_input",
-        "audit_q",
-    )
-    skip_parts = {"inputs"}
-    skip_rel_prefixes = (
-        "outputs/",
-        "audit/summary/sanity_",
-    )
     found: list[dict] = []
     seen: set[str] = set()
 
@@ -623,13 +652,7 @@ def _collect_outputs(run_dir: Path) -> list[dict]:
         rel = path.relative_to(run_dir).as_posix()
         if rel in seen:
             return
-        if any(rel.startswith(prefix) for prefix in skip_rel_prefixes):
-            return
-        if path.name in skip_names:
-            return
-        if any(part in skip_parts for part in path.relative_to(run_dir).parts):
-            return
-        if any(path.name.startswith(prefix) for prefix in skip_prefixes):
+        if _is_blocked_path(rel):
             return
         seen.add(rel)
         found.append({"name": rel, "size": path.stat().st_size})
@@ -1785,6 +1808,9 @@ def api_download(run_id: str, filename: str):
         abort(403)
     try:
         if not str(target).startswith(str(base) + os.sep) and str(target) != str(base):
+            abort(403)
+        rel = target.relative_to(base).as_posix()
+        if _is_blocked_path(rel):
             abort(403)
         if not target.exists():
             abort(404)

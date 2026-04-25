@@ -16,8 +16,6 @@ CREATE TABLE matched_pairs_raw (
     new_full_name_norm    TEXT,
     old_dob               TEXT,
     new_dob               TEXT,
-    old_last4_ssn         TEXT,
-    new_last4_ssn         TEXT,
     old_position          TEXT,
     new_position          TEXT,
     old_hire_date         TEXT,
