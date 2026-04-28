@@ -218,6 +218,16 @@ def main() -> None:
         report["matched_by_recon_id"] = int(len(m))
         all_matches.append(m)
 
+    # Reintroduce ID-less rows for identity-based fallback tiers.
+    # Tiers 1–2 require a business ID and correctly excluded them.
+    # Tiers 3–6 match on name / DOB / SSN, so no worker_id is needed.
+    if not old_no_id.empty:
+        old = pd.concat([old, old_no_id], ignore_index=True)
+        old_no_id = pd.DataFrame(columns=old_no_id.columns)
+    if not new_no_id.empty:
+        new = pd.concat([new, new_no_id], ignore_index=True)
+        new_no_id = pd.DataFrame(columns=new_no_id.columns)
+
     # Tier 3: pk = full_name_norm + dob + last4_ssn
     m, old, new = _one_to_one_join(old, new, ["full_name_norm", "dob", "last4_ssn"], "pk")
     report["matched_by_pk"] = int(len(m))
@@ -307,6 +317,15 @@ def main() -> None:
 
         base["match_source"] = matched["match_source"].astype("string")
 
+        # Flag pairs where either side was missing a worker_id at match time.
+        # Used downstream for explainability and review prioritization.
+        base["missing_worker_id_flag"] = (
+            base["old_worker_id"].isna()
+            | (base["old_worker_id"].fillna("").astype(str).str.strip() == "")
+            | base["new_worker_id"].isna()
+            | (base["new_worker_id"].fillna("").astype(str).str.strip() == "")
+        )
+
         # Append configured extra fields (old_/new_ pair for each field).
         # After the merge, extra field columns have _old/_new suffixes.
         for _field in _load_extra_fields():
@@ -341,6 +360,7 @@ def main() -> None:
             "old_worker_status",  "new_worker_status",
             "old_worker_type",    "new_worker_type",
             "match_source",  "confidence",
+            "missing_worker_id_flag",
         ])
 
     # Strip SSN last4 before writing, then sanitize CSV output.
@@ -353,19 +373,17 @@ def main() -> None:
 
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
+    # ID-less rows were merged into old/new before the fallback tiers, so any
+    # that remain unmatched here are already in the pool — tag by worker_id value.
     old = old.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-    old["unmatched_reason"] = "no_match_found"
-    if not old_no_id.empty:
-        old_no_id = old_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-        old_no_id["unmatched_reason"] = "no_id"
-        old = pd.concat([old, old_no_id], ignore_index=True)
+    old["unmatched_reason"] = old["worker_id"].apply(
+        lambda v: "no_id" if _is_missing_id(v) else "no_match_found"
+    ) if "worker_id" in old.columns else "no_match_found"
 
     new = new.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-    new["unmatched_reason"] = "no_match_found"
-    if not new_no_id.empty:
-        new_no_id = new_no_id.drop(columns=["_match_worker_id", "_match_recon_id"], errors="ignore").copy()
-        new_no_id["unmatched_reason"] = "no_id"
-        new = pd.concat([new, new_no_id], ignore_index=True)
+    new["unmatched_reason"] = new["worker_id"].apply(
+        lambda v: "no_id" if _is_missing_id(v) else "no_match_found"
+    ) if "worker_id" in new.columns else "no_match_found"
 
     safe_to_csv(old, OUT / "unmatched_old.csv")
     safe_to_csv(new, OUT / "unmatched_new.csv")
