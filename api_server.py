@@ -34,12 +34,21 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory, abort, make_response
 import functools
 def require_api_key(view_func):
-    """Decorator to require X-API-KEY header matching env secret, or allow if unset."""
+    """Require X-API-KEY header matching RK_API_SECRET.
+
+    If RK_API_SECRET is not set, auth is disabled and a warning is logged on
+    every request so the insecure state is never silent.
+    """
     @functools.wraps(view_func)
     def wrapped(*args, **kwargs):
-        api_key = request.headers.get("X-API-KEY")
         secret = os.environ.get("RK_API_SECRET")
-        if secret and api_key != secret:
+        if not secret:
+            logger.warning(
+                "RK_API_SECRET is not set — API is running without authentication"
+            )
+            return view_func(*args, **kwargs)
+        api_key = request.headers.get("X-API-KEY")
+        if api_key != secret:
             return make_response(jsonify({"error": "Unauthorized"}), 401)
         return view_func(*args, **kwargs)
     return wrapped
@@ -1331,6 +1340,17 @@ def _run_recon_pipeline(run_id: str, run_dir: Path, old_path: Path, new_path: Pa
             HERE, run_id, env=run_env,
         )
         _finish_step(run_id, "exports", "done" if rc == 0 else "warn")
+
+        # 9.2 Run metrics
+        _set_step(run_id, "run_metrics")
+        rc, _ = _run_cmd(
+            [str(PYTHON), "src/compute_run_metrics.py",
+             "--match-report", str(run_dir / "outputs" / "match_report.json"),
+             "--wide-compare", str(run_dir / "wide_compare.csv"),
+             "--out",          str(run_dir / "run_metrics.json")],
+            HERE, run_id, env=run_env,
+        )
+        _finish_step(run_id, "run_metrics", "done" if rc == 0 else "warn")
 
         # 9.5 Optional: compensation band validation
         bands_path_str = options.get("bands_path")

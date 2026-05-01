@@ -376,6 +376,21 @@ def main() -> None:
                 "ok":            rc == 0,
             })
 
+        # --- compute_run_metrics ---------------------------------------
+        t0 = time.monotonic()
+        rc = run_cmd_optional(
+            [py, str(root / "src" / "compute_run_metrics.py"),
+             "--out", str(run_paths["run"] / "run_metrics.json")],
+            cwd=root, env=env, label="compute_run_metrics.py",
+        )
+        _write_receipt(run_paths, "compute_run_metrics", {
+            "inputs":  [_rc_info(root / "outputs" / "match_report.json")],
+            "outputs": [run_paths["run"] / "run_metrics.json"],
+            "warnings":      [] if rc == 0 else [f"exited with code {rc}"],
+            "elapsed_sec":   round(time.monotonic() - t0, 3),
+            "ok":            rc == 0,
+        })
+
         # --- generate_corrections (BLOCKED in triage mode) -------------
         if blocked.get("corrections"):
             print("\n[pipeline] Skipping generate_corrections - blocked by sanity gate (triage mode).")
