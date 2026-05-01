@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -40,6 +41,11 @@ def _load(label: str) -> pd.DataFrame:
     return df
 
 
+_AMB_COLS = ("match_key", "tier_source", "side", "worker_id",
+             "first_name", "last_name", "dob", "last4_ssn", "reason",
+             "missing_worker_id_flag", "record_id", "ambiguity_event_id")
+
+
 def _mk_key(df: pd.DataFrame, cols: List[str]) -> pd.Series:
     parts = []
     for c in cols:
@@ -58,9 +64,16 @@ def _one_to_one_join(
     new: pd.DataFrame,
     key_cols: List[str],
     source: str,
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Match old to new on key_cols (1-to-1, ambiguous keys on either side discarded).
+
+    Returns (matches, old_remaining, new_remaining, ambiguous_rows).
+    ambiguous_rows contains every row dropped because its key was duplicated on
+    one or both sides, with columns defined by _AMB_COLS.  reason values:
+      duplicate_old  — key appeared >1x on old side only
+      duplicate_new  — key appeared >1x on new side only
+      many_to_many   — key duplicated on BOTH sides
 
     Remaining pools are tracked by row-index so that rows with blank worker_id
     (or any other missing identifier) that DO match on this tier are correctly
@@ -84,15 +97,69 @@ def _one_to_one_join(
     o_dup_keys = set(o_keyed.loc[o_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     n_dup_keys = set(n_keyed.loc[n_keyed["_k"].duplicated(keep=False), "_k"].tolist())
     bad = o_dup_keys | n_dup_keys
+
+    amb_parts: list[pd.DataFrame] = []
     if bad:
+        many_to_many = o_dup_keys & n_dup_keys
+        for df_side, side_label, side_dup in (
+            (o_keyed, "old", o_dup_keys),
+            (n_keyed, "new", n_dup_keys),
+        ):
+            dup = df_side[df_side["_k"].isin(side_dup)].reset_index(drop=True)
+            if dup.empty:
+                continue
+            amb_parts.append(pd.DataFrame({
+                "match_key":   dup["_k"].tolist(),
+                "tier_source": source,
+                "side":        side_label,
+                "worker_id":   dup["worker_id"].tolist() if "worker_id" in dup.columns else [pd.NA] * len(dup),
+                "first_name":  dup["first_name"].tolist() if "first_name" in dup.columns else [pd.NA] * len(dup),
+                "last_name":   dup["last_name"].tolist() if "last_name" in dup.columns else [pd.NA] * len(dup),
+                "dob":         dup["dob"].tolist() if "dob" in dup.columns else [pd.NA] * len(dup),
+                "last4_ssn":   dup["last4_ssn"].tolist() if "last4_ssn" in dup.columns else [pd.NA] * len(dup),
+                "reason":      dup["_k"].apply(
+                    lambda k: "many_to_many" if k in many_to_many
+                    else ("duplicate_old" if side_label == "old" else "duplicate_new")
+                ).tolist(),
+                "missing_worker_id_flag": [
+                    pd.isna(v) or str(v).strip() == ""
+                    for v in (dup["worker_id"].tolist() if "worker_id" in dup.columns else [pd.NA] * len(dup))
+                ],
+                "record_id": [
+                    hashlib.md5(
+                        f"{side_label}|{wid}|{fn}|{ln}|{d}".encode("utf-8")
+                    ).hexdigest()[:12]
+                    for wid, fn, ln, d in zip(
+                        dup["worker_id"].tolist() if "worker_id" in dup.columns else [""] * len(dup),
+                        dup["first_name"].tolist() if "first_name" in dup.columns else [""] * len(dup),
+                        dup["last_name"].tolist() if "last_name" in dup.columns else [""] * len(dup),
+                        dup["dob"].tolist() if "dob" in dup.columns else [""] * len(dup),
+                    )
+                ],
+                "ambiguity_event_id": [
+                    hashlib.md5(
+                        f"{mk}|{source}|{side_label}|{wid}|{d}".encode("utf-8")
+                    ).hexdigest()[:12]
+                    for mk, wid, d in zip(
+                        dup["_k"].tolist(),
+                        dup["worker_id"].tolist() if "worker_id" in dup.columns else [""] * len(dup),
+                        dup["dob"].tolist() if "dob" in dup.columns else [""] * len(dup),
+                    )
+                ],
+            }))
         o_keyed = o_keyed[~o_keyed["_k"].isin(bad)]
         n_keyed = n_keyed[~n_keyed["_k"].isin(bad)]
+
+    ambiguous = (
+        pd.concat(amb_parts, ignore_index=True) if amb_parts
+        else pd.DataFrame(columns=list(_AMB_COLS))
+    )
 
     m = o_keyed.merge(n_keyed, on="_k", how="inner", suffixes=("_old", "_new"))
 
     if len(m) == 0:
         # No matches: return originals unchanged.
-        return pd.DataFrame(), old, new
+        return pd.DataFrame(), old, new, ambiguous
 
     m["match_source"] = source
 
@@ -113,7 +180,7 @@ def _one_to_one_join(
     )
 
     m_out = m.drop(columns=["_k", "__oidx", "__nidx"], errors="ignore")
-    return m_out, old_remaining, new_remaining
+    return m_out, old_remaining, new_remaining, ambiguous
 
 
 def compute_confidence(row: dict) -> float:
@@ -203,20 +270,26 @@ def main() -> None:
         "matched_by_name_hire_date": 0,
         "unmatched_old": 0,
         "unmatched_new": 0,
+        "ambiguous_old_count": 0,
+        "ambiguous_new_count": 0,
+        "ambiguous_total": 0,
     }
 
-    all_matches = []
+    all_matches: list[pd.DataFrame] = []
+    all_ambiguous: list[pd.DataFrame] = []
 
     # Tier 1: worker_id exact (case-insensitive, trimmed comparison only)
-    m, old, new = _one_to_one_join(old, new, ["_match_worker_id"], "worker_id")
+    m, old, new, amb = _one_to_one_join(old, new, ["_match_worker_id"], "worker_id")
     report["matched_by_worker_id"] = int(len(m))
     all_matches.append(m)
+    all_ambiguous.append(amb)
 
     # Tier 2: recon_id exact (only if column present on both sides)
     if "_match_recon_id" in old.columns and "_match_recon_id" in new.columns:
-        m, old, new = _one_to_one_join(old, new, ["_match_recon_id"], "recon_id")
+        m, old, new, amb = _one_to_one_join(old, new, ["_match_recon_id"], "recon_id")
         report["matched_by_recon_id"] = int(len(m))
         all_matches.append(m)
+        all_ambiguous.append(amb)
 
     # Reintroduce ID-less rows for identity-based fallback tiers.
     # Tiers 1–2 require a business ID and correctly excluded them.
@@ -229,19 +302,22 @@ def main() -> None:
         new_no_id = pd.DataFrame(columns=new_no_id.columns)
 
     # Tier 3: pk = full_name_norm + dob + last4_ssn
-    m, old, new = _one_to_one_join(old, new, ["full_name_norm", "dob", "last4_ssn"], "pk")
+    m, old, new, amb = _one_to_one_join(old, new, ["full_name_norm", "dob", "last4_ssn"], "pk")
     report["matched_by_pk"] = int(len(m))
     all_matches.append(m)
+    all_ambiguous.append(amb)
 
     # Tier 4: last4_ssn + dob
-    m, old, new = _one_to_one_join(old, new, ["last4_ssn", "dob"], "last4_dob")
+    m, old, new, amb = _one_to_one_join(old, new, ["last4_ssn", "dob"], "last4_dob")
     report["matched_by_last4_dob"] = int(len(m))
     all_matches.append(m)
+    all_ambiguous.append(amb)
 
     # Tier 5: dob + full_name_norm
-    m, old, new = _one_to_one_join(old, new, ["dob", "full_name_norm"], "dob_name")
+    m, old, new, amb = _one_to_one_join(old, new, ["dob", "full_name_norm"], "dob_name")
     report["matched_by_dob_name"] = int(len(m))
     all_matches.append(m)
+    all_ambiguous.append(amb)
 
     # Tier 6: last_name_norm + hire_date (more robust than full_name_norm + hire_date)
     # Using last name as the join key catches cases where first name differs slightly
@@ -251,9 +327,10 @@ def main() -> None:
     _t6_keys = (["last_name_norm", "hire_date"]
                 if "last_name_norm" in old.columns and "last_name_norm" in new.columns
                 else ["full_name_norm", "hire_date"])
-    m, old, new = _one_to_one_join(old, new, _t6_keys, "name_hire_date")
+    m, old, new, amb = _one_to_one_join(old, new, _t6_keys, "name_hire_date")
     report["matched_by_name_hire_date"] = int(len(m))
     all_matches.append(m)
+    all_ambiguous.append(amb)
 
     matched = (
         pd.concat([x for x in all_matches if len(x) > 0], ignore_index=True)
@@ -371,6 +448,15 @@ def main() -> None:
         OUT / "matched_raw.csv"
     )
 
+    # Ambiguous rows: all rows dropped by _one_to_one_join across every tier.
+    # last4_ssn is intentionally retained here for internal identity review only.
+    ambiguous = (
+        pd.concat([x for x in all_ambiguous if len(x) > 0], ignore_index=True)
+        if any(len(x) > 0 for x in all_ambiguous)
+        else pd.DataFrame(columns=list(_AMB_COLS))
+    )
+    safe_to_csv(ambiguous, OUT / "ambiguous_matches.csv")
+
     # Add unmatched_reason: "no_id" for blank/null worker_id rows,
     # "no_match_found" for all non-empty worker_id rows that did not match.
     # ID-less rows were merged into old/new before the fallback tiers, so any
@@ -391,6 +477,9 @@ def main() -> None:
     report["matched_total"] = int(len(matched_raw))
     report["unmatched_old"] = int(len(old))
     report["unmatched_new"] = int(len(new))
+    report["ambiguous_old_count"] = int((ambiguous["side"] == "old").sum()) if not ambiguous.empty else 0
+    report["ambiguous_new_count"] = int((ambiguous["side"] == "new").sum()) if not ambiguous.empty else 0
+    report["ambiguous_total"] = int(len(ambiguous))
 
     (OUT / "match_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 
@@ -404,6 +493,9 @@ def main() -> None:
     print(f"[matcher] matched_by_name_hire_date: {report['matched_by_name_hire_date']}")
     print(f"[matcher] unmatched_old: {report['unmatched_old']}")
     print(f"[matcher] unmatched_new: {report['unmatched_new']}")
+    print(f"[matcher] ambiguous_total: {report['ambiguous_total']}")
+    print(f"[matcher] ambiguous_old_count: {report['ambiguous_old_count']}")
+    print(f"[matcher] ambiguous_new_count: {report['ambiguous_new_count']}")
 
 
 if __name__ == "__main__":
