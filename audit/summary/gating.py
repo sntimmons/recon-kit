@@ -30,6 +30,12 @@ salary_delta(row: dict) -> float | None
 
 payrate_delta(row: dict) -> float | None
     Compute new_payrate - old_payrate if both parse; else None.
+
+format_decision_reason(result: dict) -> str
+    Return a human-readable decision_reason string from a classify_all() result.
+    APPROVE  → "Meets confidence threshold for {fix_types}"
+    REVIEW   → "Confidence below threshold for {fix_types}" or specific override reason
+    REJECT_MATCH → "Rejected due to {rule}"
 """
 from __future__ import annotations
 
@@ -570,3 +576,46 @@ def build_summary_str(row: dict, fix_types: list[str]) -> str:
         parts.append(f"job_org({'+'.join(sub)})")
 
     return " | ".join(parts) if parts else "no_changes"
+
+
+def format_decision_reason(result: dict) -> str:
+    """
+    Return a human-readable decision_reason from a classify_all() result.
+
+    APPROVE      → "Meets confidence threshold for {fix_types}"
+                   (or "No changes detected - approved automatically" when no fix_types)
+    REVIEW       → specific override phrase, or "Confidence below threshold for {fix_types}"
+    REJECT_MATCH → "Rejected due to {rule}"
+    """
+    action    = result.get("action", "APPROVE")
+    reason    = result.get("reason", "")
+    fix_types = result.get("fix_types", [])
+    ft_str    = ", ".join(fix_types) if fix_types else "no changes"
+
+    if action == "APPROVE":
+        if not fix_types:
+            return "No changes detected - approved automatically"
+        return f"Meets confidence threshold for {ft_str}"
+
+    if action == "REJECT_MATCH":
+        if "salary_ratio" in reason:
+            return (
+                f"Rejected due to salary ratio > {_REJECT_MATCH_SALARY_RATIO:.1f} on fuzzy match"
+            )
+        if "low_confidence" in reason:
+            return "Rejected due to low confidence on name/DOB match"
+        clean = reason.replace("reject_match:", "").strip()
+        return f"Rejected due to {clean}"
+
+    # REVIEW — identify the primary cause from the reason string.
+    if "active_to_terminated" in reason:
+        return "Review required: active to terminated status change"
+    if "salary_ratio_extreme" in reason:
+        return "Review required: extreme salary ratio"
+    if "hire_date_wave" in reason:
+        return "Review required: hire date matches bulk import wave"
+    if "name_change_detected" in reason:
+        return "Review required: name change detected"
+    if "below_threshold" in reason or "low_confidence" in reason or "missing_confidence" in reason:
+        return f"Confidence below threshold for {ft_str}"
+    return f"Review required: {reason}"

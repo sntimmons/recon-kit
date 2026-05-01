@@ -41,6 +41,7 @@ from gating import (
     salary_delta,
     payrate_delta,
     build_summary_str,
+    format_decision_reason,
     _parse_confidence,
     _parse_num,
     _norm,
@@ -99,10 +100,12 @@ _JOB_ORG_COLS = [
 _REVIEW_COLS = [
     "worker_id", "pair_id", "match_source", "fix_types",
     "action", "reason", "confidence", "min_confidence", "summary",
+    "match_reason", "confidence_breakdown", "decision_reason",
 ]
 _MANIFEST_COLS = [
     "correction_type", "worker_id", "pair_id", "match_source",
     "fix_types", "action", "confidence", "summary", "output_file",
+    "match_reason", "confidence_breakdown", "decision_reason",
 ]
 
 # Rows held back from corrections (overall REVIEW/REJECT_MATCH or Active/$0 salary)
@@ -193,15 +196,18 @@ def _build_review_row(row: dict, result: dict, summary: str) -> dict:
     min_conf_str   = "" if max_min_conf == "" else str(round(max_min_conf, 4))
 
     return {
-        "worker_id":      row.get("new_worker_id", ""),
-        "pair_id":        row.get("pair_id", ""),
-        "match_source":   row.get("match_source", ""),
-        "fix_types":      "|".join(fix_types),
-        "action":         "REVIEW",
-        "reason":         overall_reason,
-        "confidence":     _conf_str(row),
-        "min_confidence": min_conf_str,
-        "summary":        summary,
+        "worker_id":            row.get("new_worker_id", ""),
+        "pair_id":              row.get("pair_id", ""),
+        "match_source":         row.get("match_source", ""),
+        "fix_types":            "|".join(fix_types),
+        "action":               "REVIEW",
+        "reason":               overall_reason,
+        "confidence":           _conf_str(row),
+        "min_confidence":       min_conf_str,
+        "summary":              summary,
+        "match_reason":         row.get("match_reason", ""),
+        "confidence_breakdown": row.get("confidence_breakdown", ""),
+        "decision_reason":      format_decision_reason(result),
     }
 
 
@@ -226,17 +232,21 @@ def _build_manifest_row(
     action: str,
     summary: str,
     output_file: str,
+    result: dict | None = None,
 ) -> dict:
     return {
-        "correction_type": correction_type,
-        "worker_id":       row.get("new_worker_id", ""),
-        "pair_id":         row.get("pair_id", ""),
-        "match_source":    row.get("match_source", ""),
-        "fix_types":       "|".join(fix_types),
-        "action":          action,
-        "confidence":      _conf_str(row),
-        "summary":         summary,
-        "output_file":     output_file,
+        "correction_type":      correction_type,
+        "worker_id":            row.get("new_worker_id", ""),
+        "pair_id":              row.get("pair_id", ""),
+        "match_source":         row.get("match_source", ""),
+        "fix_types":            "|".join(fix_types),
+        "action":               action,
+        "confidence":           _conf_str(row),
+        "summary":              summary,
+        "output_file":          output_file,
+        "match_reason":         row.get("match_reason", ""),
+        "confidence_breakdown": row.get("confidence_breakdown", ""),
+        "decision_reason":      format_decision_reason(result) if result else "",
     }
 
 
@@ -472,25 +482,25 @@ def main(argv: list[str] | None = None) -> None:
 
                 salary_rows.append(_build_salary_row(r, summary))
                 manifest_rows.append(_build_manifest_row(
-                    "salary", r, fix_types, gate["action"], summary, "corrections_salary.csv"
+                    "salary", r, fix_types, gate["action"], summary, "corrections_salary.csv", result
                 ))
 
             elif ft == "status":
                 status_rows.append(_build_status_row(r, summary))
                 manifest_rows.append(_build_manifest_row(
-                    "status", r, fix_types, gate["action"], summary, "corrections_status.csv"
+                    "status", r, fix_types, gate["action"], summary, "corrections_status.csv", result
                 ))
 
             elif ft == "hire_date":
                 hire_date_rows.append(_build_hire_date_row(r, summary))
                 manifest_rows.append(_build_manifest_row(
-                    "hire_date", r, fix_types, gate["action"], summary, "corrections_hire_date.csv"
+                    "hire_date", r, fix_types, gate["action"], summary, "corrections_hire_date.csv", result
                 ))
 
             elif ft == "job_org":
                 job_org_rows.append(_build_job_org_row(r, summary, has_location))
                 manifest_rows.append(_build_manifest_row(
-                    "job_org", r, fix_types, gate["action"], summary, "corrections_job_org.csv"
+                    "job_org", r, fix_types, gate["action"], summary, "corrections_job_org.csv", result
                 ))
 
     # -----------------------------------------------------------------------

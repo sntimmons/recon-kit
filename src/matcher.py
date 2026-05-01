@@ -45,6 +45,15 @@ _AMB_COLS = ("match_key", "tier_source", "side", "worker_id",
              "first_name", "last_name", "dob", "last4_ssn", "reason",
              "missing_worker_id_flag", "record_id", "ambiguity_event_id")
 
+_MATCH_REASONS: dict[str, str] = {
+    "worker_id":      "Exact match on worker_id",
+    "recon_id":       "Exact match on recon_id",
+    "pk":             "Matched on name + dob + last4_ssn",
+    "last4_dob":      "Matched on last4_ssn + dob",
+    "dob_name":       "Matched on dob + name similarity",
+    "name_hire_date": "Matched on last name + hire date",
+}
+
 
 def _mk_key(df: pd.DataFrame, cols: List[str]) -> pd.Series:
     parts = []
@@ -215,6 +224,37 @@ def compute_confidence(row: dict) -> float:
 
     score = name_sim * 0.5 + dob_match * 0.2 + l4_match * 0.2 + loc_match * 0.1
     return round(min(1.0, max(0.0, score)), 4)
+
+
+def _confidence_breakdown_str(row: dict) -> str:
+    """Return confidence component scores as a compact JSON string.
+
+    Components mirror compute_confidence() exactly; last4_match is 0/1 (no SSN value).
+    """
+    ms = str(row.get("match_source") or "").strip().lower()
+    if ms in ("worker_id", "recon_id"):
+        return '{"name_similarity":1.0,"dob_match":1,"last4_match":1,"state_match":1}'
+
+    old_name  = str(row.get("old_full_name_norm") or "").strip()
+    new_name  = str(row.get("new_full_name_norm") or "").strip()
+    old_dob   = str(row.get("old_dob") or "").strip()
+    new_dob   = str(row.get("new_dob") or "").strip()
+    old_l4    = str(row.get("old_last4_ssn") or "").strip()
+    new_l4    = str(row.get("new_last4_ssn") or "").strip()
+    old_state = str(row.get("old_location_state") or "").strip().lower()
+    new_state = str(row.get("new_location_state") or "").strip().lower()
+
+    name_sim  = round(SequenceMatcher(None, old_name, new_name).ratio(), 4) if (old_name and new_name) else 0.0
+    dob_match = 1 if (old_dob and new_dob and old_dob == new_dob) else 0
+    l4_match  = 1 if (old_l4 and new_l4 and old_l4 == new_l4) else 0
+    loc_match = 1 if (old_state and new_state and old_state == new_state) else 0
+
+    return (
+        f'{{"name_similarity":{name_sim},'
+        f'"dob_match":{dob_match},'
+        f'"last4_match":{l4_match},'
+        f'"state_match":{loc_match}}}'
+    )
 
 
 def _ascii_fold_name_part(value: object) -> str:
@@ -414,6 +454,14 @@ def main() -> None:
         base["confidence"] = [
             compute_confidence(r) for r in base.to_dict(orient="records")
         ]
+
+        # Explainability columns — computed while last4_ssn is still in base.
+        base["match_reason"] = base["match_source"].map(
+            lambda ms: _MATCH_REASONS.get(str(ms or "").strip().lower(), str(ms or ""))
+        )
+        base["confidence_breakdown"] = [
+            _confidence_breakdown_str(r) for r in base.to_dict(orient="records")
+        ]
         matched_raw = base
     else:
         # Zero-match case: emit all standard columns so that downstream steps
@@ -438,6 +486,7 @@ def main() -> None:
             "old_worker_type",    "new_worker_type",
             "match_source",  "confidence",
             "missing_worker_id_flag",
+            "match_reason",  "confidence_breakdown",
         ])
 
     # Strip SSN last4 before writing, then sanitize CSV output.

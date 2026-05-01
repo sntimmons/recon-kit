@@ -37,6 +37,7 @@ from gating import (
     salary_delta,
     payrate_delta,
     build_summary_str,
+    format_decision_reason,
     _parse_confidence,
     _norm,
 )
@@ -65,8 +66,9 @@ _XLOOKUP_COLS = [
 # Stable wide_compare columns - do not reorder.
 # Extra field triplets (old_/new_/mm_) are appended after this list.
 _WIDE_COLS = [
-    # Keys / gating
+    # Keys / gating / explainability
     "pair_id", "match_source", "confidence",
+    "match_reason", "confidence_breakdown", "decision_reason",
     "action", "reason", "fix_types", "summary", "match_explanation", "priority_score",
     # Side-by-side fields
     "old_full_name_norm", "new_full_name_norm",
@@ -268,10 +270,13 @@ def main(argv: list[str] | None = None) -> None:
         })
 
         wide_row = {
-            "pair_id":            r.get("pair_id", ""),
-            "match_source":       r.get("match_source", ""),
-            "confidence":         r.get("confidence"),
-            "action":             action,
+            "pair_id":              r.get("pair_id", ""),
+            "match_source":         r.get("match_source", ""),
+            "confidence":           r.get("confidence"),
+            "match_reason":         r.get("match_reason", ""),
+            "confidence_breakdown": r.get("confidence_breakdown", ""),
+            "decision_reason":      format_decision_reason(result),
+            "action":               action,
             "reason":             reason,
             "fix_types":          "|".join(fix_types),
             "summary":            summary,
