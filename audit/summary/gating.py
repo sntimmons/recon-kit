@@ -50,6 +50,10 @@ from confidence_policy import (
     is_auto_approve_source,
     get_min_confidence,
     LOW_CONFIDENCE_FLOOR,
+    REJECT_MATCH_CONF_THRESHOLD  as _REJECT_MATCH_CONF_THRESHOLD,
+    REJECT_MATCH_SALARY_RATIO    as _REJECT_MATCH_SALARY_RATIO,
+    SALARY_RATIO_EXTREME_LOW     as _SALARY_RATIO_EXTREME_LOW,
+    SALARY_RATIO_EXTREME_HIGH    as _SALARY_RATIO_EXTREME_HIGH,
 )
 
 
@@ -140,11 +144,11 @@ _TERMINATED_STATUSES: frozenset[str] = frozenset({
 # ---------------------------------------------------------------------------
 # Sources where low confidence indicates a likely wrong-person pairing.
 _REJECT_MATCH_LOW_CONF_SOURCES: frozenset[str] = frozenset({"dob_name"})
-_REJECT_MATCH_CONF_THRESHOLD:   float          = 0.75
+# _REJECT_MATCH_CONF_THRESHOLD loaded from policy.yaml via confidence_policy
 
 # Sources treated as fuzzy (not deterministic) for salary-ratio REJECT_MATCH check.
 _DETERMINISTIC_SOURCES: frozenset[str] = frozenset({"worker_id", "pk", "recon_id"})
-_REJECT_MATCH_SALARY_RATIO:     float  = 2.5   # salary_ratio > this on a fuzzy match → REJECT_MATCH
+# _REJECT_MATCH_SALARY_RATIO loaded from policy.yaml via confidence_policy
 
 # ---------------------------------------------------------------------------
 # Hire-date systematic pattern configuration
@@ -381,6 +385,36 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
         reason    : str
         per_fix   : dict[str, dict]
     """
+    # -------------------------------------------------------------------
+    # Safety guard: missing match_source or confidence → always REVIEW.
+    #
+    # This fires before fix-type inference so that a row with missing
+    # critical fields can never reach the no_changes_detected early-return
+    # (which would produce APPROVE without validating the row is intact).
+    #
+    # Checked fields:
+    #   match_source  – required to determine auto-approve and min_confidence
+    #   confidence    – required for any non-auto-approve source to gate safely
+    # -------------------------------------------------------------------
+    _ms = _norm(row.get("match_source", ""))
+    _guard_missing: list[str] = []
+    if not _ms:
+        _guard_missing.append("match_source")
+    if not is_auto_approve_source(_ms) and _parse_confidence(row.get("confidence")) is None:
+        _guard_missing.append("confidence")
+    if _guard_missing:
+        _fields_str = "+".join(_guard_missing)
+        print(
+            f"[gating] Missing required fields detected — forcing REVIEW ({_fields_str})",
+            flush=True,
+        )
+        return {
+            "fix_types": [],
+            "action":    "REVIEW",
+            "reason":    f"missing_required_fields:{_fields_str}",
+            "per_fix":   {},
+        }
+
     fix_types = infer_fix_types(row)
 
     # -------------------------------------------------------------------
@@ -416,14 +450,15 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
 
     # -------------------------------------------------------------------
     # Override 1: extreme salary ratio - fires even for auto-approve
-    # sources (e.g. worker_id).  Any ratio outside [0.85, 1.15] → REVIEW.
+    # sources (e.g. worker_id).  Bounds from policy.yaml reject_match.
     # -------------------------------------------------------------------
     if "salary" in per_fix:
         ratio = _salary_ratio(row)
-        if ratio is not None and (ratio < 0.85 or ratio > 1.15):
+        if ratio is not None and (ratio < _SALARY_RATIO_EXTREME_LOW or ratio > _SALARY_RATIO_EXTREME_HIGH):
             per_fix["salary"]["action"] = "REVIEW"
             per_fix["salary"]["reason"] = (
-                f"salary_ratio_extreme ({ratio:.4f} outside [0.85, 1.15])"
+                f"salary_ratio_extreme ({ratio:.4f} outside "
+                f"[{_SALARY_RATIO_EXTREME_LOW:.2f},{_SALARY_RATIO_EXTREME_HIGH:.2f}])"
             )
 
     # -------------------------------------------------------------------
@@ -471,8 +506,9 @@ def classify_all(row: dict, wave_dates: "frozenset[str] | None" = None) -> dict:
 
     # -------------------------------------------------------------------
     # Override 4: REJECT_MATCH - wrong-person pairing signals (Fix 3)
-    # (a) dob_name source with confidence < 0.75
-    # (b) Any non-deterministic source with salary_ratio > 2.5
+    # (a) dob_name source with confidence below reject_match.dob_name_conf_threshold
+    # (b) Any non-deterministic source with salary_ratio above reject_match.salary_ratio_threshold
+    # Thresholds come from policy.yaml reject_match section.
     # REJECT_MATCH overrides everything - treated as worse than REVIEW.
     # -------------------------------------------------------------------
     ms         = _norm(row.get("match_source", ""))
@@ -608,6 +644,8 @@ def format_decision_reason(result: dict) -> str:
         return f"Rejected due to {clean}"
 
     # REVIEW — identify the primary cause from the reason string.
+    if "missing_required_fields" in reason:
+        return "Missing required data for safe decision"
     if "active_to_terminated" in reason:
         return "Review required: active to terminated status change"
     if "salary_ratio_extreme" in reason:

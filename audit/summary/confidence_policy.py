@@ -22,13 +22,40 @@ from pathlib import Path
 # Ensure config_loader is importable regardless of working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config_loader import load_confidence_policy, load_policy
+from config_loader import load_confidence_policy, load_policy, load_reject_match_policy
 
 _policy = load_policy()
 POLICY  = load_confidence_policy(_policy)
+_rm     = load_reject_match_policy(_policy)
 
 # REVIEW confidence bands (when confidence is present but below threshold).
 LOW_CONFIDENCE_FLOOR: float = float(POLICY.get("low_confidence_floor", 0.80))
+
+# REJECT_MATCH safety-net thresholds - sourced from policy.yaml reject_match section.
+REJECT_MATCH_CONF_THRESHOLD:  float = float(_rm.get("dob_name_conf_threshold",   0.75))
+REJECT_MATCH_SALARY_RATIO:    float = float(_rm.get("salary_ratio_threshold",    2.5))
+SALARY_RATIO_EXTREME_LOW:     float = float(_rm.get("extreme_salary_ratio_low",  0.85))
+SALARY_RATIO_EXTREME_HIGH:    float = float(_rm.get("extreme_salary_ratio_high", 1.15))
+
+# Validation log - confirms which source is in effect.
+_yaml_path = Path(__file__).resolve().parents[2] / "config" / "policy.yaml"
+if _yaml_path.exists():
+    _ft = POLICY.get("fix_type", {})
+    print(
+        "[confidence_policy] Using policy.yaml thresholds: "
+        f"salary={_ft.get('salary', {}).get('min_confidence', 0.97):.2f}, "
+        f"status={_ft.get('status', {}).get('min_confidence', 0.98):.2f}, "
+        f"hire_date={_ft.get('hire_date', {}).get('min_confidence', 0.95):.2f}, "
+        f"job_org={_ft.get('job_org', {}).get('min_confidence', 0.95):.2f} | "
+        f"reject_match: dob_name<{REJECT_MATCH_CONF_THRESHOLD:.2f}, "
+        f"salary_ratio>{REJECT_MATCH_SALARY_RATIO:.1f}, "
+        f"extreme_ratio=[{SALARY_RATIO_EXTREME_LOW:.2f},{SALARY_RATIO_EXTREME_HIGH:.2f}]"
+    )
+else:
+    print(
+        "[confidence_policy] policy.yaml not found - using internal defaults.",
+        file=sys.stderr,
+    )
 
 
 def is_auto_approve_source(match_source: str) -> bool:

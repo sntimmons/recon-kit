@@ -27,6 +27,13 @@ ROOT  = _HERE.parents[1]                  # repo root
 # Loaded by confidence_policy.py at import time; only used as fallback when
 # policy.yaml is absent or unreadable.
 # ---------------------------------------------------------------------------
+_DEFAULT_REJECT_MATCH_POLICY: dict = {
+    "dob_name_conf_threshold":   0.75,
+    "salary_ratio_threshold":    2.5,
+    "extreme_salary_ratio_low":  0.85,
+    "extreme_salary_ratio_high": 1.15,
+}
+
 _DEFAULT_CONFIDENCE_POLICY: dict = {
     "low_confidence_floor": 0.80,
     "match_source": {
@@ -46,6 +53,7 @@ _DEFAULT_CONFIDENCE_POLICY: dict = {
         "job_org":   {"min_confidence": 0.95},
         "_default":  {"min_confidence": 0.95},
     },
+    "reject_match": _DEFAULT_REJECT_MATCH_POLICY,
 }
 
 # Defaults used when policy.yaml is absent or unreadable.
@@ -237,6 +245,24 @@ def load_confidence_policy(policy: dict | None = None) -> dict:
     if policy is None:
         policy = load_policy()
     return policy.get("confidence_policy", _DEFAULT_CONFIDENCE_POLICY)
+
+
+def load_reject_match_policy(policy: dict | None = None) -> dict:
+    """
+    Return the REJECT_MATCH safety-net threshold dict.
+
+    Keys:
+        dob_name_conf_threshold   (float) - confidence below this on dob_name → REJECT_MATCH
+        salary_ratio_threshold    (float) - salary ratio above this on fuzzy match → REJECT_MATCH
+        extreme_salary_ratio_low  (float) - salary ratio below this (any source) → REVIEW
+        extreme_salary_ratio_high (float) - salary ratio above this (any source) → REVIEW
+
+    Falls back to _DEFAULT_REJECT_MATCH_POLICY when the key is absent.
+    """
+    if policy is None:
+        policy = load_policy()
+    cp = policy.get("confidence_policy", _DEFAULT_CONFIDENCE_POLICY)
+    return cp.get("reject_match", _DEFAULT_REJECT_MATCH_POLICY)
 
 
 def load_retention_config(policy: dict | None = None) -> dict:

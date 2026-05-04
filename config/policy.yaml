@@ -60,6 +60,17 @@ internal_audit:
 confidence_policy:
   low_confidence_floor: 0.80
 
+  # REJECT_MATCH safety-net thresholds - move these here to control via config.
+  # dob_name_conf_threshold  : confidence below this on dob_name source → REJECT_MATCH
+  # salary_ratio_threshold   : salary ratio above this on any fuzzy match → REJECT_MATCH
+  # extreme_salary_ratio_low : salary ratio below this (any source) → REVIEW
+  # extreme_salary_ratio_high: salary ratio above this (any source) → REVIEW
+  reject_match:
+    dob_name_conf_threshold:   0.75
+    salary_ratio_threshold:    2.5
+    extreme_salary_ratio_low:  0.85
+    extreme_salary_ratio_high: 1.15
+
   match_source:
     worker_id:
       auto_approve: true

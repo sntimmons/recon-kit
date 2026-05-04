@@ -1,0 +1,11 @@
+worker_id,first_name,last_name,status,pay_type,salary,payrate,standard_hours,department,job_title,hire_date,termination_date
+PH2001,Ava,Brooks,active,hourly,,0,40,Operations,Assembler,2022-01-10,
+PH2002,Ben,Carter,active,hourly,,-5,40,Operations,Forklift Operator,2021-08-04,
+PH2003,Cara,Diaz,active,hourly,,500,40,Finance,Payroll Consultant,2020-03-16,
+PH2004,Drew,Ellis,active,hourly,,3,40,Retail,Cashier,2023-05-22,
+PH2005,Elle,Frost,active,salaried,0,,40,HR,HR Generalist,2021-11-01,
+PH2006,Finn,Gray,active,salaried,-10000,,40,HR,HR Specialist,2020-07-13,
+PH2007,Gia,Hart,active,salaried,5000000,,40,Executive,Chief Officer,2019-02-25,
+PH2008,Hugo,Ivers,active,salaried,8000,,40,Admin,Coordinator,2024-01-08,
+PH2009,Ivy,Jones,active,hourly,,25,40,Operations,Technician,2022-09-19,
+PH2010,Jake,Kent,active,salaried,85000,,40,Finance,Analyst,2021-04-12,

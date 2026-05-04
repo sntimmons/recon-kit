@@ -42,7 +42,6 @@ COMPARE_FIELDS_FIXED = [
     "worker_status",
     "worker_type",
     "district",
-    "last4_ssn",
 ]
 
 def _safe_read_csv(path: str) -> pd.DataFrame:
